@@ -5,7 +5,7 @@ import google.generativeai as genai
 import sys
 
 # ================= AYARLAR =================
-API_KEY = "AIzaSyD3N3MbKg2o9B4e7IDkleEyqQ3VtAjRlWg"
+API_KEY = st.secrets["API_KEY"]
 WEBSITE_URL = "https://yolpedia.eu" 
 # ===========================================
 
