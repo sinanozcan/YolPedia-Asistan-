@@ -37,7 +37,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 40px;
+        width: 90px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -61,7 +61,7 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL ---
+# --- MODELİ BUL (Model bağlantısı Resource olarak kalır) ---
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
@@ -82,11 +82,12 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (HATA ÖNLEYİCİ MOD) ---
-@st.cache_resource(ttl=3600)
+# --- VERİLERİ ÇEK (DİSK ÖNBELLEĞİ İLE - persist="disk") ---
+# ttl=86400 (24 Saat) boyunca veriyi diskte tutar, silmez.
+@st.cache_data(ttl=86400, show_spinner=False, persist="disk")
 def site_verilerini_cek():
     veriler = [] 
-    placeholder = st.empty()
+    status_text = st.empty() # Yükleme yazısı için yer tutucu
     endpoints = ["posts", "pages"]
     
     kimlik = HTTPBasicAuth(WP_USER, WP_PASS)
@@ -94,13 +95,11 @@ def site_verilerini_cek():
     for tur in endpoints:
         page = 1
         while True:
-            placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
+            status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
             
-            # DEĞİŞİKLİK 1: 50 yerine 25'er 25'er çekiyoruz (Sunucu yorulmasın)
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
             
             try:
-                # DEĞİŞİKLİK 2: Timeout süresini 60 saniyeye çıkardık (Sabırlı olsun)
                 response = requests.get(api_url, auth=kimlik, timeout=60)
             except Exception as e:
                 st.error(f"Bağlantı hatası: {e}")
@@ -122,17 +121,21 @@ def site_verilerini_cek():
             else:
                 break
             page += 1
-            # Her sayfadan sonra 1 saniye nefes aldırıyoruz
             time.sleep(1) 
     
-    placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
-    time.sleep(2)
-    placeholder.empty()
+    status_text.empty() # İş bitince yazıyı kaldır
     return veriler
 
+# --- BAŞLANGIÇ KONTROLÜ ---
 if 'db' not in st.session_state:
-    with st.spinner('Veri tabanı hazırlanıyor... (Bu işlem veri yoğunluğuna göre 1-2 dk sürebilir)'):
+    # İlk açılışta veriyi çeker veya diskten okur
+    with st.spinner('Sistem hazırlanıyor... (İlk seferde uzun sürebilir)'):
         st.session_state.db = site_verilerini_cek()
+    
+    # Veri yüklendiyse küçük bir onay verip devam et
+    st.success(f"✅ Hazır! {len(st.session_state.db)} içerik yüklendi.")
+    time.sleep(1)
+    st.rerun()
 
 # --- TÜRKÇE KARAKTER DÜZELTİCİ ---
 def tr_normalize(metin):
@@ -223,8 +226,9 @@ if prompt := st.chat_input("Bir soru sorun..."):
 # --- YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
+    # Butona basınca DİSKTEKİ veriyi de silip yeniden çeker
     if st.button("🔄 Verileri Şimdi Güncelle"):
-        st.cache_resource.clear()
+        st.cache_data.clear() 
         st.rerun()
     st.divider()
     if 'db' in st.session_state:
