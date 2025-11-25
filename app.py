@@ -7,11 +7,11 @@ import time
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
-WEBSITE_URL = "https://yolpedia.eu" 
-
+WEBSITE_URL = "https://yolpedia.com" 
 # ===========================================
-st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
-st.title("🤖 YolPedia Asistanı")
+
+st.set_page_config(page_title="Yolpedia Asistanı", page_icon="🤖")
+st.title("🤖 Yolpedia Asistanı")
 
 genai.configure(api_key=API_KEY)
 
@@ -36,38 +36,56 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (OTOMATİK YENİLEME: 1 SAAT / 3600 SANİYE) ---
+# --- VERİLERİ ÇEK (GÜVENLİK DUVARINI AŞAN VERSİYON) ---
 @st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
     placeholder = st.empty()
     endpoints = ["posts", "pages"]
     
+    # Kendimizi tarayıcı gibi tanıtıyoruz (Maske)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
     for tur in endpoints:
         page = 1
         while True:
-            placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page}")
+            placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Şu ana kadar: {len(veriler)})")
+            
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
+            
             try:
-                response = requests.get(api_url)
-            except:
+                # Headers'ı buraya ekledik!
+                response = requests.get(api_url, headers=headers)
+            except Exception as e:
+                st.error(f"Bağlantı hatası: {e}")
                 break
-            if response.status_code != 200 or not response.json():
-                break 
+            
+            if response.status_code != 200:
+                # Eğer sayfa yoksa (400 hatası) normaldir, döngü biter.
+                # Başka hataysa ekrana basalım.
+                if response.status_code != 400:
+                    print(f"Hata Kodu: {response.status_code}")
+                break
             
             data_json = response.json()
+            
             if isinstance(data_json, list):
+                if not data_json: # Liste boşsa bitir
+                    break
                 for post in data_json:
                     baslik = post['title']['rendered']
                     icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
                     veriler.append({"baslik": baslik, "icerik": icerik})
             else:
                 break
+                
             page += 1
-            time.sleep(0.5)
+            time.sleep(1) # 1 saniye bekle (Sunucu kızmasın)
     
     placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
-    time.sleep(1) # Yazıyı 1 sn gösterip sil
+    time.sleep(2)
     placeholder.empty()
     return veriler
 
@@ -145,7 +163,6 @@ if prompt := st.chat_input("Bir soru sorun..."):
 # --- YAN MENÜ (YÖNETİM) ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
-    # Butona basınca önbelleği temizle ve sayfayı yenile
     if st.button("🔄 Verileri Şimdi Güncelle"):
         st.cache_resource.clear()
         st.rerun()
@@ -156,6 +173,3 @@ with st.sidebar:
         if st.checkbox("Yüklü Başlıkları Gör"):
             for v in st.session_state.db:
                 st.text(v['baslik'])
-
-
-
