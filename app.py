@@ -10,7 +10,7 @@ WEBSITE_URL = "https://yolpedia.eu"
 
 # ===========================================
 st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
-st.title("🤖 Yolpedia Asistanı")
+st.title("🤖 YolPedia Asistanı")
 
 genai.configure(api_key=API_KEY)
 
