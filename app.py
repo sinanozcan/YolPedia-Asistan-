@@ -12,7 +12,7 @@ API_KEY = st.secrets["API_KEY"]
 WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
-LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2021/01/cropped-yolpedia-logo-1.png"
+LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 # ===========================================
 
 # Sayfa Sekme Ayarı
