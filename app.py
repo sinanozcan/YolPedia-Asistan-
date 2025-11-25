@@ -39,7 +39,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 90px;
+        width: 40px;
         margin-right: 20px;
     }}
     .title-text {{
