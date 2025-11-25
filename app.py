@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
 import time
+from PIL import Image   # <--- Yeni eklendi (Resim işlemek için)
+from io import BytesIO  # <--- Yeni eklendi (Resim okumak için)
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
@@ -14,30 +16,38 @@ WEBSITE_URL = "https://yolpedia.eu"
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 # ===========================================
 
-st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
+# --- FAVICON AYARLAMA (LINKTEN ÇEKME) ---
+# Logoyu internetten çekip ikon formatına getiriyoruz
+try:
+    response = requests.get(LOGO_URL)
+    favicon = Image.open(BytesIO(response.content))
+except:
+    favicon = "🤖" # Eğer logo yüklenemezse robot kalsın
 
-# --- BAŞLIK VE LOGO (ORTALANMIŞ VE FERAH GÖRÜNÜM) ---
+# Sayfa Ayarları (page_icon kısmına favicon değişkenini koyduk)
+st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
+
+# --- BAŞLIK VE LOGO (ORTALANMIŞ GÖRÜNÜM) ---
 st.markdown(
     f"""
     <style>
     .main-header {{
         display: flex;
         align-items: center;
-        justify-content: center; /* Ortalar */
-        margin-top: 20px; /* Üstten boşluk */
-        margin-bottom: 30px; /* Alttan boşluk */
+        justify-content: center;
+        margin-top: 20px;
+        margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 45px; /* Logo boyutu */
-        margin-right: 20px; /* Yazı ile logo arası boşluk */
+        width: 90px;
+        margin-right: 20px;
     }}
     .title-text {{
         font-size: 42px;
         font-weight: 700;
         margin: 0;
-        color: #ffffff; /* Yazı rengi (Temaya göre değişir ama beyaz iyidir) */
+        color: #ffffff;
     }}
-    /* Açık tema için yazı rengini siyah yapalım */
     @media (prefers-color-scheme: light) {{
         .title-text {{ color: #000000; }}
     }}
