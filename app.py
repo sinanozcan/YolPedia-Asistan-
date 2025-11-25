@@ -69,38 +69,49 @@ if 'db' not in st.session_state:
     with st.spinner('Veri tabanı hazırlanıyor, lütfen bekleyin...'):
         st.session_state.db = site_verilerini_cek()
 
-# --- RAG ARAMA (AKILLI PUANLAMA SİSTEMİ) ---
+# --- TÜRKÇE KARAKTER DÜZELTİCİ ---
+def tr_normalize(metin):
+    # Türkçe harfleri İngilizce karşılıklarına çevirir
+    kaynak = "ğĞüÜşŞıİöÖçÇ"
+    hedef  = "gGuUsSiIoOcC"
+    ceviri_tablosu = str.maketrans(kaynak, hedef)
+    return metin.translate(ceviri_tablosu).lower()
+
+# --- RAG ARAMA (AKILLI + TÜRKÇE DOSTU) ---
 def alakali_icerik_bul(soru, tum_veriler):
-    # Gereksiz dolgu kelimeleri (Stopwords)
-    gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su"]
+    gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu"]
     
-    soru_kelimeleri = soru.lower().split()
-    # Sadece anlamlı kelimeleri filtrele
+    # Soruyu normalize et (ğ -> g, ş -> s yap ve küçült)
+    soru_temiz = tr_normalize(soru)
+    soru_kelimeleri = soru_temiz.split()
+    
+    # Stopwords temizliği
     anahtar_kelimeler = [k for k in soru_kelimeleri if k not in gereksiz_kelimeler and len(k) > 2]
     
     puanlanmis_veriler = []
     
     for veri in tum_veriler:
-        metin = (veri['baslik'] + " " + veri['icerik']).lower()
+        # Veri tabanındaki metni de normalize et
+        baslik_norm = tr_normalize(veri['baslik'])
+        icerik_norm = tr_normalize(veri['icerik'])
+        metin_norm = baslik_norm + " " + icerik_norm
+        
         puan = 0
         
-        # Kelime eşleşmelerine puan ver
         for kelime in anahtar_kelimeler:
-            if kelime in metin:
-                # Başlıkta geçiyorsa daha yüksek puan (3 puan), içerikteyse (1 puan)
-                if kelime in veri['baslik'].lower():
+            if kelime in metin_norm:
+                # Başlıkta geçiyorsa +3, içerikte +1 puan
+                if kelime in baslik_norm:
                     puan += 3
                 else:
                     puan += 1
         
-        # Puanı 0'dan büyükse listeye ekle
         if puan > 0:
             puanlanmis_veriler.append({"veri": veri, "puan": puan})
     
-    # Puanı en yüksek olanları başa al (Sıralama)
+    # Puana göre sırala (En yüksek puanlı en üstte)
     puanlanmis_veriler.sort(key=lambda x: x['puan'], reverse=True)
     
-    # En alakalı ilk 5 tanesini seç
     en_iyiler = puanlanmis_veriler[:5]
     
     bulunanlar = ""
