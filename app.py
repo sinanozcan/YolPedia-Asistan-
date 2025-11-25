@@ -186,7 +186,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
     with st.chat_message("assistant"):
         # --- ANİMASYON ---
         with st.spinner("🔎 Ansiklopedi taranıyor..."):
-            time.sleep(0.6) 
+            time.sleep(1) 
             baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
         # -----------------
         
