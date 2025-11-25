@@ -36,43 +36,47 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (GÜVENLİK DUVARINI AŞAN VERSİYON) ---
+# --- VERİLERİ ÇEK (GELİŞMİŞ MOD: SESSION + RETRY) ---
 @st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
     placeholder = st.empty()
     endpoints = ["posts", "pages"]
     
-    # Kendimizi tarayıcı gibi tanıtıyoruz (Maske)
+    # Session başlat (Tarayıcı gibi davranmak için)
+    session = requests.Session()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json"
     }
     
     for tur in endpoints:
         page = 1
         while True:
-            placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Şu ana kadar: {len(veriler)})")
+            placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
             
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
             
             try:
-                # Headers'ı buraya ekledik!
-                response = requests.get(api_url, headers=headers)
+                # Timeout'u 30 saniyeye çıkardık, hemen pes etmesin
+                response = session.get(api_url, headers=headers, timeout=30)
             except Exception as e:
-                st.error(f"Bağlantı hatası: {e}")
+                st.warning(f"Sayfa {page} alınırken bağlantı koptu: {e}")
                 break
             
+            # Eğer hata kodu 400 ise (Bad Request) sayfa bitmiş demektir, normaldir.
+            if response.status_code == 400:
+                break
+            
+            # Eğer başka bir hataysa (403, 429 vb.) bunu görelim
             if response.status_code != 200:
-                # Eğer sayfa yoksa (400 hatası) normaldir, döngü biter.
-                # Başka hataysa ekrana basalım.
-                if response.status_code != 400:
-                    print(f"Hata Kodu: {response.status_code}")
+                st.warning(f"Sunucu {tur} {page}. sayfada durdurdu. Hata Kodu: {response.status_code}")
                 break
             
             data_json = response.json()
             
             if isinstance(data_json, list):
-                if not data_json: # Liste boşsa bitir
+                if not data_json: # Liste boşsa bitti demektir
                     break
                 for post in data_json:
                     baslik = post['title']['rendered']
@@ -82,7 +86,7 @@ def site_verilerini_cek():
                 break
                 
             page += 1
-            time.sleep(1) # 1 saniye bekle (Sunucu kızmasın)
+            time.sleep(2) # BEKLEME SÜRESİNİ 2 SANİYEYE ÇIKARDIK
     
     placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
     time.sleep(2)
