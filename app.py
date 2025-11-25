@@ -7,7 +7,7 @@ import time
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
-WEBSITE_URL = "https://yolpedia.com" 
+WEBSITE_URL = "https://yolpedia.eu" 
 # ===========================================
 
 st.set_page_config(page_title="Yolpedia Asistanı", page_icon="🤖")
