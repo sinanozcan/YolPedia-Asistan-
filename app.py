@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+from requests.auth import HTTPBasicAuth # Kimlik doğrulama modülü
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
@@ -7,11 +8,13 @@ import time
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
+WP_USER = st.secrets["WP_USER"] # Kasadan kullanıcı adı
+WP_PASS = st.secrets["WP_PASS"] # Kasadan şifre
 WEBSITE_URL = "https://yolpedia.eu" 
 # ===========================================
 
-st.set_page_config(page_title="Yolpedia Asistanı", page_icon="🤖")
-st.title("🤖 Yolpedia Asistanı")
+st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
+st.title("🤖 YolPedia Asistanı")
 
 genai.configure(api_key=API_KEY)
 
@@ -36,19 +39,15 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (GELİŞMİŞ MOD: SESSION + RETRY) ---
+# --- VERİLERİ ÇEK (YÖNETİCİ GİRİŞLİ) ---
 @st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
     placeholder = st.empty()
     endpoints = ["posts", "pages"]
     
-    # Session başlat (Tarayıcı gibi davranmak için)
-    session = requests.Session()
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json"
-    }
+    # Yönetici kimliği oluştur
+    kimlik = HTTPBasicAuth(WP_USER, WP_PASS)
     
     for tur in endpoints:
         page = 1
@@ -58,25 +57,24 @@ def site_verilerini_cek():
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
             
             try:
-                # Timeout'u 30 saniyeye çıkardık, hemen pes etmesin
-                response = session.get(api_url, headers=headers, timeout=30)
+                # Kimlik bilgileriyle istek atıyoruz (403 vermez)
+                response = requests.get(api_url, auth=kimlik, timeout=30)
             except Exception as e:
-                st.warning(f"Sayfa {page} alınırken bağlantı koptu: {e}")
+                st.error(f"Bağlantı hatası: {e}")
                 break
             
-            # Eğer hata kodu 400 ise (Bad Request) sayfa bitmiş demektir, normaldir.
-            if response.status_code == 400:
+            if response.status_code == 400: # Sayfa bitti
                 break
             
-            # Eğer başka bir hataysa (403, 429 vb.) bunu görelim
             if response.status_code != 200:
-                st.warning(f"Sunucu {tur} {page}. sayfada durdurdu. Hata Kodu: {response.status_code}")
+                # Hata varsa bile devam et, diğer sayfalara bak
+                st.warning(f"{tur} {page}. sayfada hata: {response.status_code}. Atlanıyor...")
                 break
             
             data_json = response.json()
             
             if isinstance(data_json, list):
-                if not data_json: # Liste boşsa bitti demektir
+                if not data_json: 
                     break
                 for post in data_json:
                     baslik = post['title']['rendered']
@@ -86,7 +84,7 @@ def site_verilerini_cek():
                 break
                 
             page += 1
-            time.sleep(2) # BEKLEME SÜRESİNİ 2 SANİYEYE ÇIKARDIK
+            time.sleep(1) 
     
     placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
     time.sleep(2)
