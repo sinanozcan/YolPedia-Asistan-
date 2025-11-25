@@ -28,7 +28,7 @@ st.markdown(
         margin-bottom: 30px; /* Alttan boşluk */
     }}
     .logo-img {{
-        width: 90px; /* Logo boyutu */
+        width: 45px; /* Logo boyutu */
         margin-right: 20px; /* Yazı ile logo arası boşluk */
     }}
     .title-text {{
