@@ -39,7 +39,7 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (LİNKLER DAHİL) ---
+# --- VERİLERİ ÇEK ---
 @st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
@@ -71,8 +71,7 @@ def site_verilerini_cek():
                 for post in data_json:
                     baslik = post['title']['rendered']
                     icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
-                    link = post['link'] # <--- YENİ: Linki de alıyoruz
-                    # Linki de hafızaya atıyoruz
+                    link = post['link']
                     veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
             else:
                 break
@@ -95,7 +94,7 @@ def tr_normalize(metin):
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
-# --- RAG ARAMA (LİNKLERİ DE DÖNDÜRÜR) ---
+# --- RAG ARAMA ---
 def alakali_icerik_bul(soru, tum_veriler):
     gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu"]
     soru_temiz = tr_normalize(soru)
@@ -122,7 +121,7 @@ def alakali_icerik_bul(soru, tum_veriler):
     en_iyiler = puanlanmis_veriler[:5]
     
     bulunanlar = ""
-    kaynak_listesi = [] # Linkleri burada toplayacağız
+    kaynak_listesi = []
     
     for item in en_iyiler:
         veri = item['veri']
@@ -145,48 +144,43 @@ if prompt := st.chat_input("Bir soru sorun..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Artık hem metni hem kaynakları alıyoruz
         baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
         
         if not baglam:
-             response_text = "Sitenizde bu konuyla ilgili bilgi bulamadım."
+             st.markdown("Sitenizde bu konuyla ilgili bilgi bulamadım.")
+             st.session_state.messages.append({"role": "assistant", "content": "Sitenizde bu konuyla ilgili bilgi bulamadım."})
         else:
             try:
                 full_prompt = f"Sen bir asistanısın. Aşağıdaki bilgileri kullanarak soruyu cevapla. Bilgilerde yoksa bilmiyorum de.\n\nSORU: {prompt}\n\nBİLGİLER:\n{baglam}"
+                
+                # --- YENİ: STREAMING EFEKTİ ---
+                stream = model.generate_content(full_prompt, stream=True)
+                
+                def stream_parser():
+                    full_response = ""
+                    # Kelimeleri tek tek al
+                    for chunk in stream:
+                        text_chunk = chunk.text
+                        full_response += text_chunk
+                        yield text_chunk
                     
-# stream=True ekliyoruz
-
-    response = model.generate_content(full_prompt, stream=True) 
-
-# Cevabı kelime kelime ekrana basma fonksiyonu
-def stream_data():
-    full_text = ""
-    for chunk in response:
-        text_chunk = chunk.text
-        full_text += text_chunk
-        yield text_chunk
-    
-    # Kaynakları en sona ekle
-    kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
-    for k in kaynaklar:
-        kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-    yield kaynak_metni
-    return full_text
-
-# Ekrana bas
-response_text = st.write_stream(stream_data)                
-                # Cevabın altına kaynakları ekle
-                kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
-                for k in kaynaklar:
-                    kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                    # Yazı bitince kaynakları ekle
+                    if kaynaklar:
+                        kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
+                        for k in kaynaklar:
+                            kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                        yield kaynak_metni
                 
-                response_text = response.text + kaynak_metni
+                # Streamlit'in özel yazma efekti fonksiyonu
+                response_text = st.write_stream(stream_parser)
                 
+                # Geçmişe kaydet
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+
             except Exception as e:
-                response_text = f"Bir hata oluştu: {e}"
-        
-        st.markdown(response_text)
-    st.session_state.messages.append({"role": "assistant", "content": response_text})
+                err_msg = f"Bir hata oluştu: {e}"
+                st.markdown(err_msg)
+                st.session_state.messages.append({"role": "assistant", "content": err_msg})
 
 # --- YAN MENÜ ---
 with st.sidebar:
