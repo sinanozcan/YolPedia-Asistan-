@@ -11,17 +11,19 @@ API_KEY = st.secrets["API_KEY"]
 WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
-# ===========================================
 
-st.set_page_config(page_title="YolPedia Asistanı", page_icon="Logo yolpedia.png")
-st.title("🤖 YolPedia Asistanı")
+# Sayfa ayarı (Sekme ikonunu logo yaptık)
+st.set_page_config(page_title="YolPedia Asistanı", page_icon="logo.png")
+
+# Yan yana Logo ve Başlık
 col1, col2 = st.columns([1, 5])
-with col1:
-    st.image("logo.png", width=80)
-with col2:
-    st.title("Yolpedia Asistanı")
-genai.configure(api_key=API_KEY)
 
+with col1:
+    st.image("logo.png", width=80) # Logoyu buraya basar
+with col2:
+    st.title("Yolpedia Asistanı") # Başlığı yanına yazar
+
+genai.configure(api_key=API_KEY)
 # --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
