@@ -5,8 +5,8 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
 import time
-from PIL import Image   # <--- Yeni eklendi (Resim işlemek için)
-from io import BytesIO  # <--- Yeni eklendi (Resim okumak için)
+from PIL import Image
+from io import BytesIO
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
@@ -16,18 +16,16 @@ WEBSITE_URL = "https://yolpedia.eu"
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 # ===========================================
 
-# --- FAVICON AYARLAMA (LINKTEN ÇEKME) ---
-# Logoyu internetten çekip ikon formatına getiriyoruz
+# --- FAVICON ---
 try:
     response = requests.get(LOGO_URL)
     favicon = Image.open(BytesIO(response.content))
 except:
-    favicon = "🤖" # Eğer logo yüklenemezse robot kalsın
+    favicon = "🤖"
 
-# Sayfa Ayarları (page_icon kısmına favicon değişkenini koyduk)
 st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
 
-# --- BAŞLIK VE LOGO (ORTALANMIŞ GÖRÜNÜM) ---
+# --- BAŞLIK VE LOGO ---
 st.markdown(
     f"""
     <style>
@@ -39,7 +37,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 40px;
+        width: 90px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -84,7 +82,7 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK ---
+# --- VERİLERİ ÇEK (HATA ÖNLEYİCİ MOD) ---
 @st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
@@ -97,10 +95,13 @@ def site_verilerini_cek():
         page = 1
         while True:
             placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
-            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
+            
+            # DEĞİŞİKLİK 1: 50 yerine 25'er 25'er çekiyoruz (Sunucu yorulmasın)
+            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
             
             try:
-                response = requests.get(api_url, auth=kimlik, timeout=30)
+                # DEĞİŞİKLİK 2: Timeout süresini 60 saniyeye çıkardık (Sabırlı olsun)
+                response = requests.get(api_url, auth=kimlik, timeout=60)
             except Exception as e:
                 st.error(f"Bağlantı hatası: {e}")
                 break
@@ -121,6 +122,7 @@ def site_verilerini_cek():
             else:
                 break
             page += 1
+            # Her sayfadan sonra 1 saniye nefes aldırıyoruz
             time.sleep(1) 
     
     placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
@@ -129,7 +131,7 @@ def site_verilerini_cek():
     return veriler
 
 if 'db' not in st.session_state:
-    with st.spinner('Veri tabanı hazırlanıyor...'):
+    with st.spinner('Veri tabanı hazırlanıyor... (Bu işlem veri yoğunluğuna göre 1-2 dk sürebilir)'):
         st.session_state.db = site_verilerini_cek()
 
 # --- TÜRKÇE KARAKTER DÜZELTİCİ ---
