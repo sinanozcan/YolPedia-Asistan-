@@ -37,7 +37,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 60px;
+        width: 90px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -61,10 +61,13 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL ---
+# --- MODELİ BUL (YARATICILIK SIFIRLANDI: temperature=0.0) ---
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
+    # BURASI DEĞİŞTİ: Kesinlik modu açıldı
+    generation_config = {"temperature": 0.0}
+    
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -76,7 +79,7 @@ def model_yukle():
                 if 'generateContent' in m.supported_generation_methods:
                     secilen_model_adi = m.name
                     break
-        return genai.GenerativeModel(secilen_model_adi)
+        return genai.GenerativeModel(secilen_model_adi, generation_config=generation_config)
     except:
         return None
 
@@ -165,7 +168,7 @@ def alakali_icerik_bul(soru, tum_veriler):
     
     for item in en_iyiler:
         veri = item['veri']
-        bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:1500]}...\n"
+        bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:2000]}...\n" # İçerik limitini artırdım
         kaynak_listesi.append({"baslik": veri['baslik'], "link": veri['link']})
         
     return bulunanlar, kaynak_listesi
@@ -186,9 +189,8 @@ if prompt := st.chat_input("Bir soru sorun..."):
     with st.chat_message("assistant"):
         # --- ANİMASYON ---
         with st.spinner("🔎 Ansiklopedi taranıyor..."):
-            time.sleep(2) 
+            time.sleep(0.6) 
             baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
-        # -----------------
         
         if not baglam:
              msg = "Sitenizde bu konuyla ilgili bilgi bulamadım."
@@ -196,7 +198,21 @@ if prompt := st.chat_input("Bir soru sorun..."):
              st.session_state.messages.append({"role": "assistant", "content": msg})
         else:
             try:
-                full_prompt = f"Sen bir ansiklopedi asistanısın. Aşağıdaki bilgileri kullanarak soruyu cevapla. Bilgilerde yoksa bilmiyorum de.\n\nSORU: {prompt}\n\nBİLGİLER:\n{baglam}"
+                # --- BURASI DEĞİŞTİ: SERT VE KESİN TALİMATLAR ---
+                full_prompt = f"""
+                Sen YolPedia ansiklopedi asistanısın. Görevin sadece sana verilen metinleri kullanarak cevap vermektir.
+                
+                KURALLAR:
+                1. KESİNLİKLE kendi bildiklerini veya dışarıdan bilgileri kullanma.
+                2. Sadece aşağıdaki 'BİLGİLER' bölümündeki metinlere dayanarak cevap ver.
+                3. Eğer sorunun cevabı 'BİLGİLER' içinde açıkça yoksa, kibarca 'Bu bilgi şu an ansiklopedimizde bulunmuyor' de. Asla uydurma.
+                4. Cevabı Türkçe ver.
+
+                SORU: {prompt}
+
+                BİLGİLER:
+                {baglam}
+                """
                 
                 stream = model.generate_content(full_prompt, stream=True)
                 
