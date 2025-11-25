@@ -13,8 +13,40 @@ WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 
 # Sayfa ayarı (Sekme ikonunu logo yaptık)
-st.set_page_config(page_title="YolPedia Asistanı", page_icon="logo.png")
+st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
 
+# --- BAŞLIK VE LOGO (HTML İLE MÜKEMMEL HİZALAMA) ---
+st.markdown(
+    """
+    <style>
+    .header-container {
+        display: flex;
+        flex-direction: row;
+        align_items: center;
+        padding-bottom: 20px;
+    }
+    .logo-img {
+        width: 60px;
+        height: auto;
+        margin-right: 15px;
+        border-radius: 10px; /* İstersen köşeleri yuvarlar */
+    }
+    .title-text {
+        margin: 0;
+        font-size: 40px;
+        font-weight: 700;
+        padding-top: 0px;
+    }
+    </style>
+    
+    <div class="header-container">
+        <!-- AŞAĞIDAKİ LİNKİ KENDİ LOGO LİNKİNLE DEĞİŞTİR -->
+        <img src="https://yolpedia.eu/wp-content/uploads/2021/01/cropped-yolpedia-logo-1.png" class="logo-img">
+        <p class="title-text">YolPedia Asistanı</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 # Yan yana Logo ve Başlık
 col1, col2 = st.columns([1, 5])
 
