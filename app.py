@@ -7,7 +7,6 @@ import sys
 import time
 
 # ================= AYARLAR =================
-# Şifreleri Streamlit Secrets kasasından çekiyoruz
 API_KEY = st.secrets["API_KEY"]
 WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
@@ -15,38 +14,55 @@ WEBSITE_URL = "https://yolpedia.eu"
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 # ===========================================
 
-# Sayfa Sekme Ayarı
 st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
 
-# --- BAŞLIK VE LOGO (HİZALI GÖRÜNÜM) ---
-# Sütunları ayarlıyoruz: Logo dar, Yazı geniş
-col1, col2 = st.columns([1.5, 8])
+# --- BAŞLIK VE LOGO (ORTALANMIŞ VE FERAH GÖRÜNÜM) ---
+st.markdown(
+    f"""
+    <style>
+    .main-header {{
+        display: flex;
+        align-items: center;
+        justify-content: center; /* Ortalar */
+        margin-top: 20px; /* Üstten boşluk */
+        margin-bottom: 30px; /* Alttan boşluk */
+    }}
+    .logo-img {{
+        width: 90px; /* Logo boyutu */
+        margin-right: 20px; /* Yazı ile logo arası boşluk */
+    }}
+    .title-text {{
+        font-size: 42px;
+        font-weight: 700;
+        margin: 0;
+        color: #ffffff; /* Yazı rengi (Temaya göre değişir ama beyaz iyidir) */
+    }}
+    /* Açık tema için yazı rengini siyah yapalım */
+    @media (prefers-color-scheme: light) {{
+        .title-text {{ color: #000000; }}
+    }}
+    </style>
+    
+    <div class="main-header">
+        <img src="{LOGO_URL}" class="logo-img">
+        <h1 class="title-text">YolPedia Asistanı</h1>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
-with col1:
-    st.image(LOGO_URL, width=45)
-
-with col2:
-    # Başlığı HTML ile hizalıyoruz (padding-top ile logoyla aynı hizaya gelir)
-    st.markdown(
-        "<h1 style='margin-top: 0px; padding-top: 10px; font-size: 38px;'>YolPedia Asistanı</h1>", 
-        unsafe_allow_html=True
-    )
-
-# API Başlat
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ OTOMATİK BUL ---
+# --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
     try:
-        # Önce Flash modelini ara (Hızlı ve ucuz)
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
                     secilen_model_adi = m.name
                     break
-        # Bulamazsan çalışan herhangi bir modeli al
         if not secilen_model_adi:
              for m in genai.list_models():
                 if 'generateContent' in m.supported_generation_methods:
@@ -58,21 +74,19 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (YÖNETİCİ GİRİŞİ + LİNKLER) ---
-@st.cache_resource(ttl=3600) # 1 saatte bir yeniler
+# --- VERİLERİ ÇEK ---
+@st.cache_resource(ttl=3600)
 def site_verilerini_cek():
     veriler = [] 
     placeholder = st.empty()
     endpoints = ["posts", "pages"]
     
-    # Yönetici kimliği (403 hatasını çözer)
     kimlik = HTTPBasicAuth(WP_USER, WP_PASS)
     
     for tur in endpoints:
         page = 1
         while True:
             placeholder.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
-            
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
             
             try:
@@ -81,7 +95,7 @@ def site_verilerini_cek():
                 st.error(f"Bağlantı hatası: {e}")
                 break
             
-            if response.status_code == 400: break # Sayfa bitti
+            if response.status_code == 400: break
             if response.status_code != 200:
                 st.warning(f"{tur} {page}. sayfada hata: {response.status_code}. Atlanıyor...")
                 break
@@ -92,19 +106,18 @@ def site_verilerini_cek():
                 for post in data_json:
                     baslik = post['title']['rendered']
                     icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
-                    link = post['link'] # Linki al
+                    link = post['link']
                     veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
             else:
                 break
             page += 1
-            time.sleep(1) # Sunucuyu yormamak için bekle
+            time.sleep(1) 
     
     placeholder.success(f"✅ Güncelleme Tamamlandı! Toplam {len(veriler)} içerik hafızada.")
     time.sleep(2)
     placeholder.empty()
     return veriler
 
-# Uygulama açılınca verileri yükle
 if 'db' not in st.session_state:
     with st.spinner('Veri tabanı hazırlanıyor...'):
         st.session_state.db = site_verilerini_cek()
@@ -116,7 +129,7 @@ def tr_normalize(metin):
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
-# --- RAG ARAMA (AKILLI SIRALAMA) ---
+# --- RAG ARAMA ---
 def alakali_icerik_bul(soru, tum_veriler):
     gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu"]
     soru_temiz = tr_normalize(soru)
@@ -133,13 +146,12 @@ def alakali_icerik_bul(soru, tum_veriler):
         for kelime in anahtar_kelimeler:
             if kelime in metin_norm:
                 if kelime in baslik_norm:
-                    puan += 3 # Başlıkta geçiyorsa yüksek puan
+                    puan += 3
                 else:
                     puan += 1
         if puan > 0:
             puanlanmis_veriler.append({"veri": veri, "puan": puan})
     
-    # En yüksek puanlıları başa al
     puanlanmis_veriler.sort(key=lambda x: x['puan'], reverse=True)
     en_iyiler = puanlanmis_veriler[:5]
     
@@ -153,16 +165,14 @@ def alakali_icerik_bul(soru, tum_veriler):
         
     return bulunanlar, kaynak_listesi
 
-# --- SOHBET ARAYÜZÜ ---
+# --- SOHBET ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Geçmiş mesajları göster
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Yeni soru girişi
 if prompt := st.chat_input("Bir soru sorun..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -179,17 +189,11 @@ if prompt := st.chat_input("Bir soru sorun..."):
             try:
                 full_prompt = f"Sen bir ansiklopedi asistanısın. Aşağıdaki bilgileri kullanarak soruyu cevapla. Bilgilerde yoksa bilmiyorum de.\n\nSORU: {prompt}\n\nBİLGİLER:\n{baglam}"
                 
-                # --- STREAMING (YAZMA EFEKTİ) ---
                 stream = model.generate_content(full_prompt, stream=True)
                 
                 def stream_parser():
-                    full_response = ""
                     for chunk in stream:
-                        text_chunk = chunk.text
-                        full_response += text_chunk
-                        yield text_chunk
-                    
-                    # Kaynakları en sona ekle
+                        yield chunk.text
                     if kaynaklar:
                         kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
                         for k in kaynaklar:
@@ -204,7 +208,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 st.markdown(err_msg)
                 st.session_state.messages.append({"role": "assistant", "content": err_msg})
 
-# --- YAN MENÜ (YÖNETİM) ---
+# --- YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
     if st.button("🔄 Verileri Şimdi Güncelle"):
