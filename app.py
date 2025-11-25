@@ -69,22 +69,45 @@ if 'db' not in st.session_state:
     with st.spinner('Veri tabanı hazırlanıyor, lütfen bekleyin...'):
         st.session_state.db = site_verilerini_cek()
 
-# --- ALAKALI İÇERİK BULMA (RAG) ---
+# --- RAG ARAMA (AKILLI PUANLAMA SİSTEMİ) ---
 def alakali_icerik_bul(soru, tum_veriler):
+    # Gereksiz dolgu kelimeleri (Stopwords)
+    gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su"]
+    
     soru_kelimeleri = soru.lower().split()
-    soru_kelimeleri = [k for k in soru_kelimeleri if len(k) > 3]
-    bulunanlar = ""
-    sayac = 0
+    # Sadece anlamlı kelimeleri filtrele
+    anahtar_kelimeler = [k for k in soru_kelimeleri if k not in gereksiz_kelimeler and len(k) > 2]
+    
+    puanlanmis_veriler = []
+    
     for veri in tum_veriler:
-        metin = (veri['baslik'] + veri['icerik']).lower()
+        metin = (veri['baslik'] + " " + veri['icerik']).lower()
         puan = 0
-        for kelime in soru_kelimeleri:
+        
+        # Kelime eşleşmelerine puan ver
+        for kelime in anahtar_kelimeler:
             if kelime in metin:
-                puan += 1
+                # Başlıkta geçiyorsa daha yüksek puan (3 puan), içerikteyse (1 puan)
+                if kelime in veri['baslik'].lower():
+                    puan += 3
+                else:
+                    puan += 1
+        
+        # Puanı 0'dan büyükse listeye ekle
         if puan > 0:
-            bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:1500]}...\n"
-            sayac += 1
-        if sayac >= 5: break
+            puanlanmis_veriler.append({"veri": veri, "puan": puan})
+    
+    # Puanı en yüksek olanları başa al (Sıralama)
+    puanlanmis_veriler.sort(key=lambda x: x['puan'], reverse=True)
+    
+    # En alakalı ilk 5 tanesini seç
+    en_iyiler = puanlanmis_veriler[:5]
+    
+    bulunanlar = ""
+    for item in en_iyiler:
+        veri = item['veri']
+        bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} (Puan: {item['puan']}) ---\nİÇERİK:\n{veri['icerik'][:1500]}...\n"
+        
     return bulunanlar
 
 # --- SOHBET ARAYÜZÜ ---
