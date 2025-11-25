@@ -19,7 +19,7 @@ st.set_page_config(page_title="YolPedia Asistanı", page_icon="logo.png")
 col1, col2 = st.columns([1, 5])
 
 with col1:
-    st.image("logo.png", width=80) # Logoyu buraya basar
+    st.image("logo.png", width=50) # Logoyu buraya basar
 with col2:
     st.title("Yolpedia Asistanı") # Başlığı yanına yazar
 
