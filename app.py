@@ -153,8 +153,28 @@ if prompt := st.chat_input("Bir soru sorun..."):
         else:
             try:
                 full_prompt = f"Sen bir asistanısın. Aşağıdaki bilgileri kullanarak soruyu cevapla. Bilgilerde yoksa bilmiyorum de.\n\nSORU: {prompt}\n\nBİLGİLER:\n{baglam}"
-                response = model.generate_content(full_prompt)
-                
+                    
+# stream=True ekliyoruz
+
+    response = model.generate_content(full_prompt, stream=True) 
+
+# Cevabı kelime kelime ekrana basma fonksiyonu
+def stream_data():
+    full_text = ""
+    for chunk in response:
+        text_chunk = chunk.text
+        full_text += text_chunk
+        yield text_chunk
+    
+    # Kaynakları en sona ekle
+    kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
+    for k in kaynaklar:
+        kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+    yield kaynak_metni
+    return full_text
+
+# Ekrana bas
+response_text = st.write_stream(stream_data)                
                 # Cevabın altına kaynakları ekle
                 kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
                 for k in kaynaklar:
