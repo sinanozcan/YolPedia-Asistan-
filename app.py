@@ -13,8 +13,8 @@ WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 # ===========================================
 
-st.set_page_config(page_title="Yolpedia Asistanı", page_icon="🤖")
-st.title("🤖 Yolpedia Asistanı")
+st.set_page_config(page_title="YolPedia Asistanı", page_icon="🤖")
+st.title("🤖 YolPedia Asistanı")
 
 genai.configure(api_key=API_KEY)
 
