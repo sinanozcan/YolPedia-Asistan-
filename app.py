@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
 import time
-import json  # <--- YENİ
+import json
 from PIL import Image
 from io import BytesIO
 
@@ -15,17 +15,19 @@ WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
-DATA_FILE = "yolpedia_data.json" # <--- YEDEK DOSYA ADI
+DATA_FILE = "yolpedia_data.json"
 # ===========================================
 
+# --- FAVICON ---
 try:
-    response = requests.get(LOGO_URL)
+    response = requests.get(LOGO_URL, timeout=5)
     favicon = Image.open(BytesIO(response.content))
 except:
     favicon = "🤖"
 
 st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
 
+# --- BAŞLIK VE LOGO ---
 st.markdown(
     f"""
     <style>
@@ -81,20 +83,9 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- AKILLI VERİ YÜKLEME SİSTEMİ ---
+# --- İNATÇI VERİ ÇEKME FONKSİYONU ---
 @st.cache_data(ttl=86400, show_spinner=False, persist="disk")
-def veri_yukle():
-    # 1. Önce GitHub'da hazır dosya var mı diye bak
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            veriler = json.load(f)
-        return veriler, "dosya"
-    except FileNotFoundError:
-        # 2. Dosya yoksa siteyi tara (Eski yöntem)
-        veriler = site_taramasi_yap()
-        return veriler, "canli"
-
-def site_taramasi_yap():
+def site_verilerini_cek():
     veriler = [] 
     status_text = st.empty()
     endpoints = ["posts", "pages"]
@@ -102,39 +93,87 @@ def site_taramasi_yap():
     
     for tur in endpoints:
         page = 1
+        bos_sayfa_sayaci = 0 # Sonsuz döngüye girmesin diye koruma
+        
         while True:
-            status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
+            status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Şu anki Toplam: {len(veriler)})")
+            
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
-            try:
-                response = requests.get(api_url, auth=kimlik, timeout=60)
-            except:
+            basarili = False
+            
+            # --- İNATÇI MOD (RETRY MECHANISM) ---
+            for deneme in range(3): # Her sayfayı 3 kez dene
+                try:
+                    response = requests.get(api_url, auth=kimlik, timeout=60)
+                    
+                    # Eğer sayfa yoksa (Bitti demektir)
+                    if response.status_code == 400:
+                        basarili = True # Döngüyü kırmak için başarılı sayıyoruz
+                        bos_sayfa_sayaci = 100 # Ana döngüyü kırmak için
+                        break
+                    
+                    # Başarılıysa işle
+                    if response.status_code == 200:
+                        data_json = response.json()
+                        if isinstance(data_json, list) and len(data_json) > 0:
+                            for post in data_json:
+                                baslik = post['title']['rendered']
+                                icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
+                                link = post['link']
+                                veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
+                            basarili = True
+                            break # Deneme döngüsünden çık
+                        else:
+                            # Liste boş geldi, içerik bitmiş olabilir
+                            bos_sayfa_sayaci = 100
+                            basarili = True
+                            break
+                    
+                    # Başarısızsa (500, 502 vb.) bekle ve tekrar dene
+                    time.sleep(5)
+                    
+                except Exception as e:
+                    print(f"Hata (Deneme {deneme+1}): {e}")
+                    time.sleep(5) # Hata alınca 5 saniye dinlen
+            
+            # 3 denemede de olmadıysa veya içerik bittiyse
+            if bos_sayfa_sayaci >= 100:
                 break
-            if response.status_code != 200: break
-            data_json = response.json()
-            if isinstance(data_json, list):
-                if not data_json: break
-                for post in data_json:
-                    baslik = post['title']['rendered']
-                    icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
-                    link = post['link']
-                    veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
-            else:
-                break
+            
+            # Eğer 3 kere denemesine rağmen başaramadıysa, bu sayfayı ATLA ve devam et
+            # (Eskiden break yapıp komple duruyordu, şimdi sadece o sayfayı geçiyor)
+            
             page += 1
             time.sleep(0.5) 
+    
     status_text.empty()
     return veriler
+
+# --- AKILLI YÜKLEME ---
+def veri_yukle_yonetici():
+    # 1. Önce JSON dosyası var mı diye bak (En Hızlısı)
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            veriler = json.load(f)
+        return veriler, "dosya"
+    except FileNotFoundError:
+        pass # Dosya yoksa devam et
+
+    # 2. Yoksa Cache/Disk üzerinden çek (Orta Hız)
+    # Cache zaten yukarıdaki fonksiyonda hallediliyor
+    veriler = site_verilerini_cek()
+    return veriler, "canli"
 
 # --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
     with st.spinner('Veri tabanı yükleniyor...'):
-        veriler, kaynak = veri_yukle()
+        veriler, kaynak = veri_yukle_yonetici()
         st.session_state.db = veriler
         st.session_state.kaynak = kaynak
     
     if kaynak == "dosya":
         st.success(f"🚀 Hızlı Başlangıç! {len(veriler)} içerik dosyadan yüklendi.")
-    else:
+    elif kaynak == "canli":
         st.success(f"✅ Tarama Bitti! {len(veriler)} içerik hafızada.")
     
     time.sleep(1)
@@ -235,36 +274,30 @@ if prompt := st.chat_input("Bir soru sorun..."):
             except Exception as e:
                 st.error(f"Hata: {e}")
 
-# --- YAN MENÜ (İNDİRME VE YÜKLEME) ---
+# --- YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
     
-    # Veri Kaynağı Bilgisi
     if 'kaynak' in st.session_state:
         if st.session_state.kaynak == "dosya":
-            st.success("📂 Veriler Dosyadan Okunuyor (Hızlı)")
+            st.success("📂 Mod: Dosyadan Oku (Hızlı)")
         else:
-            st.warning("🌐 Veriler Canlı Tarandı (Yavaş)")
-    
-    st.divider()
-    
-    # 1. VERİLERİ İNDİR BUTONU
+            st.warning("🌐 Mod: Canlı Tara (Yavaş)")
+
+    # 1. JSON İNDİRME BUTONU
     if 'db' in st.session_state and st.session_state.db:
-        # Veriyi JSON formatına çevir
         json_data = json.dumps(st.session_state.db, ensure_ascii=False)
-        
         st.download_button(
-            label="📥 Veri Tabanını İndir (JSON)",
+            label="📥 Verileri Yedekle (JSON)",
             data=json_data,
             file_name="yolpedia_data.json",
-            mime="application/json",
-            help="Bu dosyayı indirip GitHub'a yüklersen, bot açılışta bekleme yapmaz!"
+            mime="application/json"
         )
     
     st.divider()
     
-    # 2. CANLI YENİLEME BUTONU
-    if st.button("🔄 Siteyi Yeniden Tara (Canlı)"):
+    # 2. ZORLA YENİLEME BUTONU
+    if st.button("🔄 Siteyi Zorla Tara"):
         st.cache_data.clear()
         st.rerun()
         
