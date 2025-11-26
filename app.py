@@ -83,66 +83,72 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- İNATÇI VERİ ÇEKME FONKSİYONU ---
+# --- GÜÇLENDİRİLMİŞ VERİ ÇEKME (DEBUG MODU) ---
 @st.cache_data(ttl=86400, show_spinner=False, persist="disk")
 def site_verilerini_cek():
     veriler = [] 
     status_text = st.empty()
+    
+    # --- BURAYA DİKKAT: Farklı türleri de deniyoruz ---
+    # Eğer sitende 'product', 'topic' vb. varsa buraya eklenebilir.
+    # Şimdilik posts ve pages standarttır.
     endpoints = ["posts", "pages"]
+    
     kimlik = HTTPBasicAuth(WP_USER, WP_PASS)
     
     for tur in endpoints:
         page = 1
-        bos_sayfa_sayaci = 0 # Sonsuz döngüye girmesin diye koruma
-        
         while True:
-            status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Şu anki Toplam: {len(veriler)})")
+            msg = f"⏳ {tur.upper()} taranıyor... Sayfa: {page} | Bulunan Toplam: {len(veriler)}"
+            status_text.text(msg)
+            print(msg) # Loglara yaz
             
-            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
-            basarili = False
+            # Sayfa başına 50 içerik isteyelim (Daha hızlı bitmesi için)
+            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
             
-            # --- İNATÇI MOD (RETRY MECHANISM) ---
-            for deneme in range(3): # Her sayfayı 3 kez dene
-                try:
-                    response = requests.get(api_url, auth=kimlik, timeout=60)
-                    
-                    # Eğer sayfa yoksa (Bitti demektir)
-                    if response.status_code == 400:
-                        basarili = True # Döngüyü kırmak için başarılı sayıyoruz
-                        bos_sayfa_sayaci = 100 # Ana döngüyü kırmak için
-                        break
-                    
-                    # Başarılıysa işle
-                    if response.status_code == 200:
-                        data_json = response.json()
-                        if isinstance(data_json, list) and len(data_json) > 0:
-                            for post in data_json:
-                                baslik = post['title']['rendered']
-                                icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
-                                link = post['link']
-                                veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
-                            basarili = True
-                            break # Deneme döngüsünden çık
-                        else:
-                            # Liste boş geldi, içerik bitmiş olabilir
-                            bos_sayfa_sayaci = 100
-                            basarili = True
-                            break
-                    
-                    # Başarısızsa (500, 502 vb.) bekle ve tekrar dene
-                    time.sleep(5)
-                    
-                except Exception as e:
-                    print(f"Hata (Deneme {deneme+1}): {e}")
-                    time.sleep(5) # Hata alınca 5 saniye dinlen
+            try:
+                response = requests.get(api_url, auth=kimlik, timeout=45)
+            except Exception as e:
+                print(f"❌ Bağlantı hatası (Sayfa {page}): {e}")
+                # Hata olsa bile döngüyü kırma, belki bir sonraki sayfa çalışır
+                if page > 50: break # Çok fazla hata olursa dur
+                page += 1
+                continue
             
-            # 3 denemede de olmadıysa veya içerik bittiyse
-            if bos_sayfa_sayaci >= 100:
+            # Eğer 400 hatası gelirse, o türde sayfalar bitmiş demektir.
+            if response.status_code == 400:
+                print(f"✅ {tur} tamamlandı. (Sayfa bitti)")
                 break
             
-            # Eğer 3 kere denemesine rağmen başaramadıysa, bu sayfayı ATLA ve devam et
-            # (Eskiden break yapıp komple duruyordu, şimdi sadece o sayfayı geçiyor)
+            # Başka bir hata varsa (örn 500), bu sayfayı atla
+            if response.status_code != 200:
+                print(f"⚠️ Hata Kodu: {response.status_code} (Sayfa {page}) - Atlanıyor...")
+                page += 1
+                continue
             
+            try:
+                data_json = response.json()
+            except:
+                print(f"⚠️ JSON Hatası (Sayfa {page}): Veri bozuk geldi. Atlanıyor.")
+                page += 1
+                continue
+
+            if isinstance(data_json, list):
+                if not data_json: 
+                    print(f"✅ Liste boş geldi, {tur} bitti.")
+                    break
+                
+                for post in data_json:
+                    try:
+                        baslik = post['title']['rendered']
+                        icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
+                        link = post['link']
+                        veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
+                    except:
+                        continue # Tek bir yazıda hata varsa onu geç
+            else:
+                break
+                
             page += 1
             time.sleep(0.5) 
     
@@ -151,31 +157,27 @@ def site_verilerini_cek():
 
 # --- AKILLI YÜKLEME ---
 def veri_yukle_yonetici():
-    # 1. Önce JSON dosyası var mı diye bak (En Hızlısı)
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             veriler = json.load(f)
         return veriler, "dosya"
     except FileNotFoundError:
-        pass # Dosya yoksa devam et
-
-    # 2. Yoksa Cache/Disk üzerinden çek (Orta Hız)
-    # Cache zaten yukarıdaki fonksiyonda hallediliyor
+        pass
     veriler = site_verilerini_cek()
     return veriler, "canli"
 
 # --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
-    with st.spinner('Veri tabanı yükleniyor...'):
+    with st.spinner('Veri tabanı taranıyor... (Bu işlem veri sayısına göre sürebilir)'):
         veriler, kaynak = veri_yukle_yonetici()
         st.session_state.db = veriler
         st.session_state.kaynak = kaynak
     
-    if kaynak == "dosya":
-        st.success(f"🚀 Hızlı Başlangıç! {len(veriler)} içerik dosyadan yüklendi.")
-    elif kaynak == "canli":
-        st.success(f"✅ Tarama Bitti! {len(veriler)} içerik hafızada.")
-    
+    msg_text = f"✅ Hazır! {len(veriler)} içerik yüklendi."
+    if kaynak == "dosya": msg_text += " (Dosyadan)"
+    else: msg_text += " (Canlı Tarama)"
+        
+    st.success(msg_text)
     time.sleep(1)
     st.rerun()
 
@@ -284,7 +286,6 @@ with st.sidebar:
         else:
             st.warning("🌐 Mod: Canlı Tara (Yavaş)")
 
-    # 1. JSON İNDİRME BUTONU
     if 'db' in st.session_state and st.session_state.db:
         json_data = json.dumps(st.session_state.db, ensure_ascii=False)
         st.download_button(
@@ -296,8 +297,7 @@ with st.sidebar:
     
     st.divider()
     
-    # 2. ZORLA YENİLEME BUTONU
-    if st.button("🔄 Siteyi Zorla Tara"):
+    if st.button("🔄 Siteyi Zorla Tara (Cache Sil)"):
         st.cache_data.clear()
         st.rerun()
         
