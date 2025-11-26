@@ -37,7 +37,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 90px;
+        width: 60px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -196,7 +196,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 KURALLAR:
                 1. KESİNLİKLE kendi bildiklerini kullanma.
                 2. Sadece 'BİLGİLER' kısmındaki metinleri kullan.
-                3. Bilgi yoksa 'Ansiklopedimizde bu bilgi bulunmuyor' de.
+                3. Bilgi yoksa 'YolPedia'da böyle bir bilgiye (henüz) rastlannmamaktadır' de.
                 
                 SORU: {prompt}
                 BİLGİLER: {baglam}
