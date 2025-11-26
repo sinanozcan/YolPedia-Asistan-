@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
 import time
-import json
 from PIL import Image
 from io import BytesIO
 
@@ -15,12 +14,11 @@ WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
-DATA_FILE = "yolpedia_data.json"
 # ===========================================
 
 # --- FAVICON ---
 try:
-    response = requests.get(LOGO_URL, timeout=5)
+    response = requests.get(LOGO_URL)
     favicon = Image.open(BytesIO(response.content))
 except:
     favicon = "🤖"
@@ -52,6 +50,7 @@ st.markdown(
         .title-text {{ color: #000000; }}
     }}
     </style>
+    
     <div class="main-header">
         <img src="{LOGO_URL}" class="logo-img">
         <h1 class="title-text">YolPedia Asistanı</h1>
@@ -62,9 +61,11 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
+# --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
+    # Kesinlik modu
     generation_config = {"temperature": 0.0}
     try:
         for m in genai.list_models():
@@ -83,110 +84,54 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- GÜÇLENDİRİLMİŞ VERİ ÇEKME (DEBUG MODU) ---
+# --- VERİLERİ ÇEK (DİSK KAYITLI) ---
 @st.cache_data(ttl=86400, show_spinner=False, persist="disk")
 def site_verilerini_cek():
     veriler = [] 
     status_text = st.empty()
-    
-    # --- BURAYA DİKKAT: Farklı türleri de deniyoruz ---
-    # Eğer sitende 'product', 'topic' vb. varsa buraya eklenebilir.
-    # Şimdilik posts ve pages standarttır.
     endpoints = ["posts", "pages"]
-    
     kimlik = HTTPBasicAuth(WP_USER, WP_PASS)
     
     for tur in endpoints:
         page = 1
         while True:
-            msg = f"⏳ {tur.upper()} taranıyor... Sayfa: {page} | Bulunan Toplam: {len(veriler)}"
-            status_text.text(msg)
-            print(msg) # Loglara yaz
-            
-            # Sayfa başına 50 içerik isteyelim (Daha hızlı bitmesi için)
-            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=50&page={page}"
-            
+            status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
+            api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
             try:
-                response = requests.get(api_url, auth=kimlik, timeout=45)
-            except Exception as e:
-                print(f"❌ Bağlantı hatası (Sayfa {page}): {e}")
-                # Hata olsa bile döngüyü kırma, belki bir sonraki sayfa çalışır
-                if page > 50: break # Çok fazla hata olursa dur
-                page += 1
-                continue
-            
-            # Eğer 400 hatası gelirse, o türde sayfalar bitmiş demektir.
-            if response.status_code == 400:
-                print(f"✅ {tur} tamamlandı. (Sayfa bitti)")
-                break
-            
-            # Başka bir hata varsa (örn 500), bu sayfayı atla
-            if response.status_code != 200:
-                print(f"⚠️ Hata Kodu: {response.status_code} (Sayfa {page}) - Atlanıyor...")
-                page += 1
-                continue
-            
-            try:
-                data_json = response.json()
+                response = requests.get(api_url, auth=kimlik, timeout=60)
             except:
-                print(f"⚠️ JSON Hatası (Sayfa {page}): Veri bozuk geldi. Atlanıyor.")
-                page += 1
-                continue
-
+                break
+            if response.status_code != 200: break
+            data_json = response.json()
             if isinstance(data_json, list):
-                if not data_json: 
-                    print(f"✅ Liste boş geldi, {tur} bitti.")
-                    break
-                
+                if not data_json: break
                 for post in data_json:
-                    try:
-                        baslik = post['title']['rendered']
-                        icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
-                        link = post['link']
-                        veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
-                    except:
-                        continue # Tek bir yazıda hata varsa onu geç
+                    baslik = post['title']['rendered']
+                    icerik = BeautifulSoup(post['content']['rendered'], "html.parser").get_text()
+                    link = post['link']
+                    veriler.append({"baslik": baslik, "icerik": icerik, "link": link})
             else:
                 break
-                
             page += 1
             time.sleep(0.5) 
-    
     status_text.empty()
     return veriler
 
-# --- AKILLI YÜKLEME ---
-def veri_yukle_yonetici():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            veriler = json.load(f)
-        return veriler, "dosya"
-    except FileNotFoundError:
-        pass
-    veriler = site_verilerini_cek()
-    return veriler, "canli"
-
-# --- BAŞLANGIÇ ---
+# --- BAŞLANGIÇ KONTROLÜ ---
 if 'db' not in st.session_state:
-    with st.spinner('Veri tabanı taranıyor... (Bu işlem veri sayısına göre sürebilir)'):
-        veriler, kaynak = veri_yukle_yonetici()
-        st.session_state.db = veriler
-        st.session_state.kaynak = kaynak
-    
-    msg_text = f"✅ Hazır! {len(veriler)} içerik yüklendi."
-    if kaynak == "dosya": msg_text += " (Dosyadan)"
-    else: msg_text += " (Canlı Tarama)"
-        
-    st.success(msg_text)
-    time.sleep(1)
+    with st.spinner('Sistem hazırlanıyor...'):
+        st.session_state.db = site_verilerini_cek()
+    time.sleep(0.1)
     st.rerun()
 
+# --- TÜRKÇE KARAKTER DÜZELTİCİ ---
 def tr_normalize(metin):
     kaynak = "ğĞüÜşŞıİöÖçÇ"
     hedef  = "gGuUsSiIoOcC"
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
+# --- RAG ARAMA ---
 def alakali_icerik_bul(soru, tum_veriler):
     gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu"]
     soru_temiz = tr_normalize(soru)
@@ -214,6 +159,7 @@ def alakali_icerik_bul(soru, tum_veriler):
     
     bulunanlar = ""
     kaynak_listesi = []
+    
     for item in en_iyiler:
         veri = item['veri']
         bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:2000]}...\n"
@@ -221,6 +167,7 @@ def alakali_icerik_bul(soru, tum_veriler):
         
     return bulunanlar, kaynak_listesi
 
+# --- SOHBET ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -249,57 +196,56 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 KURALLAR:
                 1. KESİNLİKLE kendi bildiklerini kullanma.
                 2. Sadece 'BİLGİLER' kısmındaki metinleri kullan.
-                3. Bilgi yoksa 'Bilmiyorum' de.
+                3. Bilgi yoksa 'Ansiklopedimizde bu bilgi bulunmuyor' de.
                 
                 SORU: {prompt}
                 BİLGİLER: {baglam}
                 """
                 stream = model.generate_content(full_prompt, stream=True)
                 
+                # --- GÜNCELLENMİŞ PARSER (AKIL SÜZGECİ EKLENDİ) ---
                 def stream_parser():
+                    full_response = "" # Cevabın tamamını biriktirelim
+                    
                     for chunk in stream:
                         if chunk.text:
-                            for word in chunk.text.split(" "):
+                            text_part = chunk.text
+                            full_response += text_part # Metni hafızaya al
+                            
+                            # Kelime kelime ekrana bas
+                            for word in text_part.split(" "):
                                 yield word + " "
                                 time.sleep(0.05)
-                    if kaynaklar:
+                                
+                    # --- AKIL SÜZGECİ ---
+                    # Eğer cevap olumsuzsa (bulunmuyor/bilmiyorum diyorsa) LİNKLERİ GÖSTERME
+                    negatif_kelimeler = ["bulunmuyor", "bilmiyorum", "bilgi yok", "maalesef"]
+                    cevap_olumsuz = any(kelime in full_response.lower() for kelime in negatif_kelimeler)
+                    
+                    if kaynaklar and not cevap_olumsuz:
                         kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
                         for k in kaynaklar:
                             kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                        
                         for line in kaynak_metni.split("\n"):
                             yield line + "\n"
                             time.sleep(0.1)
+                # -----------------------------------------------------
                 
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
 
             except Exception as e:
-                st.error(f"Hata: {e}")
+                err_msg = f"Bir hata oluştu: {e}"
+                st.markdown(err_msg)
+                st.session_state.messages.append({"role": "assistant", "content": err_msg})
 
 # --- YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
-    
-    if 'kaynak' in st.session_state:
-        if st.session_state.kaynak == "dosya":
-            st.success("📂 Mod: Dosyadan Oku (Hızlı)")
-        else:
-            st.warning("🌐 Mod: Canlı Tara (Yavaş)")
-
-    if 'db' in st.session_state and st.session_state.db:
-        json_data = json.dumps(st.session_state.db, ensure_ascii=False)
-        st.download_button(
-            label="📥 Verileri Yedekle (JSON)",
-            data=json_data,
-            file_name="yolpedia_data.json",
-            mime="application/json"
-        )
-    
-    st.divider()
-    
-    if st.button("🔄 Siteyi Zorla Tara (Cache Sil)"):
+    if st.button("🔄 Verileri Şimdi Güncelle"):
         st.cache_data.clear()
         st.rerun()
-        
+    st.divider()
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
