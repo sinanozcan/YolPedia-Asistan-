@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
 import time
+import json  # <--- YENİ
 from PIL import Image
 from io import BytesIO
 
@@ -14,9 +15,9 @@ WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+DATA_FILE = "yolpedia_data.json" # <--- YEDEK DOSYA ADI
 # ===========================================
 
-# --- FAVICON ---
 try:
     response = requests.get(LOGO_URL)
     favicon = Image.open(BytesIO(response.content))
@@ -25,7 +26,6 @@ except:
 
 st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
 
-# --- BAŞLIK VE LOGO ---
 st.markdown(
     f"""
     <style>
@@ -37,7 +37,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 60px;
+        width: 90px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -50,7 +50,6 @@ st.markdown(
         .title-text {{ color: #000000; }}
     }}
     </style>
-    
     <div class="main-header">
         <img src="{LOGO_URL}" class="logo-img">
         <h1 class="title-text">YolPedia Asistanı</h1>
@@ -61,13 +60,10 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL (YARATICILIK SIFIRLANDI: temperature=0.0) ---
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
-    # BURASI DEĞİŞTİ: Kesinlik modu açıldı
     generation_config = {"temperature": 0.0}
-    
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -85,9 +81,20 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİLERİ ÇEK (DİSK KAYITLI) ---
+# --- AKILLI VERİ YÜKLEME SİSTEMİ ---
 @st.cache_data(ttl=86400, show_spinner=False, persist="disk")
-def site_verilerini_cek():
+def veri_yukle():
+    # 1. Önce GitHub'da hazır dosya var mı diye bak
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            veriler = json.load(f)
+        return veriler, "dosya"
+    except FileNotFoundError:
+        # 2. Dosya yoksa siteyi tara (Eski yöntem)
+        veriler = site_taramasi_yap()
+        return veriler, "canli"
+
+def site_taramasi_yap():
     veriler = [] 
     status_text = st.empty()
     endpoints = ["posts", "pages"]
@@ -97,16 +104,12 @@ def site_verilerini_cek():
         page = 1
         while True:
             status_text.text(f"⏳ {tur.upper()} taranıyor... Sayfa: {page} (Toplam: {len(veriler)})")
-            
             api_url = f"{WEBSITE_URL}/wp-json/wp/v2/{tur}?per_page=25&page={page}"
-            
             try:
                 response = requests.get(api_url, auth=kimlik, timeout=60)
             except:
                 break
-            
             if response.status_code != 200: break
-            
             data_json = response.json()
             if isinstance(data_json, list):
                 if not data_json: break
@@ -119,25 +122,30 @@ def site_verilerini_cek():
                 break
             page += 1
             time.sleep(0.5) 
-    
     status_text.empty()
     return veriler
 
-# --- BAŞLANGIÇ KONTROLÜ ---
+# --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
-    with st.spinner('Sistem hazırlanıyor...'):
-        st.session_state.db = site_verilerini_cek()
-    time.sleep(0.1)
+    with st.spinner('Veri tabanı yükleniyor...'):
+        veriler, kaynak = veri_yukle()
+        st.session_state.db = veriler
+        st.session_state.kaynak = kaynak
+    
+    if kaynak == "dosya":
+        st.success(f"🚀 Hızlı Başlangıç! {len(veriler)} içerik dosyadan yüklendi.")
+    else:
+        st.success(f"✅ Tarama Bitti! {len(veriler)} içerik hafızada.")
+    
+    time.sleep(1)
     st.rerun()
 
-# --- TÜRKÇE KARAKTER DÜZELTİCİ ---
 def tr_normalize(metin):
     kaynak = "ğĞüÜşŞıİöÖçÇ"
     hedef  = "gGuUsSiIoOcC"
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
-# --- RAG ARAMA ---
 def alakali_icerik_bul(soru, tum_veriler):
     gereksiz_kelimeler = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu"]
     soru_temiz = tr_normalize(soru)
@@ -165,15 +173,13 @@ def alakali_icerik_bul(soru, tum_veriler):
     
     bulunanlar = ""
     kaynak_listesi = []
-    
     for item in en_iyiler:
         veri = item['veri']
-        bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:2000]}...\n" # İçerik limitini artırdım
+        bulunanlar += f"\n--- BAŞLIK: {veri['baslik']} ---\nİÇERİK:\n{veri['icerik'][:2000]}...\n"
         kaynak_listesi.append({"baslik": veri['baslik'], "link": veri['link']})
         
     return bulunanlar, kaynak_listesi
 
-# --- SOHBET ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
@@ -187,7 +193,6 @@ if prompt := st.chat_input("Bir soru sorun..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # --- ANİMASYON ---
         with st.spinner("🔎 Ansiklopedi taranıyor..."):
             time.sleep(0.6) 
             baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
@@ -198,37 +203,28 @@ if prompt := st.chat_input("Bir soru sorun..."):
              st.session_state.messages.append({"role": "assistant", "content": msg})
         else:
             try:
-                # --- BURASI DEĞİŞTİ: SERT VE KESİN TALİMATLAR ---
                 full_prompt = f"""
-                Sen YolPedia ansiklopedi asistanısın. Görevin sadece sana verilen metinleri kullanarak cevap vermektir.
-                
+                Sen YolPedia ansiklopedi asistanısın.
                 KURALLAR:
-                1. KESİNLİKLE kendi bildiklerini veya dışarıdan bilgileri kullanma.
-                2. Sadece aşağıdaki 'BİLGİLER' bölümündeki metinlere dayanarak cevap ver.
-                3. Eğer sorunun cevabı 'BİLGİLER' içinde açıkça yoksa, kibarca 'Bu bilgi şu an ansiklopedimizde bulunmuyor' de. Asla uydurma.
-                4. Cevabı Türkçe ver.
-
-                SORU: {prompt}
-
-                BİLGİLER:
-                {baglam}
-                """
+                1. KESİNLİKLE kendi bildiklerini kullanma.
+                2. Sadece 'BİLGİLER' kısmındaki metinleri kullan.
+                3. Bilgi yoksa 'Bilmiyorum' de.
                 
+                SORU: {prompt}
+                BİLGİLER: {baglam}
+                """
                 stream = model.generate_content(full_prompt, stream=True)
                 
-                # --- DAKTİLO EFEKTİ ---
                 def stream_parser():
                     for chunk in stream:
                         if chunk.text:
                             for word in chunk.text.split(" "):
                                 yield word + " "
                                 time.sleep(0.05)
-                                
                     if kaynaklar:
                         kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
                         for k in kaynaklar:
                             kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                        
                         for line in kaynak_metni.split("\n"):
                             yield line + "\n"
                             time.sleep(0.1)
@@ -237,16 +233,40 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
 
             except Exception as e:
-                err_msg = f"Bir hata oluştu: {e}"
-                st.markdown(err_msg)
-                st.session_state.messages.append({"role": "assistant", "content": err_msg})
+                st.error(f"Hata: {e}")
 
-# --- YAN MENÜ ---
+# --- YAN MENÜ (İNDİRME VE YÜKLEME) ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
-    if st.button("🔄 Verileri Şimdi Güncelle"):
+    
+    # Veri Kaynağı Bilgisi
+    if 'kaynak' in st.session_state:
+        if st.session_state.kaynak == "dosya":
+            st.success("📂 Veriler Dosyadan Okunuyor (Hızlı)")
+        else:
+            st.warning("🌐 Veriler Canlı Tarandı (Yavaş)")
+    
+    st.divider()
+    
+    # 1. VERİLERİ İNDİR BUTONU
+    if 'db' in st.session_state and st.session_state.db:
+        # Veriyi JSON formatına çevir
+        json_data = json.dumps(st.session_state.db, ensure_ascii=False)
+        
+        st.download_button(
+            label="📥 Veri Tabanını İndir (JSON)",
+            data=json_data,
+            file_name="yolpedia_data.json",
+            mime="application/json",
+            help="Bu dosyayı indirip GitHub'a yüklersen, bot açılışta bekleme yapmaz!"
+        )
+    
+    st.divider()
+    
+    # 2. CANLI YENİLEME BUTONU
+    if st.button("🔄 Siteyi Yeniden Tara (Canlı)"):
         st.cache_data.clear()
         st.rerun()
-    st.divider()
+        
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
