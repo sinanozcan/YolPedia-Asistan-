@@ -196,7 +196,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 KURALLAR:
                 1. KESİNLİKLE kendi bildiklerini kullanma.
                 2. Sadece 'BİLGİLER' kısmındaki metinleri kullan.
-                3. Bilgi yoksa 'YolPedia'da böyle bir bilgiye (henüz) rastlannmamaktadır' de.
+                3. Bilgi yoksa 'YolPedia'da böyle bir bilgiye (henüz) rastlanmamaktadır' de.
                 
                 SORU: {prompt}
                 BİLGİLER: {baglam}
