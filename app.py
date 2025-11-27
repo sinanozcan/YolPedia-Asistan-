@@ -75,7 +75,7 @@ genai.configure(api_key=API_KEY)
 @st.cache_resource
 def model_yukle():
     secilen_model_adi = None
-    generation_config = {"temperature": 0.3, "max_output_tokens": 8192} # Sohbet için biraz esneklik (0.3)
+    generation_config = {"temperature": 0.3, "max_output_tokens": 8192} # Sohbet için hafif esneklik
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -118,19 +118,18 @@ def tr_normalize(metin):
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    # Sohbet kelimelerini filtrele (Bunlar için veritabanı taramasın)
+    # Sohbet kelimelerini filtrele
     gereksiz = [
         "merhaba", "selam", "nasilsin", "naber", "gunaydin", "iyi", "geceler",
         "tesekkur", "ederim", "sagol", "tamam", "anladim", "peki", "gorusuruz",
         "aferin", "soyle", "boyle", "nedir", "kimdir", "neredir", "nasil", "niye", 
         "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", 
         "hakkinda", "bilgi", "almak", "istiyorum", "onun", "bunun", "suranin", 
-        "detayli", "anlat", "detaylandir", "beni", "duydun", "mu"
+        "detayli", "anlat", "detaylandir", "beni", "duydun", "mu", "sevindim"
     ]
     soru_temiz = tr_normalize(soru)
     anahtar = [k for k in soru_temiz.split() if k not in gereksiz and len(k) > 2]
     
-    # Eğer elde aranacak anlamlı bir kelime kalmadıysa (Sadece sohbetse) boş dön
     if not anahtar:
         return "", []
 
@@ -208,7 +207,6 @@ if is_user_input or is_detail_click:
                 kaynaklar = st.session_state.son_kaynaklar
                 detay_modu = True
             else:
-                # Sohbet kelimesi mi diye kontrol et, değilse ara
                 with st.spinner("🔎 Asistan düşünüyor..."):
                     time.sleep(0.3)
                     baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
@@ -216,7 +214,6 @@ if is_user_input or is_detail_click:
                     st.session_state.son_baglam = baglam
                     st.session_state.son_kaynaklar = kaynaklar
 
-            # --- SOHBET MODU İÇİN PROMPT DÜZENLEMESİ ---
             try:
                 # Bağlam yoksa (veya sohbetse) boş string gönder
                 bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
@@ -224,7 +221,7 @@ if is_user_input or is_detail_click:
                 if detay_modu:
                     gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki 'BİLGİLER' metnini kullanarak EN İNCE DETAYINA KADAR anlat."
                 else:
-                    gorev = f"GÖREVİN: '{user_msg}' mesajına uygun cevap ver. Eğer bu bir bilgi sorusuysa 'BİLGİLER' kısmını kullanarak özetle. Eğer bir sohbet, selamlaşma veya geri bildirimse, ansiklopediyi boşver, bir asistan gibi nazikçe sohbet et."
+                    gorev = f"GÖREVİN: '{user_msg}' mesajına uygun cevap ver. Eğer bu bir bilgi sorusuysa 'BİLGİLER' kısmını kullanarak özetle. Eğer bir sohbetse (Örn: 'Merhaba', 'Anladım'), ansiklopediyi boşver, nazikçe sohbet et."
 
                 gecmis = ""
                 for msg in st.session_state.messages[-4:]:
@@ -239,15 +236,15 @@ if is_user_input or is_detail_click:
                 
                 KURALLAR:
                 1. Eğer soru ansiklopedikse, ASLA uydurma yapma, sadece 'BİLGİLER'i kullan. Bilgi yoksa 'YolPedia'da bu bilgi yok' de.
-                2. Eğer kullanıcı sohbet ediyorsa (Merhaba, Teşekkürler, Öneri vb.), içten ve doğal cevap ver. "YolPedia'da bu bilgi yok" deme!
-                3. Giriş cümlesi yapma.
+                2. Eğer kullanıcı sohbet ediyorsa, içten ve doğal cevap ver. "YolPedia'da bu bilgi yok" deme!
+                3. Giriş cümlesi yapma ("Verilere göre..." deme).
                 
                 GEÇMİŞ SOHBET:
                 {gecmis}
                 
                 YENİ MESAJ: {user_msg}
                 
-                BİLGİLER (Sadece bilgi soruları için kullan):
+                BİLGİLER:
                 {bilgi_metni}
                 """
                 
@@ -262,14 +259,13 @@ if is_user_input or is_detail_click:
                                 time.sleep(0.001)
                             full_text += chunk.text
                     
-                    # --- GELİŞMİŞ SOHBET SÜZGECİ ---
+                    # --- BUTON ve LİNK GİZLEME MANTIĞI ---
                     negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
-                    # Sohbet kelimeleri (Bunlar geçiyorsa link gösterme)
-                    sohbet_belirtecleri = ["anladım", "tamam", "teşekkür", "rica ederim", "merhaba", "memnun oldum", "not aldım", "dikkat edeceğim", "görüşürüz", "yardımcı olabilirim"]
+                    sohbet_kelimeleri = ["rica ederim", "memnun oldum", "yardımcı", "teşekkür", "anladım", "merhaba", "nasılsın", "sevindim"]
                     
                     cevap_olumsuz = any(n in full_text.lower() for n in negatif)
-                    # Cevap kısa (<300 harf) ve sohbet kelimesi içeriyorsa bu bir sohbettir
-                    cevap_sohbet = any(s in full_text.lower() for s in sohbet_belirtecleri) and len(full_text) < 400
+                    # Cevap kısa ve içinde sohbet kelimesi varsa sohbettir
+                    cevap_sohbet = any(s in full_text.lower() for s in sohbet_kelimeleri) and len(full_text) < 300
                     
                     # Sadece GERÇEK BİLGİ ise linkleri göster
                     if baglam and kaynaklar and not cevap_olumsuz and not cevap_sohbet:
@@ -284,7 +280,6 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                # Sadece bilgi sorularında ve özetse butonu yenile
                 if not detay_modu:
                     st.rerun()
 
@@ -297,8 +292,9 @@ if is_user_input or is_detail_click:
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
-    # Hata değilse, olumsuz değilse ve SOHBET DEĞİLSE buton göster
-    sohbet_belirtecleri = ["anladım", "tamam", "teşekkür", "rica ederim", "merhaba", "memnun oldum", "not aldım"]
+    # --- SOHBET Mİ KONTROLÜ ---
+    # Eğer cevap kısaysa ve içinde sohbet kelimeleri varsa BUTON KOYMA
+    sohbet_belirtecleri = ["rica ederim", "memnun oldum", "yardımcı", "teşekkür", "anladım", "merhaba", "nasılsın", "sevindim"]
     is_chat = any(s in last_msg.lower() for s in sohbet_belirtecleri) and len(last_msg) < 400
     
     if "Hata" not in last_msg and "bulunmuyor" not in last_msg and not is_chat:
