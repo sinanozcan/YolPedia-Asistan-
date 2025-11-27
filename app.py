@@ -16,6 +16,7 @@ WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
