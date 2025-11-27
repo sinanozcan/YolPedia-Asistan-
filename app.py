@@ -52,18 +52,16 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL (GÜVENLİK AYARLARI EKLENDİ) ---
+# --- MODELİ BUL (GÜVENLİK FİLTRELERİ GEVŞETİLMİŞ) ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
-    # Ansiklopedi olduğu için güvenlik filtrelerini en aza indiriyoruz ki hata vermesin
     safety_settings = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
-    
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -86,7 +84,7 @@ def niyet_analizi(soru):
         GİRDİ: "{soru}"
         KARAR KURALLARI:
         - Bilgi araması (Örn: "Dersim nerede?", "Kimdir?", "Nedir?", "Anlat"): "ARAMA"
-        - Sohbet, selam, teşekkür, geri bildirim (Örn: "Merhaba", "Nasılsın", "Adın ne?", "Sağol"): "SOHBET"
+        - Sohbet, selam, teşekkür (Örn: "Merhaba", "Nasılsın", "Adın ne?", "Sağol"): "SOHBET"
         Sadece tek kelime cevap ver: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -117,7 +115,6 @@ def tr_normalize(metin):
 
 def alakali_icerik_bul(soru, tum_veriler):
     soru_temiz = tr_normalize(soru)
-    # 2 harften uzun her kelimeyi ara
     anahtar = [k for k in soru_temiz.split() if len(k) > 2]
     
     puanlanmis = []
@@ -215,7 +212,8 @@ if is_user_input or is_detail_click:
                     full_prompt = f"""
                     Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
                     Kullanıcı seninle sohbet ediyor. 
-                    KURAL: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
+                    KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
+                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA. Direkt sohbete gir.
                     
                     KULLANICI MESAJI: {user_msg}
                     """
@@ -231,14 +229,14 @@ if is_user_input or is_detail_click:
                             gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
 
                         full_prompt = f"""
-                        Senin adın 'Can'. Sen YolPedia'nın rehberisin.
+                        Senin adın 'Can'.
                         {gorev}
                         
                         KURALLAR:
-                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (Türkçe, İngilizce, Almanca vb.), cevabı ve açıklamaları o dilde yap.
-                        2. Asla uydurma yapma.
-                        3. "YolPedia'ya göre" gibi girişler yapma.
-                        4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
+                        1. DİL KURALI: Kullanıcı hangi dilde sorduysa (TR, EN, DE), cevap da o dilde olacak.
+                        2. YASAK: Cevaba "Merhaba ben Can", "Rehberiniz olarak", "YolPedia verilerine göre" gibi cümlelerle ASLA BAŞLAMA.
+                        3. Asla uydurma yapma.
+                        4. Bilgi yoksa 'Bilmiyorum' de.
                         
                         BİLGİLER:
                         {baglam}
@@ -255,7 +253,6 @@ if is_user_input or is_detail_click:
                 def stream_parser():
                     full_text = ""
                     for chunk in stream:
-                        # BURAYA KORUMA EKLENDİ (ValueError Çözümü)
                         try:
                             if chunk.text:
                                 for char in chunk.text:
@@ -263,7 +260,7 @@ if is_user_input or is_detail_click:
                                     time.sleep(0.001)
                                 full_text += chunk.text
                         except ValueError:
-                            continue # Boş paket gelirse atla, çökme
+                            continue 
                 
                     if niyet == "ARAMA" and baglam and kaynaklar:
                         negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
@@ -284,7 +281,6 @@ if is_user_input or is_detail_click:
                 if niyet == "ARAMA" and not detay_modu:
                     st.rerun()
             except Exception as e:
-                # Eğer yine de bir hata olursa kullanıcıya hissettirme
                 pass
 
 # --- DETAY BUTONU ---
