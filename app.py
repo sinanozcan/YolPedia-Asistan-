@@ -16,7 +16,7 @@ WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 DATA_FILE = "yolpedia_data.json"
-ASISTAN_ISMI = "Can | YolPedia Rehberiniz" # İsim değişkeni
+ASISTAN_ISMI = "Can | YolPedia Rehberiniz"
 # ===========================================
 
 # --- FAVICON ---
@@ -77,8 +77,8 @@ def niyet_analizi(soru):
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR KURALLARI:
-        - Bilgi araması (Örn: "Dersim nerede?", "Kimdir?", "Nedir?"): "ARAMA"
-        - Sohbet, selam, teşekkür, geri bildirim (Örn: "Merhaba", "Nasılsın", "Adın ne?", "Sağol"): "SOHBET"
+        - Bilgi araması (Örn: "Dersim nerede?", "Who is Otman Baba?", "Was ist Alevismus?"): "ARAMA"
+        - Sohbet, selam (Örn: "Merhaba", "Hello", "Wie gehts?"): "SOHBET"
         Sadece tek kelime cevap ver: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -108,9 +108,10 @@ def tr_normalize(metin):
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum"]
+    # ÇOK DİLLİ FİLTRELEME İÇİN GEREKSİZ KELİMELERİ KALDIRDIK
+    # Sadece çok kısa kelimeleri eliyoruz
     soru_temiz = tr_normalize(soru)
-    anahtar = [k for k in soru_temiz.split() if k not in gereksiz and len(k) > 2]
+    anahtar = [k for k in soru_temiz.split() if len(k) > 2]
     
     puanlanmis = []
     for veri in tum_veriler:
@@ -137,9 +138,9 @@ def alakali_icerik_bul(soru, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- SOHBET ARAYÜZÜ (BURADA DEĞİŞİKLİK YAPILDI) ---
+# --- SOHBET ARAYÜZÜ ---
 if "messages" not in st.session_state:
-    # İLK AÇILIŞTA "CAN" MESAJI İLE BAŞLAT
+    # İLK AÇILIŞ MESAJI
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
@@ -185,64 +186,79 @@ if is_user_input or is_detail_click:
         kaynaklar = None
         detay_modu = False
         niyet = st.session_state.get('son_niyet', "ARAMA")
+        stream = None
         
-        if niyet == "ARAMA":
-            if 'db' in st.session_state and st.session_state.db:
-                if is_detail_click and st.session_state.get('son_baglam'):
-                    baglam = st.session_state.son_baglam
-                    kaynaklar = st.session_state.son_kaynaklar
-                    detay_modu = True
-                else:
-                    with st.spinner("Can araştırıyor..."):
+        # --- TEK BİR SPINNER BLOĞU (DOĞAL BEKLEME) ---
+        with st.spinner("Can araştırıyor..."):
+            
+            # 1. ARAMA İŞLEMİ (Sadece ARAMA niyetindeyse)
+            if niyet == "ARAMA":
+                if 'db' in st.session_state and st.session_state.db:
+                    if is_detail_click and st.session_state.get('son_baglam'):
+                        baglam = st.session_state.son_baglam
+                        kaynaklar = st.session_state.son_kaynaklar
+                        detay_modu = True
+                    else:
+                        # Veritabanı taraması (Doğal süre)
                         baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
-        
-        try:
-            if niyet == "SOHBET":
-                full_prompt = f"""
-                Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
-                Kullanıcı seninle sohbet ediyor. Ona nazik, "Erenler" hitabına uygun, samimi bir dille cevap ver.
-                Ansiklopedik bilgi vermene gerek yok.
-                
-                KULLANICI: {user_msg}
-                """
-            else:
-                bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
-                
-                if not baglam:
-                    full_prompt = "Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de."
-                else:
-                    if detay_modu:
-                        gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
-                    else:
-                        gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
-
-                    full_prompt = f"""
-                    Senin adın 'Can'. Sen YolPedia'nın rehberisin.
-                    {gorev}
-                    KURALLAR:
-                    1. Asla uydurma yapma.
-                    2. "YolPedia'ya göre" gibi girişler yapma.
-                    3. Bilgi yoksa 'Bilmiyorum' de.
-                    
-                    BİLGİLER:
-                    {baglam}
-                    """
-
-            stream = model.generate_content(full_prompt, stream=True)
             
+            # 2. GEMINI YANIT OLUŞTURMA
+            try:
+                if niyet == "SOHBET":
+                    full_prompt = f"""
+                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
+                    Kullanıcı seninle sohbet ediyor. 
+                    KURAL: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
+                    
+                    KULLANICI MESAJI: {user_msg}
+                    """
+                else:
+                    bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
+                    
+                    if not baglam:
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. Kullanıcının dili neyse o dilde söyle."
+                    else:
+                        if detay_modu:
+                            gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
+                        else:
+                            gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
+
+                        full_prompt = f"""
+                        Senin adın 'Can'. Sen YolPedia'nın rehberisin.
+                        {gorev}
+                        
+                        KURALLAR:
+                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa, cevabı ve açıklamaları o dilde yap. (İngilizce sorduysa İngilizce, Almanca sorduysa Almanca cevap ver). Elindeki BİLGİLER Türkçe olsa bile sen çevirerek anlat.
+                        2. Asla uydurma yapma.
+                        3. "YolPedia'ya göre" gibi girişler yapma.
+                        4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
+                        
+                        BİLGİLER:
+                        {baglam}
+                        """
+                
+                # API çağrısı (Doğal süre)
+                stream = model.generate_content(full_prompt, stream=True)
+                
+            except Exception as e:
+                st.error(f"Hata: {e}")
+
+        # --- SPINNER BİTTİ, YAZMAYA BAŞLA ---
+        
+        if stream:
             def stream_parser():
                 full_text = ""
                 for chunk in stream:
                     if chunk.text:
                         for char in chunk.text:
                             yield char
-                            time.sleep(0.001)
+                            time.sleep(0.001) # Akış hızı
                         full_text += chunk.text
                 
                 if niyet == "ARAMA" and baglam and kaynaklar:
-                    negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
+                    negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
                     cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                     
                     if not cevap_olumsuz:
@@ -260,16 +276,12 @@ if is_user_input or is_detail_click:
             if niyet == "ARAMA" and not detay_modu:
                 st.rerun()
 
-        except Exception as e:
-            st.error(f"Hata: {e}")
-
 # --- DETAY BUTONU ---
 son_niyet = st.session_state.get('son_niyet', "")
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
-    # Hata yoksa, olumsuz değilse ve Niyet ARAMA ise buton göster (Sohbette gösterme)
-    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg:
+    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
