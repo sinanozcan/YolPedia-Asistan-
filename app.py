@@ -39,7 +39,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 90px;
+        width: 60px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -163,7 +163,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
     with st.chat_message("assistant"):
         if 'db' in st.session_state and st.session_state.db:
             with st.spinner("🔎 Ansiklopedi taranıyor..."):
-                time.sleep(0.3)
+                time.sleep(3.0)
                 baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
             
             if not baglam:
