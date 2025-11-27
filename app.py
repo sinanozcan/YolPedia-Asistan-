@@ -87,7 +87,7 @@ def model_yukle():
             if 'generateContent' in m.supported_generation_methods:
                 if 'pro' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
-        # 3. Hiçbiri yoksa ilki
+        # 3. Hiçbiri yoksa ilk bulduğunu al
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 return genai.GenerativeModel(m.name, generation_config=generation_config)
@@ -133,7 +133,6 @@ def alakali_icerik_bul(soru, tum_veriler):
         puan = 0
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
-        
         for k in anahtar:
             if k in baslik_norm: puan += 3
             elif k in icerik_norm: puan += 1
@@ -160,7 +159,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- BUTON TETİKLEYİCİSİ ---
+# --- BUTON TETİKLEYİCİ ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
@@ -172,7 +171,6 @@ is_detail_click = st.session_state.get('detay_istendi', False)
 
 if is_user_input or is_detail_click:
     
-    # 1. Yeni Soru (ÖZET MODU)
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -180,22 +178,14 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         user_msg = prompt
-        ekrana_basilacak_mesaj = prompt
         
-    # 2. Detay Butonu (DETAY MODU)
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
-        
-        # --- BURASI DÜZELTİLDİ: Sohbete "Detaylandır" mesajı ekle ---
-        detay_mesaji = "Bu konuyu detaylandır."
-        st.session_state.messages.append({"role": "user", "content": detay_mesaji})
-        ekrana_basilacak_mesaj = detay_mesaji
-        # -------------------------------------------------------------
 
-    # Kullanıcı mesajını ekrana bas (Sadece anlık işlem için)
-    with st.chat_message("user"):
-        st.markdown(ekrana_basilacak_mesaj)
+    if is_user_input:
+         with st.chat_message("user"):
+            st.markdown(user_msg)
 
     with st.chat_message("assistant"):
         if 'db' in st.session_state and st.session_state.db:
@@ -203,66 +193,75 @@ if is_user_input or is_detail_click:
             baglam = None
             kaynaklar = None
             detay_modu = False
+            stream = None # Stream nesnesi
             
-            # Detay isteği mi? (Hafızadan Çek)
-            if is_detail_click and st.session_state.get('son_baglam'):
-                baglam = st.session_state.son_baglam
-                kaynaklar = st.session_state.son_kaynaklar
-                detay_modu = True
-            else:
-                # Yeni Arama Yap
-                with st.spinner("🔎 Ansiklopedi taranıyor..."):
-                    time.sleep(0.3)
+            # --- TÜM İŞLEMLERİ SPINNER İÇİNE ALDIK ---
+            with st.spinner("🔎 Cevap hazırlanıyor..."):
+                
+                # 1. BAĞLAM BULMA / GETİRME
+                if is_detail_click and st.session_state.get('son_baglam'):
+                    baglam = st.session_state.son_baglam
+                    kaynaklar = st.session_state.son_kaynaklar
+                    detay_modu = True
+                else:
+                    # Gerçek arama süresi kadar dönecek
                     baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
-                    
                     st.session_state.son_baglam = baglam
                     st.session_state.son_kaynaklar = kaynaklar
+
+                # 2. GEMINI BAĞLANTISI (Cevap bulunursa)
+                if baglam:
+                    try:
+                        if detay_modu:
+                            gorev = f"""
+                            GÖREVİN: 
+                            Bu metin yığını içinden SADECE "{user_msg}" ile ilgili olan kısımları cımbızla çek ve EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat.
+                            """
+                        else:
+                            gorev = f"""
+                            GÖREVİN:
+                            Sana verilen metinleri kullanarak "{user_msg}" sorusuna KISA, ÖZ VE NET bir cevap ver (Maksimum 3-4 paragraf).
+                            """
+
+                        full_prompt = f"""
+                        Sen YolPedia ansiklopedi asistanısın.
+                        {gorev}
+                        
+                        KESİN KURALLAR:
+                        1. GİRİŞ CÜMLESİ YASAK: Cevaba "Merhaba", "Asistan olarak", "YolPedia verilerine göre", "İşte detaylar" gibi cümlelerle ASLA BAŞLAMA.
+                        2. DOĞRUDAN KONUYA GİR: Cevap direkt olarak "{user_msg} nedir/kimdir" sorusunun yanıtıyla başlamalı.
+                        3. Asla uydurma yapma.
+                        4. Bilgi yoksa 'Bilmiyorum' de.
+                        
+                        BİLGİLER:
+                        {baglam}
+                        """
+                        # API çağrısı da spinner içinde yapılıyor
+                        stream = model.generate_content(full_prompt, stream=True)
+                    
+                    except Exception as e:
+                        st.error(f"Hata: {e}")
+
+            # --- SPINNER BURADA BİTER ---
+            # Çünkü artık elimizde 'stream' nesnesi var, yazmaya başlayabiliriz.
 
             if not baglam:
                  msg = "Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor."
                  st.markdown(msg)
                  st.session_state.messages.append({"role": "assistant", "content": msg})
-            else:
+            
+            elif stream:
                 try:
-                    # --- PROMPTLAR ---
-                    if detay_modu:
-                        gorev = f"""
-                        GÖREVİN: 
-                        Bu metin yığını içinden SADECE "{user_msg}" ile ilgili olan kısımları cımbızla çek ve EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat.
-                        """
-                    else:
-                        gorev = f"""
-                        GÖREVİN:
-                        Sana verilen metinleri kullanarak "{user_msg}" sorusuna KISA, ÖZ VE NET bir cevap ver (Maksimum 3-4 paragraf).
-                        """
-
-                    # --- SERT KURALLAR ---
-                    full_prompt = f"""
-                    Sen YolPedia ansiklopedi asistanısın.
-                    {gorev}
-                    
-                    KESİN KURALLAR:
-                    1. GİRİŞ CÜMLESİ YASAK: Cevaba "Merhaba", "Asistan olarak", "YolPedia verilerine göre", "İşte detaylar" gibi cümlelerle ASLA BAŞLAMA.
-                    2. DOĞRUDAN KONUYA GİR: Cevap direkt olarak "{user_msg} nedir/kimdir" sorusunun yanıtıyla başlamalı.
-                    3. Asla uydurma yapma.
-                    4. Bilgi yoksa 'Bilmiyorum' de.
-                    
-                    BİLGİLER:
-                    {baglam}
-                    """
-                    
-                    stream = model.generate_content(full_prompt, stream=True)
-                    
                     def stream_parser():
                         full_text = ""
                         for chunk in stream:
                             if chunk.text:
                                 for char in chunk.text:
                                     yield char
-                                    time.sleep(0.001)
+                                    time.sleep(0.001) # Akış hızı
                                 full_text += chunk.text
                         
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         
                         if not cevap_olumsuz and kaynaklar:
@@ -280,29 +279,16 @@ if is_user_input or is_detail_click:
                     st.rerun()
 
                 except Exception as e:
-                    st.error(f"Hata: {e}")
+                    st.error(f"Yazma Hatası: {e}")
         else:
             st.error("Veri tabanı yüklenemedi.")
 
 # --- DETAY BUTONU ---
-# Son mesajı kontrol et
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-    last_assistant_msg = st.session_state.messages[-1]["content"]
+    last_msg = st.session_state.messages[-1]["content"]
     
-    # Butonu ne zaman göstereceğiz?
-    # 1. Hata yoksa
-    # 2. Cevap olumsuz değilse
-    # 3. Kullanıcı zaten "Detaylandır" dememişse
-    
-    # Kullanıcının son mesajını bul (Sondan ikinci mesaj)
-    if len(st.session_state.messages) >= 2:
-        last_user_msg = st.session_state.messages[-2]["content"]
-    else:
-        last_user_msg = ""
-
-    if "Hata" not in last_assistant_msg and "bulunmuyor" not in last_assistant_msg:
-        # Eğer son kullanıcı mesajında "detay" kelimesi geçmiyorsa buton göster
-        if "detay" not in last_user_msg.lower():
+    if "Hata" not in last_msg and "bulunmuyor" not in last_msg:
+        if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
                 st.button("📜 Bu Konuyu Detaylandır", on_click=detay_tetikle)
