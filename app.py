@@ -36,6 +36,8 @@ st.markdown("""
     .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
+    /* Kopyalama alanı için stil */
+    .stCodeBlock { margin-top: -20px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,49 +63,38 @@ def model_yukle():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'pro' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
 model = model_yukle()
 
-# --- 1. AJAN: DİL VE NİYET ANALİZİ (BİRLEŞİK) ---
-def dil_ve_niyet_analizi(soru):
+# --- NİYET OKUYUCU ---
+def niyet_analizi(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        
-        GÖREV: Aşağıdaki formatta analiz yap.
-        1. NİYET: "ARAMA" (Bilgi sorusu) veya "SOHBET" (Selam, hal hatır)
-        2. DİL: Kullanıcının yazdığı dil (Turkish, German, English, French vb.)
-        
-        CEVAP FORMATI: NİYET|DİL
-        ÖRNEK 1: "Was ist Dersim?" -> ARAMA|German
-        ÖRNEK 2: "Merhaba nasılsın?" -> SOHBET|Turkish
-        ÖRNEK 3: "Tell me about Otman Baba" -> ARAMA|English
+        KARAR:
+        - Bilgi araması: "ARAMA"
+        - Sohbet: "SOHBET"
+        CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
-        text = response.text.strip()
-        parts = text.split("|")
-        if len(parts) == 2:
-            return parts[0].strip(), parts[1].strip()
-        else:
-            return "ARAMA", "Turkish"
+        return response.text.strip().upper()
     except:
-        return "ARAMA", "Turkish"
+        return "ARAMA"
 
-# --- 2. AJAN: ANAHTAR KELİME AYIKLAYICI ---
+# --- KELİME AYIKLAYICI ---
 def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Bu cümlenin içindeki ARANAN KONUYU (Entity) bul ve sadece onu yaz.
-        Soru eklerini at. Konu Türkçe bir terimse Türkçe halini koru.
-        
-        ÖRNEK: "Was ist eigentlich Oniki Hizmet?" -> Oniki Hizmet
-        ÖRNEK: "Who is Seyit Riza?" -> Seyit Rıza
-        
-        CEVAP (Sadece kelime):
+        GÖREV: Konuyu (Entity) bul. Soru eklerini at. Türkçe halini koru.
+        CEVAP:
         """
         response = model.generate_content(prompt)
         text = response.text.strip()
@@ -143,7 +134,6 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         puan = 0
         if soru_temiz in baslik_norm: puan += 100
         elif soru_temiz in icerik_norm: puan += 40
-        
         for k in anahtar:
             if k in baslik_norm: puan += 10
             elif k in icerik_norm: puan += 2
@@ -162,20 +152,41 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- SOHBET ARAYÜZÜ ---
+# --- SOHBET GEÇMİŞİ VE BUTONLAR ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
 
-for message in st.session_state.messages:
+# Mesajları Ekrana Bas (Butonlar Burada Ekleniyor)
+for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
+        
+        # Sadece ASİSTAN mesajlarına buton ekle (ve ilk mesaj hariç olsun dersen i>0 yapabilirsin)
+        if message["role"] == "assistant" and len(message["content"]) > 50:
+            col_dl, col_copy, col_space = st.columns([1, 1, 3])
+            
+            # 1. İndir Butonu
+            with col_dl:
+                st.download_button(
+                    label="📥 İndir",
+                    data=message["content"],
+                    file_name=f"yolpedia_cevap_{i}.txt",
+                    mime="text/plain",
+                    key=f"dl_{i}"
+                )
+            
+            # 2. Kopyala Alanı (Expander içinde Code Block)
+            with col_copy:
+                with st.expander("📋 Kopyala"):
+                    st.code(message["content"], language=None)
 
+# --- DETAY BUTONU İÇİN FONKSİYON ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
-# --- GİRİŞ ---
+# --- GİRİŞ VE İŞLEM ---
 prompt = st.chat_input("Can'a bir soru sorun...")
 
 is_user_input = prompt is not None
@@ -190,10 +201,8 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # --- ANALİZ (DİL TESPİTİ BURADA YAPILIYOR) ---
-        niyet, dil = dil_ve_niyet_analizi(prompt)
+        niyet = niyet_analizi(prompt)
         st.session_state.son_niyet = niyet
-        st.session_state.son_dil = dil # Dili hafızaya at
         
         arama_kelimesi = prompt
         if niyet == "ARAMA":
@@ -204,9 +213,7 @@ if is_user_input or is_detail_click:
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
-        arama_kelimesi = anahtar_kelime_ayikla(user_msg)
         st.session_state.son_niyet = "ARAMA"
-        # Dili değiştirmeden hafızadan kullanıyoruz
 
     if is_user_input:
          with st.chat_message("user"):
@@ -217,10 +224,9 @@ if is_user_input or is_detail_click:
         kaynaklar = None
         detay_modu = False
         niyet = st.session_state.get('son_niyet', "ARAMA")
-        kullanici_dili = st.session_state.get('son_dil', "Turkish")
         stream = None
         
-        with st.spinner("Can araştırıyor..."):
+        with st.spinner("Can düşünüyor..."):
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -233,48 +239,34 @@ if is_user_input or is_detail_click:
                         st.session_state.son_kaynaklar = kaynaklar
             
             try:
-                # --- SOHBET MODU ---
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
-                    
-                    KURAL: Cevabı ŞU DİLDE ver: {kullanici_dili}
-                    KURAL: "Merhaba ben Can" diye kendini tekrar tanıtma.
-                    
-                    KULLANICI MESAJI: {user_msg}
+                    Senin adın 'Can'. YolPedia rehberisin.
+                    Kullanıcı dili neyse o dilde sohbet et.
+                    "Merhaba ben Can" diye başlama.
+                    KULLANICI: {user_msg}
                     """
-                
-                # --- ARAMA MODU ---
                 else:
-                    bilgi_metni = baglam if baglam else "Veri tabanında bilgi yok."
+                    bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        # Bulunamadı mesajı da hedef dilde olmalı
-                        full_prompt = f"Kullanıcıya nazikçe aradığı bilginin YolPedia'da olmadığını söyle. DİL: {kullanici_dili}. Başka kaynak önerme."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: Kullanıcı dili."
                     else:
-                        if detay_modu:
-                            gorev = f"GÖREV: '{user_msg}' konusunu, verilen metni kullanarak EN İNCE DETAYINA KADAR anlat."
-                        else:
-                            gorev = f"GÖREV: '{user_msg}' sorusunu, verilen metni kullanarak KISA ve ÖZ (Özet) cevapla."
-
-                        # --- KESİN DİL EMRİ ---
+                        gorev = "EN İNCE DETAYINA KADAR anlat." if detay_modu else "KISA ve ÖZ (Özet) anlat."
                         full_prompt = f"""
-                        Senin adın 'Can'.
+                        Sen 'Can'.
                         {gorev}
+                        KURAL 1: Kullanıcı dili neyse cevap o dilde olsun.
+                        KURAL 2: "YolPedia'ya göre" deme. Doğal konuş.
+                        KURAL 3: Bilgi yoksa uydurma.
                         
-                        ÇOK ÖNEMLİ KURALLAR:
-                        1. HEDEF DİL: {kullanici_dili}. (Kaynak metin Türkçe olsa bile sen çevirip {kullanici_dili} yazacaksın).
-                        2. Asla uydurma yapma.
-                        3. Giriş cümlesi ("YolPedia'ya göre..." gibi) yapma.
-                        
-                        KAYNAK METİNLER:
-                        {baglam}
+                        BİLGİLER: {baglam}
                         """
                 
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Bağlantı Hatası: {e}")
+                st.error(f"Hata: {e}")
 
         if stream:
             try:
@@ -289,72 +281,3 @@ if is_user_input or is_detail_click:
                                 full_text += chunk.text
                         except ValueError:
                             continue
-                    
-                    # Link Gösterimi (Negatif kelimeler hedef dile göre de olmalı ama basit tutuyoruz)
-                    if niyet == "ARAMA" and baglam and kaynaklar:
-                        # Çok dilli negatif kontrolü zor olduğu için uzunluğa ve niyete güveniyoruz
-                        # Eğer cevap çok kısaysa (Örn: "Bilgi yok" tercümesi) link göstermeyebiliriz
-                        
-                        # Basit bir "Bilgi Yok" kontrolü (Genel)
-                        negatif_tr = ["bulunmuyor", "bilmiyorum", "bilgi yok"]
-                        cevap_olumsuz = any(n in full_text.lower() for n in negatif_tr)
-                        
-                        # Eğer metin doluysa (bilgi varsa) linkleri göster
-                        if len(full_text) > 50 and not cevap_olumsuz:
-                            # Link başlığı dile göre değişebilir
-                            baslik_link = "📚 Kaynaklar / Sources:" 
-                            
-                            yield "\n\n" + baslik_link + "\n"
-                            
-                            essiz = {v['link']:v for v in kaynaklar}.values()
-                            for k in essiz:
-                                link_satir = f"- [{k['baslik']}]({k['link']})\n"
-                                for char in link_satir:
-                                    yield char
-                                    time.sleep(0.001)
-
-                response_text = st.write_stream(stream_parser)
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-                
-                if niyet == "ARAMA" and not detay_modu:
-                    st.rerun()
-            except Exception as e:
-                pass
-
-# --- DETAY BUTONU ---
-son_niyet = st.session_state.get('son_niyet', "")
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-    last_msg = st.session_state.messages[-1]["content"]
-    
-    # Buton metni de dile göre olsa güzel olur ama şimdilik standart tutalım
-    btn_text = "📜 Detaylandır / More Details / Mehr Details"
-    
-    if son_niyet == "ARAMA" and len(last_msg) > 50:
-        if len(last_msg) < 5000:
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                st.button(btn_text, on_click=detay_tetikle)
-
-# --- YAN MENÜ ---
-with st.sidebar:
-    st.header("⚙️ Yönetim")
-    if st.button("🔄 Önbelleği Temizle"):
-        st.cache_data.clear()
-        st.rerun()
-    st.divider()
-    if 'db' in st.session_state:
-        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        st.divider()
-        st.subheader("🕵️ Veri Müfettişi")
-        test = st.text_input("Ara:", placeholder="Örn: Otman Baba")
-        if test:
-            say = 0
-            norm_test = tr_normalize(test)
-            for v in st.session_state.db:
-                nb = tr_normalize(v['baslik'])
-                ni = tr_normalize(v['icerik'])
-                if norm_test in nb or norm_test in ni:
-                    st.success(f"✅ {v['baslik']}")
-                    say += 1
-                    if say >= 5: break
-            if say == 0: st.error("❌ Bulunamadı")
