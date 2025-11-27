@@ -160,39 +160,34 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 time.sleep(0.3)
                 baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
             
-            # --- HAFIZA OLUŞTURMA (SON 4 MESAJ) ---
+            # --- HAFIZA OLUŞTURMA ---
             gecmis_sohbet = ""
-            # Son 4 mesajı al (2 soru, 2 cevap) ki bağlam kopmasın ama token dolmasın
             for msg in st.session_state.messages[-4:]:
                 rol = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
-                # Kaynak linklerini hafızaya alma, kafasını karıştırır
                 temiz_icerik = msg['content'].split("**📚 Kaynaklar:**")[0] 
                 gecmis_sohbet += f"{rol}: {temiz_icerik}\n"
             
-            # Bağlam boş olsa bile geçmişe bakarak cevap verebilir mi kontrol et
-            # (Örn: "Merhaba" dediğinde bağlam boştur ama cevap vermelidir)
-            
             try:
-                # --- AKILLI VE HAFIZALI PROMPT ---
+                # --- DOĞAL KONUŞMA PROMPTU ---
                 full_prompt = f"""
                 Sen YolPedia ansiklopedi asistanısın.
                 
                 GÖREVİN:
                 Sana verilen 'BİLGİLER' metnini kullanarak soruyu en detaylı şekilde cevapla.
-                Aşağıdaki 'GEÇMİŞ SOHBET' kısmına bakarak konuşmanın akışını takip et.
                 
                 KURALLAR:
-                1. Asla uydurma yapma, sadece verilen metinleri kullan.
-                2. Cevapları kısa tutma, detaylı anlat.
-                3. Eğer soru sohbete dayalıysa (Örn: 'Merhaba', 'Nasılsın'), kibarca yanıt ver ve ansiklopediden ne sorabileceğini söyle.
-                4. Eğer ansiklopedik bir soruysa ve metinlerde cevap YOKSA, "Üzgünüm, YolPedia arşivinde bu konuyla ilgili net bir bilgi bulunmuyor." de.
+                1. Cevaba "YolPedia arşivine göre", "Verilen bilgilere göre" veya "Metne göre" gibi girişlerle ASLA BAŞLAMA. Doğrudan cevabı anlatmaya başla.
+                2. Sanki bu bilgileri zaten biliyormuşsun gibi doğal konuş.
+                3. Asla uydurma yapma, sadece verilen metinleri kullan.
+                4. Eğer ansiklopedik bir soruysa ve metinlerde cevap YOKSA, sadece "Üzgünüm, YolPedia arşivinde bu konuyla ilgili net bir bilgi bulunmuyor." de.
+                5. Eğer soru "Merhaba", "Nasılsın" gibi sohbet amaçlıysa kibarca cevap ver.
                 
                 GEÇMİŞ SOHBET:
                 {gecmis_sohbet}
                 
                 YENİ SORU: {prompt}
                 
-                YENİ SORU İÇİN BULUNAN BİLGİLER:
+                BULUNAN BİLGİLER:
                 {baglam if baglam else "Veri tabanında bu kelimeyle ilgili özel bir eşleşme bulunamadı."}
                 """
                 
@@ -210,10 +205,8 @@ if prompt := st.chat_input("Bir soru sorun..."):
                     negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
                     cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                     
-                    # Eğer bağlam bulunduysa ve cevap olumluysa linkleri ekle
                     if baglam and kaynaklar and not cevap_olumsuz:
                         kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
-                        # Tekrar eden linkleri temizle
                         essiz_kaynaklar = {v['link']:v for v in kaynaklar}.values()
                         
                         for k in essiz_kaynaklar:
