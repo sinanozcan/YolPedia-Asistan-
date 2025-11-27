@@ -2,16 +2,15 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import google.generativeai as genai
-import sys
-import time
 import json
+import time
 from PIL import Image
 from io import BytesIO
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
-DATA_FILE = "yolpedia_data.json" # GitHub'daki veri dosyası
+DATA_FILE = "yolpedia_data.json"
 # ===========================================
 
 # --- FAVICON ---
@@ -58,24 +57,17 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL (KESİNLİK MODU) ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0}
     try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
-        # Flash yoksa Pro dene
-        return genai.GenerativeModel('gemini-1.5-pro', generation_config=generation_config)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
 model = model_yukle()
 
-# --- VERİ YÜKLEME (SADECE DOSYADAN) ---
-# persist="disk" sayesinde sayfayı yenilesen de veriler silinmez
+# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -85,51 +77,71 @@ def veri_yukle():
     except FileNotFoundError:
         return []
 
-# --- BAŞLANGIÇ KONTROLÜ ---
+# --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
-    with st.spinner('Sistem hazırlanıyor...'):
+    with st.spinner('Sistem başlatılıyor...'):
         veriler = veri_yukle()
         if veriler:
             st.session_state.db = veriler
-            st.success(f"✅ Sistem Hazır! {len(veriler)} madde yüklendi.")
-            time.sleep(1)
+            # st.success(f"✅ {len(veriler)} içerik yüklendi.") # Kullanıcıyı rahatsız etmesin diye kapattık
+            time.sleep(0.5)
             st.rerun()
         else:
             st.error("⚠️ Veri dosyası (JSON) bulunamadı! Lütfen GitHub'a yükleyin.")
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- GÜÇLENDİRİLMİŞ ARAMA MOTORU ---
 def tr_normalize(metin):
+    # Türkçe karakterleri güvenli hale getir
     kaynak = "ğĞüÜşŞıİöÖçÇ"
     hedef  = "gGuUsSiIoOcC"
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    # Gereksiz kelimeler listesi genişletildi
-    gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum"]
-    soru_temiz = tr_normalize(soru)
-    anahtar = [k for k in soru_temiz.split() if k not in gereksiz and len(k) > 2]
+    # Gereksiz kelimeler
+    gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi"]
     
-    puanlanmis = []
+    # 1. Soruyu normalize et
+    soru_norm = tr_normalize(soru)
+    soru_kelimeleri = [k for k in soru_norm.split() if k not in gereksiz and len(k) > 2]
+    
+    puanlanmis_veriler = []
+    
     for veri in tum_veriler:
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
-        metin_norm = baslik_norm + " " + icerik_norm
+        metin_full = baslik_norm + " " + icerik_norm
+        
         puan = 0
-        for k in anahtar:
-            if k in baslik_norm: puan += 3
-            elif k in icerik_norm: puan += 1
+        
+        # --- KURAL 1: TAM CÜMLE EŞLEŞMESİ (ALTIN VURUŞ) ---
+        # Kullanıcı "Otman Baba" yazdıysa ve metinde "otman baba" geçiyorsa devasa puan ver.
+        if soru_norm in baslik_norm:
+            puan += 50 # Başlıkta geçiyorsa kesin odur
+        elif soru_norm in icerik_norm:
+            puan += 20 # İçerikte geçiyorsa çok alakalıdır
+            
+        # --- KURAL 2: KELİME KELİME ARAMA ---
+        for k in soru_kelimeleri:
+            if k in baslik_norm: 
+                puan += 5
+            elif k in icerik_norm: 
+                puan += 1
+        
         if puan > 0:
-            puanlanmis.append({"veri": veri, "puan": puan})
+            puanlanmis_veriler.append({"veri": veri, "puan": puan})
     
-    puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = puanlanmis[:5]
+    # Puana göre sırala (En yüksek en üstte)
+    puanlanmis_veriler.sort(key=lambda x: x['puan'], reverse=True)
+    
+    # En iyi 5 sonucu al
+    en_iyiler = puanlanmis_veriler[:5]
     
     bulunanlar = ""
     kaynaklar = []
     for item in en_iyiler:
         v = item['veri']
-        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:2000]}...\n"
+        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:2500]}...\n"
         kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
     return bulunanlar, kaynaklar
@@ -153,14 +165,12 @@ if prompt := st.chat_input("Bir soru sorun..."):
                 time.sleep(3.0)
                 baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
             
-            # Eğer hiç alakalı içerik bulunamazsa
             if not baglam:
                 msg = "Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor."
                 st.markdown(msg)
                 st.session_state.messages.append({"role": "assistant", "content": msg})
             else:
                 try:
-                    # --- SERT PROMPT ---
                     full_prompt = f"""Sen YolPedia asistanısın.
                     KURALLAR:
                     1. Sadece aşağıdaki 'BİLGİLER' metinlerini kullan.
@@ -178,11 +188,10 @@ if prompt := st.chat_input("Bir soru sorun..."):
                             if chunk.text:
                                 for word in chunk.text.split(" "):
                                     yield word + " "
-                                    time.sleep(0.05)
+                                    time.sleep(0.03)
                                 full_text += chunk.text
                         
-                        # --- AKIL SÜZGECİ (Link Gizleme) ---
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         
                         if not cevap_olumsuz:
@@ -201,18 +210,36 @@ if prompt := st.chat_input("Bir soru sorun..."):
         else:
             st.error("Veri tabanı yüklenemedi.")
 
-# --- YAN MENÜ (SIDEBAR) ---
+# --- YAN MENÜ (MÜFETTİŞ MODU) ---
 with st.sidebar:
-    st.header("⚙️ Yönetim")
-    
-    if st.button("🔄 Önbelleği Temizle"):
-        st.cache_data.clear()
-        st.rerun()
-        
-    st.divider()
+    st.header("⚙️ Yönetim & Kontrol")
     
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        if st.checkbox("Yüklü Başlıkları Gör"):
-            for item in st.session_state.db:
-                st.text(item['baslik'])
+        
+        st.divider()
+        st.subheader("🕵️ Veri Müfettişi")
+        st.info("Aradığın kelimenin veri tabanında olup olmadığını buradan test et.")
+        test_arama = st.text_input("Kelime ara (Örn: Otman Baba)")
+        
+        if test_arama:
+            bulunan_sayisi = 0
+            for v in st.session_state.db:
+                norm_baslik = tr_normalize(v['baslik'])
+                norm_icerik = tr_normalize(v['icerik'])
+                norm_aranan = tr_normalize(test_arama)
+                
+                if norm_aranan in norm_baslik or norm_aranan in norm_icerik:
+                    st.text(f"✅ BULUNDU: {v['baslik']}")
+                    bulunan_sayisi += 1
+                    if bulunan_sayisi >= 5: break # Çok fazla listeleme
+            
+            if bulunan_sayisi == 0:
+                st.error("❌ Bu kelime JSON dosyasında YOK! (İndirme eksik yapılmış olabilir)")
+            else:
+                st.success(f"Toplam {bulunan_sayisi}+ eşleşme var.")
+
+    st.divider()
+    if st.button("🔄 Önbelleği Temizle"):
+        st.cache_data.clear()
+        st.rerun()
