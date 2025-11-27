@@ -197,9 +197,11 @@ if prompt := st.chat_input("Bir soru sorun..."):
                     full_text = ""
                     for chunk in stream:
                         if chunk.text:
-                            for word in chunk.text.split(" "):
-                                yield word + " "
-                                time.sleep(0.03)
+                            # YENİ HALİ: Harf harf işliyoruz
+                            for char in chunk.text:
+                                yield char
+                                # Harf bazlı olduğu için süreyi kısalttık (daha akıcı olsun diye)
+                                time.sleep(0.002) 
                             full_text += chunk.text
                     
                     negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
