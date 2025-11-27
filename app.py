@@ -28,34 +28,15 @@ except:
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- CSS (MİNİMALİST TASARIM) ---
+# --- CSS (SADE VE TEMİZ) ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
     .logo-img { width: 80px; margin-right: 15px; }
     .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    
-    /* Detay Butonu */
+    /* Sadece Detay butonu için stil */
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
-    
-    /* İndirme Butonu (Görünmez yapıp sadece ikonu bırakıyoruz) */
-    [data-testid="stDownloadButton"] {
-        border: none;
-        background: transparent;
-        padding: 0;
-        margin: 0;
-    }
-    [data-testid="stDownloadButton"] button {
-        background-color: transparent !important;
-        border: none !important;
-        color: #aaa !important;
-        font-size: 20px !important;
-        padding: 0px !important;
-    }
-    [data-testid="stDownloadButton"] button:hover {
-        color: #fff !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,6 +61,10 @@ def model_yukle():
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'pro' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
@@ -163,32 +148,17 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- SOHBET GEÇMİŞİ ---
+# --- SOHBET GEÇMİŞİ (SADECE METİN) ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
 
-# Mesajları Ekrana Bas
-for i, message in enumerate(st.session_state.messages):
+for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        # Streamlit artık Code Block içinde otomatik kopyala butonu sunuyor.
-        # Metni normal markdown yerine code gibi göstermeden kopyalanabilir yapmanın hilesi:
         st.markdown(message["content"])
-        
-        # Sadece Asistan ve uzun mesajlar için İNDİRME BUTONU (İkon Şeklinde)
-        if message["role"] == "assistant" and len(message["content"]) > 50:
-            # CSS ile bu butonu sadece bir ikon haline getirdik (📥)
-            st.download_button(
-                label="📥",
-                data=message["content"],
-                file_name=f"yolpedia_cevap_{i}.txt",
-                mime="text/plain",
-                key=f"dl_{i}",
-                help="Bu cevabı indir"
-            )
 
-# --- DETAY BUTONU ---
+# --- DETAY BUTONU TETİKLEYİCİ ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
@@ -248,9 +218,11 @@ if is_user_input or is_detail_click:
             try:
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    Senin adın 'Can'. 
-                    Kullanıcı dili neyse o dilde sohbet et.
-                    "Merhaba ben Can" diye başlama.
+                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
+                    Kullanıcı seninle sohbet ediyor. 
+                    KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
+                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA.
+                    
                     KULLANICI MESAJI: {user_msg}
                     """
                 else:
@@ -314,9 +286,12 @@ son_niyet = st.session_state.get('son_niyet', "")
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
+    # Sadece Arama ise ve cevap olumluysa Detay butonu göster
     if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
         if len(last_msg) < 5000:
-            st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
 
 # --- YAN MENÜ ---
 with st.sidebar:
