@@ -67,15 +67,29 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİ YÜKLEME ---
-@st.cache_data(persist="disk", show_spinner=False)
-def veri_yukle():
+# --- MODELİ BUL (AKILLI VE KESİN) ---
+@st.cache_resource
+def model_yukle():
+    generation_config = {"temperature": 0.0}
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            veriler = json.load(f)
-        return veriler
-    except FileNotFoundError:
-        return []
+        # 1. Önce Flash modelini ara (En hızlısı)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        
+        # 2. Flash yoksa Pro modelini ara
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'pro' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+                    
+        # 3. Hiçbiri yoksa çalışan ilk modeli al
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
+    except:
+        return None
+
+model = model_yukle()
 
 # --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
