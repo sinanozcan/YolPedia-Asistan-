@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components # <--- YENİ: Kaydırma için gerekli
 import requests
 from requests.auth import HTTPBasicAuth
 from bs4 import BeautifulSoup
@@ -38,8 +39,20 @@ st.markdown("""
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 20px; font-family: 'Georgia', serif; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } .motto-text { color: #555555; } }
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
+    .element-container { margin-bottom: 0px !important; }
 </style>
 """, unsafe_allow_html=True)
+
+# --- OTOMATİK KAYDIRMA FONKSİYONU ---
+def otomatik_kaydir():
+    # JavaScript ile sayfayı en alta iteler
+    js = """
+    <script>
+        var body = window.parent.document.querySelector(".main");
+        body.scrollTop = body.scrollHeight;
+    </script>
+    """
+    components.html(js, height=0)
 
 # --- BAŞLIK ---
 st.markdown(
@@ -76,8 +89,8 @@ def niyet_analizi(soru):
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR:
-        - Bilgi araması (Dersim, Kimdir, Nedir, Anlat): "ARAMA"
-        - Sohbet (Merhaba, Selam, Teşekkür, Adın ne): "SOHBET"
+        - Bilgi araması: "ARAMA"
+        - Sohbet: "SOHBET"
         CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -90,9 +103,7 @@ def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Kullanıcının ASIL MERAK ETTİĞİ KONUYU (Entity) bul.
-        "Dedem", "Hocam", "Can" gibi hitapları at.
-        ÖRNEK: "Dedem Alevi kime denir?" -> Alevi
+        GÖREV: Kullanıcının ASIL MERAK ETTİĞİ KONUYU bul. Hitapları at.
         CEVAP:
         """
         response = model.generate_content(prompt)
@@ -196,6 +207,8 @@ if is_user_input or is_detail_click:
     if is_user_input:
          with st.chat_message("user"):
             st.markdown(user_msg)
+            # Soru sorulduğu an aşağı kaydır
+            otomatik_kaydir()
 
     with st.chat_message("assistant"):
         baglam = None
@@ -217,25 +230,21 @@ if is_user_input or is_detail_click:
                         st.session_state.son_kaynaklar = kaynaklar
             
             try:
-                # --- PROMPTLAR ---
                 if niyet == "SOHBET":
                     full_prompt = f"""
                     Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
                     Kullanıcı ile sohbet et.
-                    
                     KURALLAR:
                     1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
                     2. Kullanıcının dili neyse o dilde cevap ver.
-                    3. ASLA "Evlat", "Yavrum", "Çocuğum" deme. Bu yasak.
-                    4. Hitap olarak "Erenler" veya "Can" kullan.
-                    
+                    3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
                     MESAJ: {user_msg}
                     """
                 else:
                     bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. DİL: Kullanıcı dili."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: Kullanıcı dili."
                     else:
                         if detay_modu:
                             gorev = f"GÖREVİN: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
@@ -245,13 +254,11 @@ if is_user_input or is_detail_click:
                         full_prompt = f"""
                         Sen 'Can Dede'sin.
                         {gorev}
-                        
                         KURALLAR:
-                        1. "Yol bir, sürek binbir" ilkesiyle, farklı görüşleri birleştirici bir dille anlat.
-                        2. ASLA "Evlat", "Yavrum" deme. Hitabın "Erenler" veya "Can" olsun.
+                        1. "Yol bir, sürek binbir" ilkesiyle anlat.
+                        2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
                         3. Kullanıcının dili neyse o dilde cevap ver.
-                        4. "Metinlerde yazdığına göre" gibi yapay girişler yapma.
-                        
+                        4. Giriş cümlesi yapma.
                         BİLGİLER: {baglam}
                         """
                 
@@ -275,7 +282,7 @@ if is_user_input or is_detail_click:
                             continue
                     
                     if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         if not cevap_olumsuz:
                             kaynak_metni = "\n\n**📚 Kaynaklar / Sources:**\n"
@@ -289,8 +296,8 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                # GÖLGE SORUNU ÇÖZÜMÜ: Buradan RERUN'ı kaldırdık.
-                # Rerun sadece butonun görünmesi için gerekiyorsa, onu aşağıda halledeceğiz.
+                # CEVAP BİTİNCE SAYFAYI KAYDIR
+                otomatik_kaydir()
 
             except Exception as e:
                 pass
@@ -304,7 +311,8 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
-                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
+                if st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle):
+                    pass # Tıklanınca rerun olacak ve yukarıdaki kod çalışacak
 
 # --- YAN MENÜ ---
 with st.sidebar:
