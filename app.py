@@ -60,7 +60,7 @@ st.markdown("""
     .top-logo-container {
         display: flex;
         justify-content: center;
-        margin-bottom: 15px;
+        margin-bottom: 45px;
         padding-top: 10px;
     }
     .top-logo {
@@ -72,7 +72,7 @@ st.markdown("""
         font-size: 16px; 
         font-style: italic; 
         color: #cccccc; 
-        margin-bottom: 90px; 
+        margin-bottom: 25px; 
         font-family: 'Georgia', serif; 
     }
     @media (prefers-color-scheme: light) { 
