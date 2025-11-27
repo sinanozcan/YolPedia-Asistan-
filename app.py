@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components # <--- YENİ: Kaydırma için gerekli
+import streamlit.components.v1 as components
 import requests
 from requests.auth import HTTPBasicAuth
 from bs4 import BeautifulSoup
@@ -15,38 +15,108 @@ API_KEY = st.secrets["API_KEY"]
 WP_USER = st.secrets["WP_USER"]
 WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
-LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
-LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
+
+# --- RESİMLER ---
+# 1. Sitenin Logosu (En tepedeki küçük ikon)
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
+
+# 2. Can Dede'nin Resmi (Başlığın yanındaki portre)
+# BURAYA YENİ OLUŞTURDUĞUN DEDE RESMİNİN LİNKİNİ YAPIŞTIR:
+CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 # ===========================================
 
-# --- FAVICON ---
+# --- FAVICON (Tarayıcı Sekmesi için Yolpedia Logosu) ---
 try:
-    response = requests.get(LOGO_URL, timeout=5)
+    response = requests.get(YOLPEDIA_ICON, timeout=5)
     favicon = Image.open(BytesIO(response.content))
 except:
     favicon = "🤖"
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- CSS ---
+# --- CSS TASARIM ---
 st.markdown("""
 <style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 5px; }
-    .logo-img { width: 80px; margin-right: 15px; }
-    .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
-    .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 20px; font-family: 'Georgia', serif; }
-    @media (prefers-color-scheme: light) { .title-text { color: #000000; } .motto-text { color: #555555; } }
+    /* Ana Başlık Kutusu */
+    .main-header { 
+        display: flex; 
+        align-items: center; 
+        justify-content: center; 
+        margin-top: 5px; 
+        margin-bottom: 5px; 
+    }
+    /* Can Dede Resmi */
+    .dede-img { 
+        width: 80px; 
+        height: 80px; 
+        border-radius: 50%; /* Yuvarlak yapar */
+        margin-right: 15px; 
+        object-fit: cover;
+        border: 2px solid #eee; /* İnce çerçeve */
+    }
+    /* Can Dede Yazısı */
+    .title-text { 
+        font-size: 36px; 
+        font-weight: 700; 
+        margin: 0; 
+        color: #ffffff; 
+    }
+    /* YolPedia Üst Logosu */
+    .top-logo-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 15px;
+        padding-top: 10px;
+    }
+    .top-logo {
+        width: 50px;
+        opacity: 0.8; /* Biraz şeffaf dursun, çok bağırmasın */
+    }
+    /* Motto Yazısı */
+    .motto-text { 
+        text-align: center; 
+        font-size: 16px; 
+        font-style: italic; 
+        color: #cccccc; 
+        margin-bottom: 25px; 
+        font-family: 'Georgia', serif; 
+    }
+    
+    @media (prefers-color-scheme: light) { 
+        .title-text { color: #000000; } 
+        .motto-text { color: #555555; }
+        .dede-img { border: 2px solid #ccc; }
+    }
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
     .element-container { margin-bottom: 0px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- OTOMATİK KAYDIRMA FONKSİYONU ---
+# --- SAYFA GÖRÜNÜMÜ (HTML) ---
+st.markdown(
+    f"""
+    <!-- 1. EN ÜST: YOLPEDIA LOGOSU -->
+    <div class="top-logo-container">
+        <img src="{YOLPEDIA_ICON}" class="top-logo">
+    </div>
+
+    <!-- 2. ORTA: CAN DEDE VE RESMİ -->
+    <div class="main-header">
+        <img src="{CAN_DEDE_ICON}" class="dede-img">
+        <h1 class="title-text">Can Dede</h1>
+    </div>
+
+    <!-- 3. ALT: MOTTO -->
+    <div class="motto-text">{MOTTO}</div>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- OTOMATİK KAYDIRMA ---
 def otomatik_kaydir():
-    # JavaScript ile sayfayı en alta iteler
     js = """
     <script>
         var body = window.parent.document.querySelector(".main");
@@ -54,18 +124,6 @@ def otomatik_kaydir():
     </script>
     """
     components.html(js, height=0)
-
-# --- BAŞLIK ---
-st.markdown(
-    f"""
-    <div class="main-header">
-        <img src="{LOGO_URL}" class="logo-img">
-        <h1 class="title-text">Can Dede</h1>
-    </div>
-    <div class="motto-text">{MOTTO}</div>
-    """,
-    unsafe_allow_html=True
-)
 
 genai.configure(api_key=API_KEY)
 
@@ -208,7 +266,6 @@ if is_user_input or is_detail_click:
     if is_user_input:
          with st.chat_message("user"):
             st.markdown(user_msg)
-            # Soru sorulduğu an aşağı kaydır
             otomatik_kaydir()
 
     with st.chat_message("assistant"):
@@ -245,7 +302,7 @@ if is_user_input or is_detail_click:
                     bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: Kullanıcı dili."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. DİL: Kullanıcı dili."
                     else:
                         if detay_modu:
                             gorev = f"GÖREVİN: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
@@ -283,7 +340,7 @@ if is_user_input or is_detail_click:
                             continue
                     
                     if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         if not cevap_olumsuz:
                             kaynak_metni = "\n\n**📚 Kaynaklar / Sources:**\n"
@@ -296,8 +353,6 @@ if is_user_input or is_detail_click:
 
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
-                
-                # CEVAP BİTİNCE SAYFAYI KAYDIR
                 otomatik_kaydir()
 
             except Exception as e:
@@ -312,8 +367,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
-                if st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle):
-                    pass # Tıklanınca rerun olacak ve yukarıdaki kod çalışacak
+                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
 
 # --- YAN MENÜ ---
 with st.sidebar:
