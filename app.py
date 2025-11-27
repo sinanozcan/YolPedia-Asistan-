@@ -71,7 +71,7 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- 1. AJAN: NİYET OKUYUCU ---
+# --- 1. NİYET OKUYUCU ---
 def niyet_analizi(soru):
     try:
         prompt = f"""
@@ -86,7 +86,7 @@ def niyet_analizi(soru):
     except:
         return "ARAMA"
 
-# --- 2. AJAN: ANAHTAR KELİME AYIKLAYICI ---
+# --- 2. ANAHTAR KELİME AYIKLAYICI ---
 def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
@@ -101,7 +101,6 @@ def anahtar_kelime_ayikla(soru):
         """
         response = model.generate_content(prompt)
         text = response.text.strip()
-        # Eğer model boş veya saçma dönerse orijinal soruyu kullan
         return text if len(text) > 1 else soru
     except:
         return soru
@@ -136,7 +135,6 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
         puan = 0
-        # Tam eşleşme bonusu
         if soru_temiz in baslik_norm: puan += 100
         elif soru_temiz in icerik_norm: puan += 40
         
@@ -186,11 +184,9 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # 1. Niyeti Anla
         niyet = niyet_analizi(prompt)
         st.session_state.son_niyet = niyet
         
-        # 2. Eğer aramaysa kelimeyi temizle
         arama_kelimesi = prompt
         if niyet == "ARAMA":
             arama_kelimesi = anahtar_kelime_ayikla(prompt)
@@ -200,7 +196,6 @@ if is_user_input or is_detail_click:
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
-        # Detayda da kelimeyi tekrar temizlemeye gerek yok, eski bağlamı kullanacağız ama garanti olsun
         arama_kelimesi = anahtar_kelime_ayikla(user_msg)
         st.session_state.son_niyet = "ARAMA"
 
@@ -223,7 +218,6 @@ if is_user_input or is_detail_click:
                         kaynaklar = st.session_state.son_kaynaklar
                         detay_modu = True
                     else:
-                        # Temizlenmiş kelime ile ara
                         baglam, kaynaklar = alakali_icerik_bul(arama_kelimesi, st.session_state.db)
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
@@ -233,7 +227,7 @@ if is_user_input or is_detail_click:
                     full_prompt = f"""
                     Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
                     Kullanıcı seninle sohbet ediyor. 
-                    KURAL 1: Kullanıcı hangi dilde yazdıysa (Almanca, İngilizce vb.), MUTLAKA o dilde cevap ver.
+                    KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
                     KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA.
                     
                     KULLANICI MESAJI: {user_msg}
@@ -254,7 +248,7 @@ if is_user_input or is_detail_click:
                         {gorev}
                         
                         KURALLAR:
-                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (Almanca, İngilizce vb.), cevabı O DİLDE ver. Elindeki bilgiler Türkçe olsa bile sen çevirerek anlat.
+                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (TR, EN, DE), cevabı O DİLDE ver. Elindeki bilgiler Türkçe olsa bile çevirerek anlat.
                         2. Asla uydurma yapma.
                         3. "YolPedia'ya göre" gibi girişler yapma.
                         4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
@@ -266,8 +260,9 @@ if is_user_input or is_detail_click:
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Hata: {e}")
+                st.error(f"Bağlantı Hatası: {e}")
 
+        # --- YAZDIRMA ---
         if stream:
             try:
                 def stream_parser():
@@ -280,10 +275,11 @@ if is_user_input or is_detail_click:
                                     time.sleep(0.001)
                                 full_text += chunk.text
                         except ValueError:
-                            continue 
-                
+                            continue
+                    
+                    # Linkleri sadece ARAMA modunda, bilgi varsa ve olumluysa göster
                     if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "not found", "keine information", "leider"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information", "leider"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         
                         if not cevap_olumsuz:
@@ -291,3 +287,50 @@ if is_user_input or is_detail_click:
                             essiz = {v['link']:v for v in kaynaklar}.values()
                             for k in essiz:
                                 kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                            for char in kaynak_metni:
+                                yield char
+                                time.sleep(0.001)
+
+                response_text = st.write_stream(stream_parser)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                
+                if niyet == "ARAMA" and not detay_modu:
+                    st.rerun()
+            except Exception as e:
+                # Hata olursa sessizce geç
+                pass
+
+# --- DETAY BUTONU ---
+son_niyet = st.session_state.get('son_niyet', "")
+if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+    last_msg = st.session_state.messages[-1]["content"]
+    
+    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
+        if len(last_msg) < 5000:
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
+
+# --- YAN MENÜ ---
+with st.sidebar:
+    st.header("⚙️ Yönetim")
+    if st.button("🔄 Önbelleği Temizle"):
+        st.cache_data.clear()
+        st.rerun()
+    st.divider()
+    if 'db' in st.session_state:
+        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
+        st.divider()
+        st.subheader("🕵️ Veri Müfettişi")
+        test = st.text_input("Ara:", placeholder="Örn: Otman Baba")
+        if test:
+            say = 0
+            norm_test = tr_normalize(test)
+            for v in st.session_state.db:
+                nb = tr_normalize(v['baslik'])
+                ni = tr_normalize(v['icerik'])
+                if norm_test in nb or norm_test in ni:
+                    st.success(f"✅ {v['baslik']}")
+                    say += 1
+                    if say >= 5: break
+            if say == 0: st.error("❌ Bulunamadı")
