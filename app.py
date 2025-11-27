@@ -27,21 +27,40 @@ except:
 
 st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
 
-# --- CSS (GÖRÜNÜM) ---
-st.markdown("""
-<style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
-    .logo-img { width: 80px; margin-right: 15px; }
-    .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
-    @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    /* Detay butonu stili */
-    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
-</style>
-""", unsafe_allow_html=True)
-
-# --- BAŞLIK ---
+# --- BAŞLIK VE LOGO ---
 st.markdown(
     f"""
+    <style>
+    .main-header {{
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 20px;
+        margin-bottom: 30px;
+    }}
+    .logo-img {{
+        width: 90px;
+        margin-right: 20px;
+    }}
+    .title-text {{
+        font-size: 42px;
+        font-weight: 700;
+        margin: 0;
+        color: #ffffff;
+    }}
+    @media (prefers-color-scheme: light) {{
+        .title-text {{ color: #000000; }}
+    }}
+    /* Buton stili */
+    .stButton button {{
+        width: 100%;
+        border-radius: 12px;
+        font-weight: bold;
+        border: 1px solid #ddd;
+        padding: 10px;
+    }}
+    </style>
+    
     <div class="main-header">
         <img src="{LOGO_URL}" class="logo-img">
         <h1 class="title-text">YolPedia Asistanı</h1>
@@ -52,12 +71,32 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ YÜKLE ---
+# --- MODELİ BUL (GÜÇLENDİRİLMİŞ VERSİYON) ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
+    
     try:
-        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
+        # 1. Önce Flash modelini ara (En Hızlı)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        
+        # 2. Flash yoksa Pro modelini ara (Daha Akıllı)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'pro' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+
+        # 3. Hiçbiri yoksa çalışan İLK modeli al (Garanti)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                return genai.GenerativeModel(m.name, generation_config=generation_config)
+                
+        # 4. En kötü ihtimalle manuel tanımla (Gemini Pro genelde hep çalışır)
+        return genai.GenerativeModel('gemini-pro', generation_config=generation_config)
+        
     except:
         return None
 
@@ -75,9 +114,10 @@ def veri_yukle():
 
 # --- BAŞLANGIÇ KONTROLÜ ---
 if 'db' not in st.session_state:
-    with st.spinner('Sistem başlatılıyor...'):
+    with st.spinner('Sistem hazırlanıyor...'):
         st.session_state.db = veri_yukle()
-    # İlk açılışta yenilemeye gerek yok, akış devam etsin
+    time.sleep(0.1)
+    st.rerun()
 
 # --- YARDIMCI FONKSİYONLAR ---
 def tr_normalize(metin):
@@ -98,6 +138,7 @@ def alakali_icerik_bul(soru, tum_veriler):
         puan = 0
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
+        
         for k in anahtar:
             if k in baslik_norm: puan += 3
             elif k in icerik_norm: puan += 1
@@ -116,60 +157,26 @@ def alakali_icerik_bul(soru, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- YAN MENÜ (EN BAŞTA OLSUN) ---
-with st.sidebar:
-    st.header("⚙️ Yönetim")
-    
-    if st.button("🔄 Önbelleği Temizle"):
-        st.cache_data.clear()
-        st.rerun()
-        
-    st.divider()
-    
-    if 'db' in st.session_state:
-        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        
-        # --- MÜFETTİŞ ---
-        st.divider()
-        st.subheader("🕵️ Veri Müfettişi")
-        test_arama = st.text_input("Veri tabanında ara:", placeholder="Örn: Otman Baba")
-        
-        if test_arama:
-            bulunan_sayisi = 0
-            norm_aranan = tr_normalize(test_arama)
-            for v in st.session_state.db:
-                norm_baslik = tr_normalize(v['baslik'])
-                norm_icerik = tr_normalize(v['icerik'])
-                if norm_aranan in norm_baslik or norm_aranan in norm_icerik:
-                    st.success(f"✅ {v['baslik']}")
-                    bulunan_sayisi += 1
-                    if bulunan_sayisi >= 5: break
-            if bulunan_sayisi == 0:
-                st.error("❌ Bu kelime veritabanında yok!")
-
 # --- SOHBET ARAYÜZÜ ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Mesajları Ekrana Bas
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- BUTON TETİKLEYİCİ ---
+# --- BUTON TETİKLEYİCİSİ ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
-# --- GİRİŞ ALANI ---
+# Kullanıcı girişi
 prompt = st.chat_input("Bir soru sorun...")
 
 is_user_input = prompt is not None
 is_detail_click = st.session_state.get('detay_istendi', False)
 
-# --- İŞLEM MANTIĞI ---
 if is_user_input or is_detail_click:
     
-    # 1. Yeni Soru
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -178,12 +185,10 @@ if is_user_input or is_detail_click:
         st.session_state.son_soru = prompt
         user_msg = prompt
         
-    # 2. Detay Butonu
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
 
-    # Kullanıcı mesajını ekrana bas (Sadece yeniyse)
     if is_user_input:
          with st.chat_message("user"):
             st.markdown(user_msg)
@@ -195,13 +200,11 @@ if is_user_input or is_detail_click:
             kaynaklar = None
             detay_modu = False
             
-            # Detay isteği mi?
             if is_detail_click and st.session_state.get('son_baglam'):
                 baglam = st.session_state.son_baglam
                 kaynaklar = st.session_state.son_kaynaklar
                 detay_modu = True
             else:
-                # Normal arama
                 with st.spinner("🔎 Ansiklopedi taranıyor..."):
                     time.sleep(0.3)
                     baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
@@ -252,7 +255,7 @@ if is_user_input or is_detail_click:
                                     time.sleep(0.001)
                                 full_text += chunk.text
                         
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         
                         if not cevap_olumsuz and kaynaklar:
@@ -271,17 +274,38 @@ if is_user_input or is_detail_click:
 
                 except Exception as e:
                     st.error(f"Hata: {e}")
-        else:
-            st.error("Veri tabanı yüklenemedi.")
 
-# --- DETAY BUTONU ---
+# --- DETAY BUTONU (SINIR 5000) ---
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
-    # Hata değilse ve cevap olumsuz değilse buton göster
     if "Hata" not in last_msg and "bulunmuyor" not in last_msg:
-        # Sınırı 5000'e çıkardık, özetler uzun olsa bile buton görünsün
+        # 5000 Karakter altındaysa buton göster
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
                 st.button("📜 Bu Konuyu Detaylandır", on_click=detay_tetikle)
+
+# --- YAN MENÜ ---
+with st.sidebar:
+    st.header("⚙️ Yönetim")
+    if st.button("🔄 Önbelleği Temizle"):
+        st.cache_data.clear()
+        st.rerun()
+    st.divider()
+    if 'db' in st.session_state:
+        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
+        st.divider()
+        st.subheader("🕵️ Veri Müfettişi")
+        test = st.text_input("Ara:", placeholder="Örn: Mustafa Sazcı")
+        if test:
+            say = 0
+            norm_test = tr_normalize(test)
+            for v in st.session_state.db:
+                nb = tr_normalize(v['baslik'])
+                ni = tr_normalize(v['icerik'])
+                if norm_test in nb or norm_test in ni:
+                    st.success(f"✅ {v['baslik']}")
+                    say += 1
+                    if say >= 5: break
+            if say == 0: st.error("❌ Bulunamadı")
