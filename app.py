@@ -68,7 +68,7 @@ st.markdown("""
     .top-logo-container {
         display: flex;
         justify-content: center;
-        margin-bottom: 25px;
+        margin-bottom: 45px;
         padding-top: 10px;
     }
     .top-logo {
