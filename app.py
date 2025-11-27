@@ -71,32 +71,27 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL (GÜÇLENDİRİLMİŞ VERSİYON) ---
+# --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
+    secilen_model_adi = None
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
-    
     try:
-        # 1. Önce Flash modelini ara (En Hızlı)
+        # 1. Önce Flash
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
-        
-        # 2. Flash yoksa Pro modelini ara (Daha Akıllı)
+        # 2. Yoksa Pro
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'pro' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
-
-        # 3. Hiçbiri yoksa çalışan İLK modeli al (Garanti)
+        # 3. Hiçbiri yoksa ilki
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 return genai.GenerativeModel(m.name, generation_config=generation_config)
-                
-        # 4. En kötü ihtimalle manuel tanımla (Gemini Pro genelde hep çalışır)
-        return genai.GenerativeModel('gemini-pro', generation_config=generation_config)
-        
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
@@ -177,6 +172,7 @@ is_detail_click = st.session_state.get('detay_istendi', False)
 
 if is_user_input or is_detail_click:
     
+    # 1. Yeni Soru (ÖZET MODU)
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -184,14 +180,22 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         user_msg = prompt
+        ekrana_basilacak_mesaj = prompt
         
+    # 2. Detay Butonu (DETAY MODU)
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
+        
+        # --- BURASI DÜZELTİLDİ: Sohbete "Detaylandır" mesajı ekle ---
+        detay_mesaji = "Bu konuyu detaylandır."
+        st.session_state.messages.append({"role": "user", "content": detay_mesaji})
+        ekrana_basilacak_mesaj = detay_mesaji
+        # -------------------------------------------------------------
 
-    if is_user_input:
-         with st.chat_message("user"):
-            st.markdown(user_msg)
+    # Kullanıcı mesajını ekrana bas (Sadece anlık işlem için)
+    with st.chat_message("user"):
+        st.markdown(ekrana_basilacak_mesaj)
 
     with st.chat_message("assistant"):
         if 'db' in st.session_state and st.session_state.db:
@@ -200,14 +204,17 @@ if is_user_input or is_detail_click:
             kaynaklar = None
             detay_modu = False
             
+            # Detay isteği mi? (Hafızadan Çek)
             if is_detail_click and st.session_state.get('son_baglam'):
                 baglam = st.session_state.son_baglam
                 kaynaklar = st.session_state.son_kaynaklar
                 detay_modu = True
             else:
+                # Yeni Arama Yap
                 with st.spinner("🔎 Ansiklopedi taranıyor..."):
                     time.sleep(0.3)
                     baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
+                    
                     st.session_state.son_baglam = baglam
                     st.session_state.son_kaynaklar = kaynaklar
 
@@ -274,14 +281,28 @@ if is_user_input or is_detail_click:
 
                 except Exception as e:
                     st.error(f"Hata: {e}")
+        else:
+            st.error("Veri tabanı yüklenemedi.")
 
-# --- DETAY BUTONU (SINIR 5000) ---
+# --- DETAY BUTONU ---
+# Son mesajı kontrol et
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-    last_msg = st.session_state.messages[-1]["content"]
+    last_assistant_msg = st.session_state.messages[-1]["content"]
     
-    if "Hata" not in last_msg and "bulunmuyor" not in last_msg:
-        # 5000 Karakter altındaysa buton göster
-        if len(last_msg) < 5000:
+    # Butonu ne zaman göstereceğiz?
+    # 1. Hata yoksa
+    # 2. Cevap olumsuz değilse
+    # 3. Kullanıcı zaten "Detaylandır" dememişse
+    
+    # Kullanıcının son mesajını bul (Sondan ikinci mesaj)
+    if len(st.session_state.messages) >= 2:
+        last_user_msg = st.session_state.messages[-2]["content"]
+    else:
+        last_user_msg = ""
+
+    if "Hata" not in last_assistant_msg and "bulunmuyor" not in last_assistant_msg:
+        # Eğer son kullanıcı mesajında "detay" kelimesi geçmiyorsa buton göster
+        if "detay" not in last_user_msg.lower():
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
                 st.button("📜 Bu Konuyu Detaylandır", on_click=detay_tetikle)
