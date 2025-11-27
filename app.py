@@ -72,7 +72,7 @@ st.markdown("""
         font-size: 16px; 
         font-style: italic; 
         color: #cccccc; 
-        margin-bottom: 45px; 
+        margin-bottom: 90px; 
         font-family: 'Georgia', serif; 
     }
     @media (prefers-color-scheme: light) { 
