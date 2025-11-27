@@ -17,7 +17,7 @@ WEBSITE_URL = "https://yolpedia.eu"
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
-MOTTO = '"Yol bir, sürek binbir..."'
+MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 # ===========================================
 
 # --- FAVICON ---
@@ -58,16 +58,11 @@ genai.configure(api_key=API_KEY)
 # --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
-    # Dede olduğu için temperature'ı çok az artırdık (0.1) ki cümleleri daha akıcı kursun ama uydurmasın
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'pro' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
@@ -75,14 +70,14 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- NİYET OKUYUCU ---
+# --- 1. AJAN: NİYET OKUYUCU ---
 def niyet_analizi(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet (Selam, hal hatır, teşekkür): "SOHBET"
+        - Bilgi araması (Dersim, Kimdir, Nedir, Anlat): "ARAMA"
+        - Sohbet (Merhaba, Selam, Teşekkür, Adın ne): "SOHBET"
         CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -90,12 +85,14 @@ def niyet_analizi(soru):
     except:
         return "ARAMA"
 
-# --- KELİME AYIKLAYICI ---
+# --- 2. AJAN: HİTAP TEMİZLEYİCİ ---
 def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Konuyu (Entity) bul. Hitapları (Can, Dede, Hocam) ve ekleri at.
+        GÖREV: Kullanıcının ASIL MERAK ETTİĞİ KONUYU (Entity) bul.
+        "Dedem", "Hocam", "Can" gibi hitapları at.
+        ÖRNEK: "Dedem Alevi kime denir?" -> Alevi
         CEVAP:
         """
         response = model.generate_content(prompt)
@@ -143,13 +140,13 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
             puanlanmis.append({"veri": veri, "puan": puan})
     
     puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = puanlanmis[:7] # Daha fazla kaynak okusun ki sentez yapabilsin (5 -> 7)
+    en_iyiler = puanlanmis[:7]
     
     bulunanlar = ""
     kaynaklar = []
     for item in en_iyiler:
         v = item['veri']
-        bulunanlar += f"\n--- KAYNAK BAŞLIĞI: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:12000]}\n"
+        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:12000]}\n"
         kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
     return bulunanlar, kaynaklar
@@ -164,7 +161,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- DETAY BUTONU ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
@@ -208,7 +204,7 @@ if is_user_input or is_detail_click:
         niyet = st.session_state.get('son_niyet', "ARAMA")
         stream = None
         
-        with st.spinner("Can Dede tefekkür ediyor..."):
+        with st.spinner("Can Dede düşünüyor..."):
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -221,39 +217,42 @@ if is_user_input or is_detail_click:
                         st.session_state.son_kaynaklar = kaynaklar
             
             try:
+                # --- PROMPTLAR ---
                 if niyet == "SOHBET":
                     full_prompt = f"""
                     Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
-                    Kullanıcı dili neyse o dilde, "Erenler" kültürüne uygun, nazik ve derinlikli sohbet et.
-                    Kendini tekrar tekrar tanıtma.
-                    KULLANICI: {user_msg}
+                    Kullanıcı ile sohbet et.
+                    
+                    KURALLAR:
+                    1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                    2. Kullanıcının dili neyse o dilde cevap ver.
+                    3. ASLA "Evlat", "Yavrum", "Çocuğum" deme. Bu yasak.
+                    4. Hitap olarak "Erenler" veya "Can" kullan.
+                    
+                    MESAJ: {user_msg}
                     """
                 else:
                     bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, bu konuyla ilgili arşivimizde henüz bir kayıt bulunmuyor.' de. DİL: Kullanıcının dili."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. DİL: Kullanıcı dili."
                     else:
                         if detay_modu:
-                            gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki farklı görüşleri ve bilgileri harmanlayarak, derinlemesine ve BÜTÜNCÜL bir bakış açısıyla anlat."
+                            gorev = f"GÖREVİN: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
                         else:
-                            gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki bilgileri süzgecinden geçirerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
+                            gorev = f"GÖREVİN: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
-                        # --- İŞTE CAN DEDE'NİN RUHU BURADA ---
                         full_prompt = f"""
-                        Sen 'Can Dede'sin. YolPedia'nın bilge rehberisin.
-                        
+                        Sen 'Can Dede'sin.
                         {gorev}
                         
-                        ÜSLUP VE FELSEFE:
-                        1. "Yol bir, sürek binbir" ilkesini unutma. Aşağıdaki metinlerde farklı görüşler, farklı yorumlar olabilir.
-                        2. ASLA bir görüşü kesin doğru, diğerini yanlış ilan etme. Çelişki görürsen "Farklı süreklerde/yorumlarda şöyle de ifade edilir..." diyerek zenginlik olarak sun.
-                        3. Sadece mekanik bir özet yapma; bilgileri birleştir, sentezle ve bir BİLGE gibi anlat.
-                        4. Kullanıcı hangi dilde sorduysa (Almanca, İngilizce vb.) o dilde cevap ver.
-                        5. "Metinlerde yazdığına göre..." gibi yapay girişler yapma. Bilgi seninmiş gibi doğal konuş.
+                        KURALLAR:
+                        1. "Yol bir, sürek binbir" ilkesiyle, farklı görüşleri birleştirici bir dille anlat.
+                        2. ASLA "Evlat", "Yavrum" deme. Hitabın "Erenler" veya "Can" olsun.
+                        3. Kullanıcının dili neyse o dilde cevap ver.
+                        4. "Metinlerde yazdığına göre" gibi yapay girişler yapma.
                         
-                        KAYNAK METİNLER:
-                        {baglam}
+                        BİLGİLER: {baglam}
                         """
                 
                 stream = model.generate_content(full_prompt, stream=True)
@@ -290,8 +289,9 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                if niyet == "ARAMA" and not detay_modu:
-                    st.rerun()
+                # GÖLGE SORUNU ÇÖZÜMÜ: Buradan RERUN'ı kaldırdık.
+                # Rerun sadece butonun görünmesi için gerekiyorsa, onu aşağıda halledeceğiz.
+
             except Exception as e:
                 pass
 
