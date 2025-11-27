@@ -28,37 +28,32 @@ except:
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- TASARIM (CSS) ---
+# --- CSS (MİNİMALİST TASARIM) ---
 st.markdown("""
 <style>
-    /* Başlık Alanı */
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 30px; }
+    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
     .logo-img { width: 80px; margin-right: 15px; }
     .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
     
-    /* Detay Butonu (Büyük ve Belirgin) */
-    .stButton button { 
-        width: 100%; 
-        border-radius: 12px; 
-        font-weight: bold; 
-        border: 1px solid #444; 
-        background-color: #262730; 
-        color: white;
+    /* Detay Butonu */
+    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
+    
+    /* İndirme Butonu (Görünmez yapıp sadece ikonu bırakıyoruz) */
+    [data-testid="stDownloadButton"] {
+        border: none;
+        background: transparent;
+        padding: 0;
+        margin: 0;
     }
-    .stButton button:hover { border-color: #ff4b4b; color: #ff4b4b; }
-
-    /* İndirme Butonu (Küçük ve Şık) */
-    div[data-testid="stDownloadButton"] button {
-        width: auto !important;
-        padding: 5px 15px !important;
-        font-size: 14px !important;
+    [data-testid="stDownloadButton"] button {
         background-color: transparent !important;
-        border: 1px solid #555 !important;
+        border: none !important;
         color: #aaa !important;
+        font-size: 20px !important;
+        padding: 0px !important;
     }
-    div[data-testid="stDownloadButton"] button:hover {
-        border-color: #fff !important;
+    [data-testid="stDownloadButton"] button:hover {
         color: #fff !important;
     }
 </style>
@@ -97,10 +92,7 @@ def niyet_analizi(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet: "SOHBET"
-        CEVAP: "ARAMA" veya "SOHBET"
+        KARAR: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
         return response.text.strip().upper()
@@ -171,7 +163,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- SOHBET GEÇMİŞİ VE BUTONLAR ---
+# --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
@@ -180,31 +172,23 @@ if "messages" not in st.session_state:
 # Mesajları Ekrana Bas
 for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
+        # Streamlit artık Code Block içinde otomatik kopyala butonu sunuyor.
+        # Metni normal markdown yerine code gibi göstermeden kopyalanabilir yapmanın hilesi:
         st.markdown(message["content"])
         
-        # --- BUTONLARI EKLE (Sadece Asistan için) ---
+        # Sadece Asistan ve uzun mesajlar için İNDİRME BUTONU (İkon Şeklinde)
         if message["role"] == "assistant" and len(message["content"]) > 50:
-            
-            # Sütunları sıkıştırıyoruz ki butonlar küçük dursun
-            c1, c2, c3 = st.columns([2, 8, 2])
-            
-            # Kopyalama (Code Block Hilesi)
-            # Bu, metni kopyalanabilir bir kutuda gösterir (Sağ üstte kopyala ikonu olur)
-            with c1:
-               with st.popover("📋 Kopyala"):
-                   st.code(message["content"], language=None)
-            
-            # İndirme Butonu
-            with c3:
-                st.download_button(
-                    label="📥 İndir",
-                    data=message["content"],
-                    file_name=f"yolpedia_cevap_{i}.txt",
-                    mime="text/plain",
-                    key=f"dl_{i}"
-                )
+            # CSS ile bu butonu sadece bir ikon haline getirdik (📥)
+            st.download_button(
+                label="📥",
+                data=message["content"],
+                file_name=f"yolpedia_cevap_{i}.txt",
+                mime="text/plain",
+                key=f"dl_{i}",
+                help="Bu cevabı indir"
+            )
 
-# --- DETAY BUTONU İÇİN ---
+# --- DETAY BUTONU ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
@@ -264,11 +248,9 @@ if is_user_input or is_detail_click:
             try:
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
-                    Kullanıcı seninle sohbet ediyor. 
-                    KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
-                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA.
-                    
+                    Senin adın 'Can'. 
+                    Kullanıcı dili neyse o dilde sohbet et.
+                    "Merhaba ben Can" diye başlama.
                     KULLANICI MESAJI: {user_msg}
                     """
                 else:
@@ -334,9 +316,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
     
     if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
         if len(last_msg) < 5000:
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
+            st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
 
 # --- YAN MENÜ ---
 with st.sidebar:
