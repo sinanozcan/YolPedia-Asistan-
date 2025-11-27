@@ -68,11 +68,11 @@ st.markdown("""
     .top-logo-container {
         display: flex;
         justify-content: center;
-        margin-bottom: 15px;
+        margin-bottom: 25px;
         padding-top: 10px;
     }
     .top-logo {
-        width: 50px;
+        width: 150px;
         opacity: 0.8; /* Biraz şeffaf dursun, çok bağırmasın */
     }
     /* Motto Yazısı */
