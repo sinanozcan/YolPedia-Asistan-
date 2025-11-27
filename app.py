@@ -52,20 +52,28 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL ---
+# --- MODELİ BUL (GÜVENLİK AYARLARI EKLENDİ) ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
+    # Ansiklopedi olduğu için güvenlik filtrelerini en aza indiriyoruz ki hata vermesin
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+    ]
+    
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+                    return genai.GenerativeModel(m.name, generation_config=generation_config, safety_settings=safety_settings)
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'pro' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
-        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
+                    return genai.GenerativeModel(m.name, generation_config=generation_config, safety_settings=safety_settings)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config, safety_settings=safety_settings)
     except:
         return None
 
@@ -77,8 +85,8 @@ def niyet_analizi(soru):
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR KURALLARI:
-        - Bilgi araması (Örn: "Dersim nerede?", "Who is Otman Baba?", "Was ist Alevismus?"): "ARAMA"
-        - Sohbet, selam (Örn: "Merhaba", "Hello", "Wie gehts?"): "SOHBET"
+        - Bilgi araması (Örn: "Dersim nerede?", "Kimdir?", "Nedir?", "Anlat"): "ARAMA"
+        - Sohbet, selam, teşekkür, geri bildirim (Örn: "Merhaba", "Nasılsın", "Adın ne?", "Sağol"): "SOHBET"
         Sadece tek kelime cevap ver: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -108,9 +116,8 @@ def tr_normalize(metin):
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    # ÇOK DİLLİ FİLTRELEME İÇİN GEREKSİZ KELİMELERİ KALDIRDIK
-    # Sadece çok kısa kelimeleri eliyoruz
     soru_temiz = tr_normalize(soru)
+    # 2 harften uzun her kelimeyi ara
     anahtar = [k for k in soru_temiz.split() if len(k) > 2]
     
     puanlanmis = []
@@ -140,7 +147,6 @@ def alakali_icerik_bul(soru, tum_veriler):
 
 # --- SOHBET ARAYÜZÜ ---
 if "messages" not in st.session_state:
-    # İLK AÇILIŞ MESAJI
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
@@ -188,10 +194,10 @@ if is_user_input or is_detail_click:
         niyet = st.session_state.get('son_niyet', "ARAMA")
         stream = None
         
-        # --- TEK BİR SPINNER BLOĞU (DOĞAL BEKLEME) ---
+        # --- SPINNER ---
         with st.spinner("Can araştırıyor..."):
             
-            # 1. ARAMA İŞLEMİ (Sadece ARAMA niyetindeyse)
+            # ARAMA
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -199,12 +205,11 @@ if is_user_input or is_detail_click:
                         kaynaklar = st.session_state.son_kaynaklar
                         detay_modu = True
                     else:
-                        # Veritabanı taraması (Doğal süre)
                         baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # 2. GEMINI YANIT OLUŞTURMA
+            # YANIT OLUŞTURMA
             try:
                 if niyet == "SOHBET":
                     full_prompt = f"""
@@ -230,7 +235,7 @@ if is_user_input or is_detail_click:
                         {gorev}
                         
                         KURALLAR:
-                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa, cevabı ve açıklamaları o dilde yap. (İngilizce sorduysa İngilizce, Almanca sorduysa Almanca cevap ver). Elindeki BİLGİLER Türkçe olsa bile sen çevirerek anlat.
+                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (Türkçe, İngilizce, Almanca vb.), cevabı ve açıklamaları o dilde yap.
                         2. Asla uydurma yapma.
                         3. "YolPedia'ya göre" gibi girişler yapma.
                         4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
@@ -239,42 +244,48 @@ if is_user_input or is_detail_click:
                         {baglam}
                         """
                 
-                # API çağrısı (Doğal süre)
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Hata: {e}")
+                st.error(f"Bağlantı Hatası: {e}")
 
-        # --- SPINNER BİTTİ, YAZMAYA BAŞLA ---
-        
+        # --- YAZDIRMA (HATA KORUMALI) ---
         if stream:
-            def stream_parser():
-                full_text = ""
-                for chunk in stream:
-                    if chunk.text:
-                        for char in chunk.text:
-                            yield char
-                            time.sleep(0.001) # Akış hızı
-                        full_text += chunk.text
+            try:
+                def stream_parser():
+                    full_text = ""
+                    for chunk in stream:
+                        # BURAYA KORUMA EKLENDİ (ValueError Çözümü)
+                        try:
+                            if chunk.text:
+                                for char in chunk.text:
+                                    yield char
+                                    time.sleep(0.001)
+                                full_text += chunk.text
+                        except ValueError:
+                            continue # Boş paket gelirse atla, çökme
                 
-                if niyet == "ARAMA" and baglam and kaynaklar:
-                    negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
-                    cevap_olumsuz = any(n in full_text.lower() for n in negatif)
-                    
-                    if not cevap_olumsuz:
-                        kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
-                        essiz = {v['link']:v for v in kaynaklar}.values()
-                        for k in essiz:
-                            kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                        for char in kaynak_metni:
-                            yield char
-                            time.sleep(0.001)
+                    if niyet == "ARAMA" and baglam and kaynaklar:
+                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
+                        cevap_olumsuz = any(n in full_text.lower() for n in negatif)
+                        
+                        if not cevap_olumsuz:
+                            kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
+                            essiz = {v['link']:v for v in kaynaklar}.values()
+                            for k in essiz:
+                                kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                            for char in kaynak_metni:
+                                yield char
+                                time.sleep(0.001)
 
-            response_text = st.write_stream(stream_parser)
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
-            
-            if niyet == "ARAMA" and not detay_modu:
-                st.rerun()
+                response_text = st.write_stream(stream_parser)
+                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                
+                if niyet == "ARAMA" and not detay_modu:
+                    st.rerun()
+            except Exception as e:
+                # Eğer yine de bir hata olursa kullanıcıya hissettirme
+                pass
 
 # --- DETAY BUTONU ---
 son_niyet = st.session_state.get('son_niyet', "")
