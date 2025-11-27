@@ -28,15 +28,39 @@ except:
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- CSS ---
+# --- TASARIM (CSS) ---
 st.markdown("""
 <style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
+    /* Başlık Alanı */
+    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 30px; }
     .logo-img { width: 80px; margin-right: 15px; }
     .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
-    .stCodeBlock { margin-top: -20px; }
+    
+    /* Detay Butonu (Büyük ve Belirgin) */
+    .stButton button { 
+        width: 100%; 
+        border-radius: 12px; 
+        font-weight: bold; 
+        border: 1px solid #444; 
+        background-color: #262730; 
+        color: white;
+    }
+    .stButton button:hover { border-color: #ff4b4b; color: #ff4b4b; }
+
+    /* İndirme Butonu (Küçük ve Şık) */
+    div[data-testid="stDownloadButton"] button {
+        width: auto !important;
+        padding: 5px 15px !important;
+        font-size: 14px !important;
+        background-color: transparent !important;
+        border: 1px solid #555 !important;
+        color: #aaa !important;
+    }
+    div[data-testid="stDownloadButton"] button:hover {
+        border-color: #fff !important;
+        color: #fff !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,10 +85,6 @@ def model_yukle():
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'pro' in m.name.lower():
                     return genai.GenerativeModel(m.name, generation_config=generation_config)
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
@@ -162,11 +182,20 @@ for i, message in enumerate(st.session_state.messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         
-        # Butonları Ekle (Sadece Asistan ve Uzun Cevaplar İçin)
+        # --- BUTONLARI EKLE (Sadece Asistan için) ---
         if message["role"] == "assistant" and len(message["content"]) > 50:
-            col1, col2, col3 = st.columns([1, 1, 3])
             
-            with col1:
+            # Sütunları sıkıştırıyoruz ki butonlar küçük dursun
+            c1, c2, c3 = st.columns([2, 8, 2])
+            
+            # Kopyalama (Code Block Hilesi)
+            # Bu, metni kopyalanabilir bir kutuda gösterir (Sağ üstte kopyala ikonu olur)
+            with c1:
+               with st.popover("📋 Kopyala"):
+                   st.code(message["content"], language=None)
+            
+            # İndirme Butonu
+            with c3:
                 st.download_button(
                     label="📥 İndir",
                     data=message["content"],
@@ -174,10 +203,6 @@ for i, message in enumerate(st.session_state.messages):
                     mime="text/plain",
                     key=f"dl_{i}"
                 )
-            
-            with col2:
-                with st.expander("📋 Kopyala"):
-                    st.code(message["content"], language=None)
 
 # --- DETAY BUTONU İÇİN ---
 def detay_tetikle():
