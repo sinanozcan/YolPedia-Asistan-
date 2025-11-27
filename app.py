@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-from requests.auth import HTTPBasicAuth
 from bs4 import BeautifulSoup
 import google.generativeai as genai
 import sys
@@ -11,9 +10,6 @@ from io import BytesIO
 
 # ================= AYARLAR =================
 API_KEY = st.secrets["API_KEY"]
-WP_USER = st.secrets["WP_USER"]
-WP_PASS = st.secrets["WP_PASS"]
-WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 DATA_FILE = "yolpedia_data.json"
 # ===========================================
@@ -27,15 +23,14 @@ except:
 
 st.set_page_config(page_title="YolPedia Asistanı", page_icon=favicon)
 
-# --- CSS (Görünüm İyileştirmeleri) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 20px; margin-bottom: 30px; }
     .logo-img { width: 90px; margin-right: 20px; }
     .title-text { font-size: 42px; font-weight: 700; margin: 0; color: #ffffff; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    /* Butonları ortala */
-    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; }
+    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; margin-top: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,29 +47,20 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
-    secilen_model_adi = None
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    secilen_model_adi = m.name
-                    break
-        if not secilen_model_adi:
-             for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    secilen_model_adi = m.name
-                    break
-        return genai.GenerativeModel(secilen_model_adi, generation_config=generation_config)
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
 model = model_yukle()
 
-# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -84,14 +70,12 @@ def veri_yukle():
     except FileNotFoundError:
         return []
 
-# --- BAŞLANGIÇ ---
 if 'db' not in st.session_state:
     with st.spinner('Sistem hazırlanıyor...'):
         st.session_state.db = veri_yukle()
     time.sleep(0.1)
     st.rerun()
 
-# --- YARDIMCI FONKSİYONLAR ---
 def tr_normalize(metin):
     kaynak = "ğĞüÜşŞıİöÖçÇ"
     hedef  = "gGuUsSiIoOcC"
@@ -108,10 +92,8 @@ def alakali_icerik_bul(soru, tum_veriler):
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
         puan = 0
-        
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
-        
         for k in anahtar:
             if k in baslik_norm: puan += 3
             elif k in icerik_norm: puan += 1
@@ -134,43 +116,65 @@ def alakali_icerik_bul(soru, tum_veriler):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Mesajları ekrana bas
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- BUTON KONTROLÜ İÇİN ---
-def detay_iste():
-    # Bu fonksiyon butona basılınca sanki kullanıcı yazmış gibi mesaj ekler
-    st.session_state.messages.append({"role": "user", "content": "Lütfen yukarıdaki konuyu detaylıca, tüm yönleriyle anlat."})
+# --- BUTON İŞLEVİ ---
+def detay_tetikle():
+    # Çift mesajı önlemek için session kontrolü
+    if st.session_state.messages[-1]["role"] != "user":
+        st.session_state.messages.append({"role": "user", "content": "Lütfen yukarıdaki konuyu detaylıca anlat."})
+    st.session_state.detay_modu = True # Detay modunu aç
 
 # Kullanıcı girişi
 prompt = st.chat_input("Bir soru sorun...")
 
-# Eğer kullanıcı yazdıysa
-if prompt:
-    st.session_state.messages.append({"role": "user", "content": prompt})
+# Eğer kullanıcı yazdıysa veya detay butonu tetiklendiyse
+if prompt or ('detay_modu' in st.session_state and st.session_state.detay_modu):
     
-# Cevap üretme kısmı (Hem normal prompt hem de buton tetiklemesi için)
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "user":
-    user_msg = st.session_state.messages[-1]["content"]
+    # Eğer normal soruysa
+    if prompt:
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        # Yeni soru gelince detay modunu ve eski bağlamı sıfırla
+        st.session_state.detay_modu = False
+        st.session_state.son_baglam = None 
+        st.session_state.son_kaynaklar = None
+        user_msg = prompt
+        
+    # Eğer detay butonuysa
+    else:
+        user_msg = "Lütfen yukarıdaki konuyu detaylıca anlat."
+        # Mesajı zaten fonksiyonda eklemiştik, tekrar ekleme
     
-    with st.chat_message("user"):
-        st.markdown(user_msg)
+    # Ekrana bas (Eğer henüz basılmadıysa)
+    if st.session_state.messages[-1]["content"] != user_msg:
+         with st.chat_message("user"):
+            st.markdown(user_msg)
 
     with st.chat_message("assistant"):
         if 'db' in st.session_state and st.session_state.db:
             
-            # Detay isteği mi yoksa normal soru mu?
-            detay_istegi = "detay" in user_msg.lower() or "uzun" in user_msg.lower() or "ayrıntı" in user_msg.lower()
+            # --- KRİTİK NOKTA: BAĞLAMI BELİRLE ---
+            baglam = None
+            kaynaklar = None
             
-            with st.spinner("🔎 Ansiklopedi taranıyor..."):
-                time.sleep(0.3)
-                # Bağlamı son kullanıcı mesajına göre değil, sohbetin ana konusuna göre bulmak daha iyi olabilir
-                # Ama şimdilik son mesaja göre arayalım
-                baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
-                
-                # Eğer bağlam boşsa ve bu bir detay isteğiyse, önceki bağlamı hatırlamaya çalışabiliriz (İleri seviye)
-                # Basitlik için yeniden arama yapıyoruz.
+            # Eğer detay isteniyorsa ve hafızada eski bağlam varsa, ONU KULLAN (Yeniden arama yapma!)
+            if st.session_state.get('detay_modu') and st.session_state.get('son_baglam'):
+                baglam = st.session_state.son_baglam
+                kaynaklar = st.session_state.son_kaynaklar
+                detay_istegi = True
+            else:
+                # Normal soruysa yeni arama yap
+                with st.spinner("🔎 Ansiklopedi taranıyor..."):
+                    time.sleep(0.3)
+                    baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
+                    
+                    # Bulunan veriyi hafızaya at (Sonraki detay isteği için)
+                    st.session_state.son_baglam = baglam
+                    st.session_state.son_kaynaklar = kaynaklar
+                    detay_istegi = False
 
             if not baglam:
                  msg = "Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor."
@@ -178,38 +182,22 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                  st.session_state.messages.append({"role": "assistant", "content": msg})
             else:
                 try:
-                    # --- DİNAMİK PROMPT AYARI ---
+                    # --- DİNAMİK PROMPT ---
                     if detay_istegi:
-                        # DETAY MODU
-                        gorev_metni = "Sana verilen 'BİLGİLER' metnini kullanarak konuyu EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat."
+                        gorev = "Sana verilen 'BİLGİLER' metnini kullanarak konuyu EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat."
                     else:
-                        # ÖZET MODU (VARSAYILAN)
-                        gorev_metni = "Sana verilen 'BİLGİLER' metnini kullanarak soruya KISA, ÖZ VE NET bir cevap ver (Maksimum 3-4 paragraf). Okuyucuyu sıkma."
-
-                    # Geçmişi topla
-                    gecmis_sohbet = ""
-                    for msg in st.session_state.messages[-5:]: # Son 5 mesaj
-                        rol = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
-                        temiz_icerik = msg['content'].split("**📚 Kaynaklar:**")[0] 
-                        gecmis_sohbet += f"{rol}: {temiz_icerik}\n"
+                        gorev = "Sana verilen 'BİLGİLER' metnini kullanarak soruya KISA, ÖZ VE NET bir cevap ver (Maksimum 3-4 paragraf)."
 
                     full_prompt = f"""
                     Sen YolPedia ansiklopedi asistanısın.
-                    
-                    GÖREVİN: {gorev_metni}
-                    
+                    GÖREVİN: {gorev}
                     KURALLAR:
                     1. Cevaba "YolPedia arşivine göre" gibi girişlerle BAŞLAMA. Doğal konuş.
                     2. Asla uydurma yapma, sadece verilen metinleri kullan.
-                    3. Eğer metinlerde cevap YOKSA, sadece "Üzgünüm, YolPedia arşivinde bu konuyla ilgili net bir bilgi bulunmuyor." de.
-                    
-                    GEÇMİŞ SOHBET:
-                    {gecmis_sohbet}
+                    3. Bilgi yoksa 'Bilmiyorum' de.
                     
                     SORU: {user_msg}
-                    
-                    BİLGİLER:
-                    {baglam}
+                    BİLGİLER: {baglam}
                     """
                     
                     stream = model.generate_content(full_prompt, stream=True)
@@ -220,7 +208,7 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                             if chunk.text:
                                 for word in chunk.text.split(" "):
                                     yield word + " "
-                                    time.sleep(0.04) # Biraz hızlandırdık
+                                    time.sleep(0.04)
                                 full_text += chunk.text
                         
                         negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
@@ -238,23 +226,29 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "user"
                     response_text = st.write_stream(stream_parser)
                     st.session_state.messages.append({"role": "assistant", "content": response_text})
                     
-                    # --- CEVAP BİTTİKTEN SONRA BUTON GÖSTER (Eğer özetse) ---
-                    if not detay_istegi and not any(n in response_text.lower() for n in ["bulunmuyor", "bilmiyorum"]):
-                        st.rerun() # Butonun görünmesi için sayfayı yenile
+                    # İşlem bitince detay modunu kapat, butonun tekrar çıkmasını sağla
+                    if st.session_state.get('detay_modu'):
+                        st.session_state.detay_modu = False
+                    
+                    st.rerun() # Butonu göstermek için yenile
 
                 except Exception as e:
                     st.error(f"Hata: {e}")
 
-# --- DETAY BUTONU (SOHBETİN ALTINA) ---
-# Eğer son mesaj asistandansa ve içinde "Detaylı" isteği yoksa butonu göster
+# --- DETAY BUTONU ---
+# Son mesaj asistandansa ve içinde hata yoksa göster
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
-    # Hata mesajı değilse buton göster
+    # Hata yoksa ve bu bir "detaylandırma cevabı" değilse buton koy
+    # (Yani zaten detaylı anlatmışsa tekrar buton koyma)
     if "Hata" not in last_msg and "bulunmuyor" not in last_msg:
-        col1, col2, col3 = st.columns([1,2,1])
-        with col2:
-            if st.button("📜 Bu Konuyu Detaylandır", on_click=detay_iste):
-                pass # on_click fonksiyonu yukarıda işi hallediyor
+        # Basit bir kontrol: Eğer son kullanıcı mesajı "detaylı" kelimesini içermiyorsa buton göster
+        last_user_msg = st.session_state.messages[-2]["content"] if len(st.session_state.messages) > 1 else ""
+        
+        if "detay" not in last_user_msg.lower():
+            col1, col2, col3 = st.columns([1,2,1])
+            with col2:
+                st.button("📜 Bu Konuyu Detaylandır", on_click=detay_tetikle)
 
 # --- YAN MENÜ ---
 with st.sidebar:
