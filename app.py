@@ -39,7 +39,7 @@ st.markdown(
         margin-bottom: 30px;
     }}
     .logo-img {{
-        width: 60px;
+        width: 90px;
         margin-right: 20px;
     }}
     .title-text {{
@@ -65,26 +65,22 @@ genai.configure(api_key=API_KEY)
 # --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
-    secilen_model_adi = None
-    generation_config = {"temperature": 0.0}
+    generation_config = {
+        "temperature": 0.0,
+        "max_output_tokens": 8192
+    }
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    secilen_model_adi = m.name
-                    break
-        if not secilen_model_adi:
-             for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    secilen_model_adi = m.name
-                    break
-        return genai.GenerativeModel(secilen_model_adi, generation_config=generation_config)
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
 model = model_yukle()
 
-# --- VERİ YÜKLEME FONKSİYONU ---
+# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -114,7 +110,7 @@ def tr_normalize(metin):
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum"]
+    gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum", "onun", "bunun", "suranin"]
     soru_temiz = tr_normalize(soru)
     anahtar = [k for k in soru_temiz.split() if k not in gereksiz and len(k) > 2]
     
@@ -122,10 +118,8 @@ def alakali_icerik_bul(soru, tum_veriler):
     for veri in tum_veriler:
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
-        metin_norm = baslik_norm + " " + icerik_norm
-        puan = 0
         
-        # Tam cümle eşleşmesi (Bonus Puan)
+        puan = 0
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
         
@@ -142,7 +136,7 @@ def alakali_icerik_bul(soru, tum_veriler):
     kaynaklar = []
     for item in en_iyiler:
         v = item['veri']
-        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:2500]}...\n"
+        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:10000]}\n"
         kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
     return bulunanlar, kaynaklar
@@ -163,55 +157,81 @@ if prompt := st.chat_input("Bir soru sorun..."):
     with st.chat_message("assistant"):
         if 'db' in st.session_state and st.session_state.db:
             with st.spinner("🔎 Ansiklopedi taranıyor..."):
-                time.sleep(3.0)
+                time.sleep(0.3)
                 baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
             
-            if not baglam:
-                msg = "Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor."
-                st.markdown(msg)
-                st.session_state.messages.append({"role": "assistant", "content": msg})
-            else:
-                try:
-                    full_prompt = f"""Sen YolPedia asistanısın.
-                    KURALLAR:
-                    1. Sadece aşağıdaki 'BİLGİLER' metinlerini kullan.
-                    2. Eğer sorunun cevabı metinlerde YOKSA, sadece şunu yaz: "Üzgünüm, YolPedia arşivinde bu konuyla ilgili net bir bilgi bulunmuyor."
-                    3. Asla uydurma yapma.
+            # --- HAFIZA OLUŞTURMA (SON 4 MESAJ) ---
+            gecmis_sohbet = ""
+            # Son 4 mesajı al (2 soru, 2 cevap) ki bağlam kopmasın ama token dolmasın
+            for msg in st.session_state.messages[-4:]:
+                rol = "Kullanıcı" if msg['role'] == 'user' else "Asistan"
+                # Kaynak linklerini hafızaya alma, kafasını karıştırır
+                temiz_icerik = msg['content'].split("**📚 Kaynaklar:**")[0] 
+                gecmis_sohbet += f"{rol}: {temiz_icerik}\n"
+            
+            # Bağlam boş olsa bile geçmişe bakarak cevap verebilir mi kontrol et
+            # (Örn: "Merhaba" dediğinde bağlam boştur ama cevap vermelidir)
+            
+            try:
+                # --- AKILLI VE HAFIZALI PROMPT ---
+                full_prompt = f"""
+                Sen YolPedia ansiklopedi asistanısın.
+                
+                GÖREVİN:
+                Sana verilen 'BİLGİLER' metnini kullanarak soruyu en detaylı şekilde cevapla.
+                Aşağıdaki 'GEÇMİŞ SOHBET' kısmına bakarak konuşmanın akışını takip et.
+                
+                KURALLAR:
+                1. Asla uydurma yapma, sadece verilen metinleri kullan.
+                2. Cevapları kısa tutma, detaylı anlat.
+                3. Eğer soru sohbete dayalıysa (Örn: 'Merhaba', 'Nasılsın'), kibarca yanıt ver ve ansiklopediden ne sorabileceğini söyle.
+                4. Eğer ansiklopedik bir soruysa ve metinlerde cevap YOKSA, "Üzgünüm, YolPedia arşivinde bu konuyla ilgili net bir bilgi bulunmuyor." de.
+                
+                GEÇMİŞ SOHBET:
+                {gecmis_sohbet}
+                
+                YENİ SORU: {prompt}
+                
+                YENİ SORU İÇİN BULUNAN BİLGİLER:
+                {baglam if baglam else "Veri tabanında bu kelimeyle ilgili özel bir eşleşme bulunamadı."}
+                """
+                
+                stream = model.generate_content(full_prompt, stream=True)
+                
+                def stream_parser():
+                    full_text = ""
+                    for chunk in stream:
+                        if chunk.text:
+                            for word in chunk.text.split(" "):
+                                yield word + " "
+                                time.sleep(0.03)
+                            full_text += chunk.text
                     
-                    SORU: {prompt}
-                    BİLGİLER: {baglam}"""
+                    negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
+                    cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                     
-                    stream = model.generate_content(full_prompt, stream=True)
-                    
-                    def stream_parser():
-                        full_text = ""
-                        for chunk in stream:
-                            if chunk.text:
-                                for word in chunk.text.split(" "):
-                                    yield word + " "
-                                    time.sleep(0.03)
-                                full_text += chunk.text
+                    # Eğer bağlam bulunduysa ve cevap olumluysa linkleri ekle
+                    if baglam and kaynaklar and not cevap_olumsuz:
+                        kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
+                        # Tekrar eden linkleri temizle
+                        essiz_kaynaklar = {v['link']:v for v in kaynaklar}.values()
                         
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm", "maalesef"]
-                        cevap_olumsuz = any(n in full_text.lower() for n in negatif)
+                        for k in essiz_kaynaklar:
+                            kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
                         
-                        if not cevap_olumsuz:
-                            if kaynaklar:
-                                km = "\n\n**📚 Kaynaklar:**\n"
-                                for k in kaynaklar:
-                                    km += f"- [{k['baslik']}]({k['link']})\n"
-                                for line in km.split("\n"):
-                                    yield line + "\n"
-                                    time.sleep(0.1)
+                        for line in kaynak_metni.split("\n"):
+                            yield line + "\n"
+                            time.sleep(0.1)
 
-                    response = st.write_stream(stream_parser)
-                    st.session_state.messages.append({"role": "assistant", "content": response})
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+                response = st.write_stream(stream_parser)
+                st.session_state.messages.append({"role": "assistant", "content": response})
+
+            except Exception as e:
+                st.error(f"Hata: {e}")
         else:
             st.error("Veri tabanı yüklenemedi.")
 
-# --- YAN MENÜ (YÖNETİM & MÜFETTİŞ GERİ GELDİ) ---
+# --- YAN MENÜ ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
     
@@ -224,7 +244,7 @@ with st.sidebar:
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
         
-        # --- MÜFETTİŞ BURADA ---
+        # --- MÜFETTİŞ ---
         st.divider()
         st.subheader("🕵️ Veri Müfettişi")
         test_arama = st.text_input("Veri tabanında ara:", placeholder="Örn: Otman Baba")
@@ -232,20 +252,16 @@ with st.sidebar:
         if test_arama:
             bulunan_sayisi = 0
             norm_aranan = tr_normalize(test_arama)
-            
             for v in st.session_state.db:
                 norm_baslik = tr_normalize(v['baslik'])
                 norm_icerik = tr_normalize(v['icerik'])
-                
                 if norm_aranan in norm_baslik or norm_aranan in norm_icerik:
                     st.success(f"✅ {v['baslik']}")
                     bulunan_sayisi += 1
                     if bulunan_sayisi >= 5: break
-            
             if bulunan_sayisi == 0:
                 st.error("❌ Bu kelime veritabanında yok!")
-        # -----------------------
-        
+        # ----------------
         st.divider()
         if st.checkbox("Tüm Başlıkları Gör"):
             for item in st.session_state.db:
