@@ -20,15 +20,11 @@ ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
 # --- RESİMLER ---
-# 1. Sitenin Logosu (En tepedeki küçük ikon)
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
-
-# 2. Can Dede'nin Resmi (Başlığın yanındaki portre)
-# BURAYA YENİ OLUŞTURDUĞUN DEDE RESMİNİN LİNKİNİ YAPIŞTIR:
-CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png" 
 # ===========================================
 
-# --- FAVICON (Tarayıcı Sekmesi için Yolpedia Logosu) ---
+# --- FAVICON ---
 try:
     response = requests.get(YOLPEDIA_ICON, timeout=5)
     favicon = Image.open(BytesIO(response.content))
@@ -40,7 +36,6 @@ st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 # --- CSS TASARIM ---
 st.markdown("""
 <style>
-    /* Ana Başlık Kutusu */
     .main-header { 
         display: flex; 
         align-items: center; 
@@ -48,34 +43,30 @@ st.markdown("""
         margin-top: 5px; 
         margin-bottom: 5px; 
     }
-    /* Can Dede Resmi */
     .dede-img { 
         width: 80px; 
         height: 80px; 
-        border-radius: 50%; /* Yuvarlak yapar */
+        border-radius: 50%; 
         margin-right: 15px; 
         object-fit: cover;
-        border: 2px solid #eee; /* İnce çerçeve */
+        border: 2px solid #eee; 
     }
-    /* Can Dede Yazısı */
     .title-text { 
         font-size: 36px; 
         font-weight: 700; 
         margin: 0; 
         color: #ffffff; 
     }
-    /* YolPedia Üst Logosu */
     .top-logo-container {
         display: flex;
         justify-content: center;
-        margin-bottom: 45px;
+        margin-bottom: 15px;
         padding-top: 10px;
     }
     .top-logo {
-        width: 150px;
-        opacity: 0.8; /* Biraz şeffaf dursun, çok bağırmasın */
+        width: 50px;
+        opacity: 0.8; 
     }
-    /* Motto Yazısı */
     .motto-text { 
         text-align: center; 
         font-size: 16px; 
@@ -84,7 +75,6 @@ st.markdown("""
         margin-bottom: 25px; 
         font-family: 'Georgia', serif; 
     }
-    
     @media (prefers-color-scheme: light) { 
         .title-text { color: #000000; } 
         .motto-text { color: #555555; }
@@ -95,21 +85,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- SAYFA GÖRÜNÜMÜ (HTML) ---
+# --- SAYFA GÖRÜNÜMÜ ---
 st.markdown(
     f"""
-    <!-- 1. EN ÜST: YOLPEDIA LOGOSU -->
-    <div class="top-logo-container">
-        <img src="{YOLPEDIA_ICON}" class="top-logo">
-    </div>
-
-    <!-- 2. ORTA: CAN DEDE VE RESMİ -->
+    <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header">
         <img src="{CAN_DEDE_ICON}" class="dede-img">
         <h1 class="title-text">Can Dede</h1>
     </div>
-
-    <!-- 3. ALT: MOTTO -->
     <div class="motto-text">{MOTTO}</div>
     """,
     unsafe_allow_html=True
@@ -148,8 +131,8 @@ def niyet_analizi(soru):
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet: "SOHBET"
+        - Bilgi araması (Dersim, Kimdir, Nedir, Anlat): "ARAMA"
+        - Sohbet (Merhaba, Selam, Teşekkür, Adın ne): "SOHBET"
         CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
@@ -353,6 +336,7 @@ if is_user_input or is_detail_click:
 
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
+                
                 otomatik_kaydir()
 
             except Exception as e:
@@ -365,9 +349,10 @@ if st.session_state.messages and st.session_state.messages[-1]["role"] == "assis
     
     if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
         if len(last_msg) < 5000:
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
+            # GÖLGE SORUNU İÇİN KRİTİK YER:
+            # Butonu koyuyoruz ama butona basılınca zaten kod baştan çalışacağı için rerun'a gerek yok
+            # Sadece butona basıldığında kodun en başına dönüp 'detay_tetikle' fonksiyonunu çalıştıracak
+            st.button("📜 Bu Konuyu Detaylandır / Details", on_click=detay_tetikle)
 
 # --- YAN MENÜ ---
 with st.sidebar:
