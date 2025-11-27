@@ -84,7 +84,7 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- VERİ YÜKLEME FONKSİYONU (ÖNCE BUNU TANIMLIYORUZ) ---
+# --- VERİ YÜKLEME FONKSİYONU ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -94,10 +94,9 @@ def veri_yukle():
     except FileNotFoundError:
         return []
 
-# --- BAŞLANGIÇ KONTROLÜ (ŞİMDİ ÇAĞIRIYORUZ) ---
+# --- BAŞLANGIÇ KONTROLÜ ---
 if 'db' not in st.session_state:
     with st.spinner('Sistem başlatılıyor...'):
-        # Fonksiyon artık yukarıda tanımlı olduğu için hata vermez
         veriler = veri_yukle()
         if veriler:
             st.session_state.db = veriler
@@ -126,7 +125,7 @@ def alakali_icerik_bul(soru, tum_veriler):
         metin_norm = baslik_norm + " " + icerik_norm
         puan = 0
         
-        # Tam Eşleşme Bonusu
+        # Tam cümle eşleşmesi (Bonus Puan)
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
         
@@ -212,7 +211,7 @@ if prompt := st.chat_input("Bir soru sorun..."):
         else:
             st.error("Veri tabanı yüklenemedi.")
 
-# --- YAN MENÜ ---
+# --- YAN MENÜ (YÖNETİM & MÜFETTİŞ GERİ GELDİ) ---
 with st.sidebar:
     st.header("⚙️ Yönetim")
     
@@ -224,6 +223,30 @@ with st.sidebar:
     
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        if st.checkbox("Yüklü Başlıkları Gör"):
+        
+        # --- MÜFETTİŞ BURADA ---
+        st.divider()
+        st.subheader("🕵️ Veri Müfettişi")
+        test_arama = st.text_input("Veri tabanında ara:", placeholder="Örn: Otman Baba")
+        
+        if test_arama:
+            bulunan_sayisi = 0
+            norm_aranan = tr_normalize(test_arama)
+            
+            for v in st.session_state.db:
+                norm_baslik = tr_normalize(v['baslik'])
+                norm_icerik = tr_normalize(v['icerik'])
+                
+                if norm_aranan in norm_baslik or norm_aranan in norm_icerik:
+                    st.success(f"✅ {v['baslik']}")
+                    bulunan_sayisi += 1
+                    if bulunan_sayisi >= 5: break
+            
+            if bulunan_sayisi == 0:
+                st.error("❌ Bu kelime veritabanında yok!")
+        # -----------------------
+        
+        st.divider()
+        if st.checkbox("Tüm Başlıkları Gör"):
             for item in st.session_state.db:
                 st.text(item['baslik'])
