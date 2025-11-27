@@ -51,34 +51,49 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ YÜKLE ---
+# --- MODELİ BUL (AKILLI SEÇİCİ) ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
     try:
+        # 1. Önce Flash ara
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        # 2. Yoksa Pro ara
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'pro' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        # 3. Hiçbiri yoksa ilk bulduğunu al
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                return genai.GenerativeModel(m.name, generation_config=generation_config)
+        
+        # 4. En kötü ihtimal
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
-model = model_yukle()
+model = model_yukle() # Global model değişkeni
 
-# --- NİYET OKUYUCU (YENİ ÖZELLİK) ---
-# Bu fonksiyon sorunun sohbet mi yoksa ansiklopedik arama mı olduğunu anlar
+# --- NİYET OKUYUCU (HATASI DÜZELTİLDİ) ---
 def niyet_analizi(soru):
     try:
-        router_model = genai.GenerativeModel('gemini-1.5-flash')
+        # BURASI DÜZELDİ: Artık yukarıda bulduğumuz garantili 'model'i kullanıyor
         prompt = f"""
         Aşağıdaki kullanıcı girdisini analiz et.
         
         GİRDİ: "{soru}"
         
         KARAR KURALLARI:
-        - Eğer bu bir bilgi aramasıysa (Örn: "Dersim nerede?", "Otman Baba kimdir?", "Alevilik nedir?"), cevap: "ARAMA"
+        - Eğer bu bir bilgi aramasıysa (Örn: "Dersim nerede?", "Otman Baba kimdir?", "Alevilik nedir?", "Şunu açıkla"), cevap: "ARAMA"
         - Eğer bu bir sohbet, selamlama, teşekkür, botun yeteneklerini sorma veya geri bildirimse (Örn: "Merhaba", "Nasılsın", "Beni anladın mı?", "Neler yapabilirsin?", "Şunu yapma"), cevap: "SOHBET"
         
         Sadece tek kelime cevap ver: "ARAMA" veya "SOHBET"
         """
-        response = router_model.generate_content(prompt)
+        response = model.generate_content(prompt) # Global modeli kullan
         return response.text.strip().upper()
     except:
         return "ARAMA" # Hata olursa varsayılan olarak ara
@@ -105,8 +120,6 @@ def tr_normalize(metin):
     return metin.translate(ceviri_tablosu).lower()
 
 def alakali_icerik_bul(soru, tum_veriler):
-    # Artık gereksiz kelime listesine çok ihtiyacımız yok çünkü niyeti AI anlıyor
-    # Ama yine de temizlik iyidir.
     gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum"]
     soru_temiz = tr_normalize(soru)
     anahtar = [k for k in soru_temiz.split() if k not in gereksiz and len(k) > 2]
@@ -163,16 +176,15 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # --- NİYETİ BELİRLE (Sadece yeni soruda) ---
+        # NİYET ANALİZİ
         niyet = niyet_analizi(prompt)
-        st.session_state.son_niyet = niyet # Niyeti hafızaya al
+        st.session_state.son_niyet = niyet 
         
         user_msg = prompt
         
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
-        # Butona basıldıysa niyet kesinlikle ARAMA'dır
         st.session_state.son_niyet = "ARAMA"
 
     if is_user_input:
@@ -194,14 +206,13 @@ if is_user_input or is_detail_click:
                     detay_modu = True
                 else:
                     with st.spinner("🔎 Ansiklopedi taranıyor..."):
-                        # Yapay bekleme olmadan, işlem ne kadar sürerse o kadar
+                        # Yapay bekleme olmadan
                         baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
         
         # Yanıtı Oluştur
         try:
-            # --- SENARYO 1: SOHBET (Veritabanı yok, Kaynak yok) ---
             if niyet == "SOHBET":
                 full_prompt = f"""
                 Sen YolPedia ansiklopedi asistanısın.
@@ -211,14 +222,13 @@ if is_user_input or is_detail_click:
                 
                 KULLANICI: {user_msg}
                 """
-            
-            # --- SENARYO 2: ARAMA (Veritabanı var) ---
             else:
+                # ARAMA MODU
+                bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
+                
                 if not baglam:
-                    # Aradı ama bulamadı
                     full_prompt = "Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de."
                 else:
-                    # Buldu
                     if detay_modu:
                         gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
                     else:
@@ -233,7 +243,7 @@ if is_user_input or is_detail_click:
                     3. Bilgi yoksa 'Bilmiyorum' de.
                     
                     BİLGİLER:
-                    {baglam}
+                    {bilgi_metni}
                     """
 
             stream = model.generate_content(full_prompt, stream=True)
@@ -247,7 +257,7 @@ if is_user_input or is_detail_click:
                             time.sleep(0.001)
                         full_text += chunk.text
                 
-                # --- KAYNAKLARI SADECE "ARAMA" MODUNDAYSA VE BİLGİ VARSA GÖSTER ---
+                # Linkleri sadece ARAMA modunda, bilgi varsa ve olumluysa göster
                 if niyet == "ARAMA" and baglam and kaynaklar:
                     negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "rastlanmamaktadır", "üzgünüm"]
                     cevap_olumsuz = any(n in full_text.lower() for n in negatif)
@@ -265,13 +275,12 @@ if is_user_input or is_detail_click:
             st.session_state.messages.append({"role": "assistant", "content": response_text})
             
             if niyet == "ARAMA" and not detay_modu:
-                st.rerun() # Buton için yenile
+                st.rerun()
 
         except Exception as e:
             st.error(f"Hata: {e}")
 
 # --- DETAY BUTONU ---
-# Sadece "ARAMA" niyetiyse ve cevap olumluysa buton göster
 son_niyet = st.session_state.get('son_niyet', "")
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
