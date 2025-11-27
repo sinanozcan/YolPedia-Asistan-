@@ -28,20 +28,16 @@ except:
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- CSS ---
-st.markdown("""
-<style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
-    .logo-img { width: 80px; margin-right: 15px; }
-    .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
-    @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
-</style>
-""", unsafe_allow_html=True)
-
 # --- BAŞLIK ---
 st.markdown(
     f"""
+    <style>
+    .main-header {{ display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }}
+    .logo-img {{ width: 80px; margin-right: 15px; }}
+    .title-text {{ font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }}
+    @media (prefers-color-scheme: light) {{ .title-text {{ color: #000000; }} }}
+    .stButton button {{ width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }}
+    </style>
     <div class="main-header">
         <img src="{LOGO_URL}" class="logo-img">
         <h1 class="title-text">{ASISTAN_ISMI}</h1>
@@ -52,45 +48,20 @@ st.markdown(
 
 genai.configure(api_key=API_KEY)
 
-# --- MODELİ BUL (GÜVENLİK FİLTRELERİ GEVŞETİLMİŞ) ---
+# --- MODELİ BUL ---
 @st.cache_resource
 def model_yukle():
     generation_config = {"temperature": 0.0, "max_output_tokens": 8192}
-    safety_settings = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
                 if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config, safety_settings=safety_settings)
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'pro' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config, safety_settings=safety_settings)
-        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config, safety_settings=safety_settings)
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
         return None
 
 model = model_yukle()
-
-# --- NİYET OKUYUCU ---
-def niyet_analizi(soru):
-    try:
-        prompt = f"""
-        GİRDİ: "{soru}"
-        KARAR KURALLARI:
-        - Bilgi araması (Örn: "Dersim nerede?", "Kimdir?", "Nedir?", "Anlat"): "ARAMA"
-        - Sohbet, selam, teşekkür (Örn: "Merhaba", "Nasılsın", "Adın ne?", "Sağol"): "SOHBET"
-        Sadece tek kelime cevap ver: "ARAMA" veya "SOHBET"
-        """
-        response = model.generate_content(prompt)
-        return response.text.strip().upper()
-    except:
-        return "ARAMA"
 
 # --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
@@ -113,8 +84,51 @@ def tr_normalize(metin):
     ceviri_tablosu = str.maketrans(kaynak, hedef)
     return metin.translate(ceviri_tablosu).lower()
 
-def alakali_icerik_bul(soru, tum_veriler):
-    soru_temiz = tr_normalize(soru)
+# --- 1. ADIM: AJAN (NİYET OKUYUCU) ---
+def niyet_analizi(soru):
+    try:
+        prompt = f"""
+        GİRDİ: "{soru}"
+        GÖREV: Bu girdinin niyetini belirle.
+        
+        KURALLAR:
+        - Eğer ansiklopedik bir bilgi aranıyorsa cevap: "ARAMA"
+        - Eğer sohbet, selam, teşekkür ise cevap: "SOHBET"
+        
+        Sadece tek kelime cevap ver.
+        """
+        response = model.generate_content(prompt)
+        return response.text.strip().upper()
+    except:
+        return "ARAMA"
+
+# --- 2. ADIM: AJAN (DİL VE KELİME AYIKLAYICI) ---
+# Yabancı dildeki sorulardan SAF TÜRKÇE anahtar kelimeyi çıkarır
+def anahtar_kelime_ayikla(soru):
+    try:
+        prompt = f"""
+        GİRDİ: "{soru}"
+        
+        GÖREV:
+        Kullanıcı hangi dilde sorarsa sorsun (Almanca, İngilizce vb.), bu cümlenin içindeki ARANAN KONUYU (Entity) bul ve sadece onu yaz.
+        Gereksiz soru eklerini (nedir, kimdir, was ist, who is) at.
+        Eğer konu Türkçe bir terimse, Türkçe halini koru.
+        
+        ÖRNEKLER:
+        "Was ist eigentlich Oniki Hizmet?" -> Oniki Hizmet
+        "Who is Seyit Riza?" -> Seyit Rıza
+        "Dersim neresidir?" -> Dersim
+        
+        CEVAP (Sadece kelime):
+        """
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except:
+        return soru # Hata olursa orijinalini döndür
+
+# --- ARAMA MOTORU (ARTIK TEMİZ KELİME İLE ÇALIŞIR) ---
+def alakali_icerik_bul(temiz_kelime, tum_veriler):
+    soru_temiz = tr_normalize(temiz_kelime)
     anahtar = [k for k in soru_temiz.split() if len(k) > 2]
     
     puanlanmis = []
@@ -122,11 +136,16 @@ def alakali_icerik_bul(soru, tum_veriler):
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
         puan = 0
-        if soru_temiz in baslik_norm: puan += 50
-        elif soru_temiz in icerik_norm: puan += 20
+        
+        # Tam Eşleşme (Çok Yüksek Puan)
+        if soru_temiz in baslik_norm: puan += 100
+        elif soru_temiz in icerik_norm: puan += 40
+        
+        # Kelime Eşleşmesi
         for k in anahtar:
-            if k in baslik_norm: puan += 3
-            elif k in icerik_norm: puan += 1
+            if k in baslik_norm: puan += 10
+            elif k in icerik_norm: puan += 2
+            
         if puan > 0:
             puanlanmis.append({"veri": veri, "puan": puan})
     
@@ -152,7 +171,6 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- BUTON TETİKLEYİCİ ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
@@ -172,12 +190,21 @@ if is_user_input or is_detail_click:
         st.session_state.son_soru = prompt
         
         niyet = niyet_analizi(prompt)
-        st.session_state.son_niyet = niyet 
+        st.session_state.son_niyet = niyet
+        
+        # Eğer aramaysa, önce anahtar kelimeyi ayıkla
+        arama_kelimesi = prompt
+        if niyet == "ARAMA":
+            arama_kelimesi = anahtar_kelime_ayikla(prompt)
+            # Debug için (İstersen kaldırabilirsin): 
+            # print(f"Orijinal: {prompt} -> Aranan: {arama_kelimesi}")
+            
         user_msg = prompt
         
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
+        arama_kelimesi = anahtar_kelime_ayikla(user_msg) # Detayda da temizle
         st.session_state.son_niyet = "ARAMA"
 
     if is_user_input:
@@ -191,10 +218,9 @@ if is_user_input or is_detail_click:
         niyet = st.session_state.get('son_niyet', "ARAMA")
         stream = None
         
-        # --- SPINNER ---
         with st.spinner("Can araştırıyor..."):
             
-            # ARAMA
+            # 1. ARAMA İŞLEMİ (Temizlenmiş kelime ile)
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -202,26 +228,27 @@ if is_user_input or is_detail_click:
                         kaynaklar = st.session_state.son_kaynaklar
                         detay_modu = True
                     else:
-                        baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
+                        # Temizlenmiş "arama_kelimesi"ni kullanıyoruz
+                        baglam, kaynaklar = alakali_icerik_bul(arama_kelimesi, st.session_state.db)
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # YANIT OLUŞTURMA
+            # 2. YANIT OLUŞTURMA
             try:
                 if niyet == "SOHBET":
                     full_prompt = f"""
                     Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
                     Kullanıcı seninle sohbet ediyor. 
-                    KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
-                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA. Direkt sohbete gir.
+                    KURAL: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
                     
                     KULLANICI MESAJI: {user_msg}
                     """
                 else:
                     bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
                     
+                    # Eğer bağlam yoksa direkt üzgünüm de
                     if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. Kullanıcının dili neyse o dilde söyle."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. Kullanıcının dili neyse o dilde söyle. Başka kaynak önerme."
                     else:
                         if detay_modu:
                             gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
@@ -229,14 +256,14 @@ if is_user_input or is_detail_click:
                             gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
 
                         full_prompt = f"""
-                        Senin adın 'Can'.
+                        Senin adın 'Can'. Sen YolPedia'nın rehberisin.
                         {gorev}
                         
                         KURALLAR:
-                        1. DİL KURALI: Kullanıcı hangi dilde sorduysa (TR, EN, DE), cevap da o dilde olacak.
-                        2. YASAK: Cevaba "Merhaba ben Can", "Rehberiniz olarak", "YolPedia verilerine göre" gibi cümlelerle ASLA BAŞLAMA.
-                        3. Asla uydurma yapma.
-                        4. Bilgi yoksa 'Bilmiyorum' de.
+                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (Almanca, İngilizce vb.), cevabı O DİLDE ver. Elindeki bilgiler Türkçe olsa bile sen çevirerek anlat.
+                        2. Asla uydurma yapma.
+                        3. Giriş cümlesi yapma.
+                        4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
                         
                         BİLGİLER:
                         {baglam}
@@ -245,9 +272,9 @@ if is_user_input or is_detail_click:
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Bağlantı Hatası: {e}")
+                st.error(f"Hata: {e}")
 
-        # --- YAZDIRMA (HATA KORUMALI) ---
+        # --- YAZDIRMA ---
         if stream:
             try:
                 def stream_parser():
@@ -262,12 +289,13 @@ if is_user_input or is_detail_click:
                         except ValueError:
                             continue 
                 
+                    # Linkleri sadece ARAMA ise, bilgi varsa ve sohbet değilse göster
                     if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
+                        negatif = ["bulunmuyor", "bilmiyorum", "not found", "keine information", "leider"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         
                         if not cevap_olumsuz:
-                            kaynak_metni = "\n\n**📚 Kaynaklar:**\n"
+                            kaynak_metni = "\n\n**📚 Kaynaklar / Sources:**\n"
                             essiz = {v['link']:v for v in kaynaklar}.values()
                             for k in essiz:
                                 kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
@@ -278,42 +306,4 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                if niyet == "ARAMA" and not detay_modu:
-                    st.rerun()
-            except Exception as e:
-                pass
-
-# --- DETAY BUTONU ---
-son_niyet = st.session_state.get('son_niyet', "")
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-    last_msg = st.session_state.messages[-1]["content"]
-    
-    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
-        if len(last_msg) < 5000:
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                st.button("📜 Bu Konuyu Detaylandır", on_click=detay_tetikle)
-
-# --- YAN MENÜ ---
-with st.sidebar:
-    st.header("⚙️ Yönetim")
-    if st.button("🔄 Önbelleği Temizle"):
-        st.cache_data.clear()
-        st.rerun()
-    st.divider()
-    if 'db' in st.session_state:
-        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        st.divider()
-        st.subheader("🕵️ Veri Müfettişi")
-        test = st.text_input("Ara:", placeholder="Örn: Otman Baba")
-        if test:
-            say = 0
-            norm_test = tr_normalize(test)
-            for v in st.session_state.db:
-                nb = tr_normalize(v['baslik'])
-                ni = tr_normalize(v['icerik'])
-                if norm_test in nb or norm_test in ni:
-                    st.success(f"✅ {v['baslik']}")
-                    say += 1
-                    if say >= 5: break
-            if say == 0: st.error("❌ Bulunamadı")
+                if niyet == "ARAMA" and not detay
