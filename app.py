@@ -51,7 +51,7 @@ st.markdown(
     @media (prefers-color-scheme: light) {{
         .title-text {{ color: #000000; }}
     }}
-    /* Detay butonu stili */
+    /* Buton stili */
     .stButton button {{
         width: 100%;
         border-radius: 12px;
@@ -110,16 +110,13 @@ if 'db' not in st.session_state:
     time.sleep(0.1)
     st.rerun()
 
-# --- GÜÇLENDİRİLMİŞ TÜRKÇE NORMALİZASYON ---
+# --- YARDIMCI FONKSİYONLAR ---
 def tr_normalize(metin):
-    # Mustafa Sazcı problemini çözen yer burası
     kaynak = "ğĞüÜşŞıİöÖçÇâÂîÎûÛ"
     hedef  = "gGuUsSiIoOcCaAiIuU"
     ceviri_tablosu = str.maketrans(kaynak, hedef)
-    metin = metin.translate(ceviri_tablosu)
-    return metin.lower()
+    return metin.translate(ceviri_tablosu).lower()
 
-# --- RAG ARAMA ---
 def alakali_icerik_bul(soru, tum_veriler):
     gereksiz = ["nedir", "kimdir", "neredir", "nasil", "niye", "hangi", "kac", "ne", "ve", "ile", "bir", "bu", "su", "mi", "mu", "hakkinda", "bilgi", "almak", "istiyorum", "onun", "bunun", "suranin", "detayli", "anlat", "detaylandir"]
     soru_temiz = tr_normalize(soru)
@@ -130,8 +127,6 @@ def alakali_icerik_bul(soru, tum_veriler):
         baslik_norm = tr_normalize(veri['baslik'])
         icerik_norm = tr_normalize(veri['icerik'])
         puan = 0
-        
-        # Tam eşleşme
         if soru_temiz in baslik_norm: puan += 50
         elif soru_temiz in icerik_norm: puan += 20
         
@@ -148,7 +143,6 @@ def alakali_icerik_bul(soru, tum_veriler):
     kaynaklar = []
     for item in en_iyiler:
         v = item['veri']
-        # Detay istendiğinde tüm veriyi görebilsin diye 10.000 limit
         bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:10000]}\n"
         kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
@@ -158,7 +152,6 @@ def alakali_icerik_bul(soru, tum_veriler):
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Mesajları Ekrana Bas
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -173,10 +166,8 @@ prompt = st.chat_input("Bir soru sorun...")
 is_user_input = prompt is not None
 is_detail_click = st.session_state.get('detay_istendi', False)
 
-# --- İŞLEM MANTIĞI ---
 if is_user_input or is_detail_click:
     
-    # 1. Yeni Soru (ÖZET MODU)
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -185,13 +176,10 @@ if is_user_input or is_detail_click:
         st.session_state.son_soru = prompt
         user_msg = prompt
         
-    # 2. Detay Butonu (DETAY MODU)
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
-        # Butona basıldığını ekrana yazdırmıyoruz, direkt detaylı cevap geliyor
 
-    # Kullanıcı mesajını ekrana bas (Sadece yeniyse)
     if is_user_input:
          with st.chat_message("user"):
             st.markdown(user_msg)
@@ -203,17 +191,14 @@ if is_user_input or is_detail_click:
             kaynaklar = None
             detay_modu = False
             
-            # Detay isteği mi? (Hafızadan Çek)
             if is_detail_click and st.session_state.get('son_baglam'):
                 baglam = st.session_state.son_baglam
                 kaynaklar = st.session_state.son_kaynaklar
                 detay_modu = True
             else:
-                # Yeni Arama Yap
                 with st.spinner("🔎 Ansiklopedi taranıyor..."):
                     time.sleep(0.3)
                     baglam, kaynaklar = alakali_icerik_bul(user_msg, st.session_state.db)
-                    
                     st.session_state.son_baglam = baglam
                     st.session_state.son_kaynaklar = kaynaklar
 
@@ -223,28 +208,28 @@ if is_user_input or is_detail_click:
                  st.session_state.messages.append({"role": "assistant", "content": msg})
             else:
                 try:
-                    # --- PROMPTLAR (ÖZET vs DETAY) ---
+                    # --- PROMPTLAR ---
                     if detay_modu:
                         gorev = f"""
                         GÖREVİN: 
-                        Bu metin yığını içinden SADECE "{user_msg}" ile ilgili olan kısımları al ve EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat.
-                        Diğer başlıkları görmezden gel.
+                        Bu metin yığını içinden SADECE "{user_msg}" ile ilgili olan kısımları cımbızla çek ve EN İNCE DETAYINA KADAR, UZUN VE KAPSAMLI şekilde anlat.
                         """
                     else:
                         gorev = f"""
                         GÖREVİN:
                         Sana verilen metinleri kullanarak "{user_msg}" sorusuna KISA, ÖZ VE NET bir cevap ver (Maksimum 3-4 paragraf).
-                        Okuyucuyu detaylara boğma, sadece en önemli bilgileri özetle.
                         """
 
+                    # --- SERT KURALLAR ---
                     full_prompt = f"""
                     Sen YolPedia ansiklopedi asistanısın.
                     {gorev}
                     
-                    KURALLAR:
-                    1. "YolPedia arşivine göre" gibi girişler yapma. Doğal konuş.
-                    2. Asla uydurma yapma.
-                    3. Bilgi yoksa 'Bilmiyorum' de.
+                    KESİN KURALLAR:
+                    1. GİRİŞ CÜMLESİ YASAK: Cevaba "Merhaba", "Asistan olarak", "YolPedia verilerine göre", "İşte detaylar" gibi cümlelerle ASLA BAŞLAMA.
+                    2. DOĞRUDAN KONUYA GİR: Cevap direkt olarak "{user_msg} nedir/kimdir" sorusunun yanıtıyla başlamalı.
+                    3. Asla uydurma yapma.
+                    4. Bilgi yoksa 'Bilmiyorum' de.
                     
                     BİLGİLER:
                     {baglam}
@@ -252,12 +237,11 @@ if is_user_input or is_detail_click:
                     
                     stream = model.generate_content(full_prompt, stream=True)
                     
-                    # --- DAKTİLO EFEKTİ (Düzeltilmiş Hali) ---
                     def stream_parser():
                         full_text = ""
                         for chunk in stream:
                             if chunk.text:
-                                for char in chunk.text: # Harf harf akış
+                                for char in chunk.text:
                                     yield char
                                     time.sleep(0.001)
                                 full_text += chunk.text
@@ -270,25 +254,23 @@ if is_user_input or is_detail_click:
                             essiz = {v['link']:v for v in kaynaklar}.values()
                             for k in essiz:
                                 kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                            for char in kaynak_metni: # Linkleri de harf harf yaz
+                            for char in kaynak_metni:
                                 yield char
                                 time.sleep(0.001)
 
                     response_text = st.write_stream(stream_parser)
                     st.session_state.messages.append({"role": "assistant", "content": response_text})
                     
-                    st.rerun() # Butonu göstermek için yenile
+                    st.rerun()
 
                 except Exception as e:
                     st.error(f"Hata: {e}")
 
 # --- DETAY BUTONU ---
-# Son mesaj asistandansa ve butonluk bir durumsa
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
     if "Hata" not in last_msg and "bulunmuyor" not in last_msg:
-        # Eğer mesaj çok uzun değilse (Özetse) buton göster
         if len(last_msg) < 2000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
@@ -303,8 +285,6 @@ with st.sidebar:
     st.divider()
     if 'db' in st.session_state:
         st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        
-        # --- MÜFETTİŞ ---
         st.divider()
         st.subheader("🕵️ Veri Müfettişi")
         test = st.text_input("Ara:", placeholder="Örn: Mustafa Sazcı")
