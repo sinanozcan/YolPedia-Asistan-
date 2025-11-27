@@ -71,47 +71,29 @@ def model_yukle():
 
 model = model_yukle()
 
-# --- 1. AJAN: GELİŞMİŞ NİYET OKUYUCU ---
+# --- NİYET OKUYUCU ---
 def niyet_analizi(soru):
     try:
-        # BURAYA "KİMLİK" KURALI EKLENDİ
         prompt = f"""
         GİRDİ: "{soru}"
-        
-        GÖREV: Kullanıcının niyetini analiz et.
-        
-        KARAR KURALLARI:
-        1. SOHBET: 
-           - Selamlaşma ("Merhaba", "Selam", "Hallo").
-           - Botun kendisine dair sorular ("Kimsin?", "Adın ne?", "Neler yapabilirsin?", "Was kannst du?", "Who are you?").
-           - Geri bildirim ("Aferin", "Kötü cevap", "Şöyle yap").
-           - "Can" ismine hitap ("Can nasılsın?", "Can bana yardım et").
-           
-        2. ARAMA:
-           - Ansiklopedik bilgi isteği ("Dersim nerede?", "Alevilik nedir?", "Seyit Rıza kimdir?").
-           - Konu anlatımı isteği ("Bana şunu anlat").
-        
-        CEVAP (Sadece tek kelime): "ARAMA" veya "SOHBET"
+        KARAR:
+        - Bilgi araması (Dersim, Kimdir, Nedir, Anlat, Was ist, Who is): "ARAMA"
+        - Sohbet (Merhaba, Selam, Teşekkür, Adın ne, Hello, Danke): "SOHBET"
+        CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
         return response.text.strip().upper()
     except:
         return "ARAMA"
 
-# --- 2. AJAN: ANAHTAR KELİME AYIKLAYICI ---
+# --- KELİME AYIKLAYICI ---
 def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Bu cümlenin içindeki ARANAN KONUYU (Entity) bul ve sadece onu yaz.
-        - "Can" kelimesi botun adıysa onu ayıkla, arama terimi olarak kullanma.
-        - Soru eklerini at.
-        
+        GÖREV: İçindeki ARANAN KONUYU (Entity) bul. Soru eklerini at. Türkçe halini koru.
         ÖRNEK: "Was ist eigentlich Oniki Hizmet?" -> Oniki Hizmet
-        ÖRNEK: "Who is Seyit Riza?" -> Seyit Rıza
-        ÖRNEK: "Can, Dersim neresidir?" -> Dersim
-        
-        CEVAP (Sadece kelime):
+        CEVAP:
         """
         response = model.generate_content(prompt)
         text = response.text.strip()
@@ -151,7 +133,6 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         puan = 0
         if soru_temiz in baslik_norm: puan += 100
         elif soru_temiz in icerik_norm: puan += 40
-        
         for k in anahtar:
             if k in baslik_norm: puan += 10
             elif k in icerik_norm: puan += 2
@@ -176,6 +157,7 @@ if "messages" not in st.session_state:
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
 
+# Geçmiş mesajları bas
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
@@ -183,7 +165,7 @@ for message in st.session_state.messages:
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
-# --- GİRİŞ ---
+# --- GİRİŞ VE İŞLEM ---
 prompt = st.chat_input("Can'a bir soru sorun...")
 
 is_user_input = prompt is not None
@@ -191,6 +173,7 @@ is_detail_click = st.session_state.get('detay_istendi', False)
 
 if is_user_input or is_detail_click:
     
+    # 1. Değişkenleri Hazırla
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -198,7 +181,6 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # Niyet Analizi
         niyet = niyet_analizi(prompt)
         st.session_state.son_niyet = niyet
         
@@ -207,17 +189,21 @@ if is_user_input or is_detail_click:
             arama_kelimesi = anahtar_kelime_ayikla(prompt)
             
         user_msg = prompt
+        ekrana_bas = prompt
         
     elif is_detail_click:
         st.session_state.detay_istendi = False
         user_msg = st.session_state.get('son_soru', "")
         arama_kelimesi = anahtar_kelime_ayikla(user_msg)
         st.session_state.son_niyet = "ARAMA"
+        ekrana_bas = None # Butona basınca tekrar kullanıcı mesajı basma
 
-    if is_user_input:
+    # Kullanıcı mesajını sadece yeni soruysa ekrana bas
+    if ekrana_bas:
          with st.chat_message("user"):
-            st.markdown(user_msg)
+            st.markdown(ekrana_bas)
 
+    # 2. Asistan Cevabı
     with st.chat_message("assistant"):
         baglam = None
         kaynaklar = None
@@ -238,95 +224,71 @@ if is_user_input or is_detail_click:
                         st.session_state.son_kaynaklar = kaynaklar
             
             try:
-                # --- SOHBET MODU ---
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
-                    Kullanıcı seninle sohbet ediyor. 
-                    
-                    KURAL 1: Kullanıcı hangi dilde yazdıysa (Almanca, İngilizce vb.), MUTLAKA o dilde cevap ver.
-                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA. Direkt cevaba geç.
-                    KURAL 3: Nazik, bilge ve yardımcı bir ton kullan ("Erenler" kültürüne uygun).
-                    
-                    KULLANICI MESAJI: {user_msg}
+                    Senin adın 'Can'. Sen YolPedia rehberisin.
+                    Kullanıcı: "{user_msg}"
+                    KURAL: Kullanıcının dilinde (TR, EN, DE), nazikçe sohbet et. Asla kendini uzun uzun tanıtma.
                     """
-                
-                # --- ARAMA MODU ---
                 else:
-                    bilgi_metni = baglam if baglam else "Veri tabanında bu konuyla ilgili bilgi bulunamadı."
+                    bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuyla ilgili bilgi bulunmuyor.' de. Kullanıcının dili neyse o dilde söyle. Başka kaynak önerme."
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuda bilgi yok.' de. Dili: Kullanıcının dili."
                     else:
-                        if detay_modu:
-                            gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
-                        else:
-                            gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
-
-                        # --- GÜVENLİK AYARI: ALAKASIZ BİLGİ KORUMASI ---
+                        gorev = "DETAYLI ve KAPSAMLI anlat." if detay_modu else "KISA ve ÖZ (Özet) anlat."
                         full_prompt = f"""
-                        Senin adın 'Can'.
+                        Sen 'Can'.
                         {gorev}
+                        KURAL 1: Kullanıcının dilinde cevap ver.
+                        KURAL 2: "YolPedia'ya göre" deme. Doğal konuş.
+                        KURAL 3: Bilgi yoksa uydurma.
                         
-                        KURALLAR:
-                        1. DİL KURALI: Kullanıcı hangi dilde sorduysa (Almanca, İngilizce vb.), cevabı O DİLDE ver.
-                        2. KONTROL ET: Eğer 'BİLGİLER' kısmındaki metin, kullanıcının sorduğu '{user_msg}' ile alakalı değilse, sakın uydurma. "Bu konuda bilgim yok" de.
-                        3. ASLA "Metne göre", "Verilere göre" deme.
-                        4. Bilgi yoksa 'Bilmiyorum' de.
-                        
-                        BİLGİLER:
-                        {baglam}
+                        BİLGİLER: {baglam}
                         """
                 
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Bağlantı Hatası: {e}")
+                st.error(f"Hata: {e}")
 
-        # --- YAZDIRMA ---
         if stream:
-            try:
-                def stream_parser():
-                    full_text = ""
-                    for chunk in stream:
-                        try:
-                            if chunk.text:
-                                for char in chunk.text:
-                                    yield char
-                                    time.sleep(0.001)
-                                full_text += chunk.text
-                        except ValueError:
-                            continue
-                    
-                    # Linkleri göster ama SADECE niyet arama ise ve bilgi bulunduysa
-                    if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information", "leider", "sorry"]
-                        cevap_olumsuz = any(n in full_text.lower() for n in negatif)
-                        
-                        # Ekstra kontrol: Eğer cevap çok kısaysa ve sohbet gibiyse link gösterme
-                        if not cevap_olumsuz and len(full_text) > 50:
-                            kaynak_metni = "\n\n**📚 Kaynaklar / Sources:**\n"
-                            essiz = {v['link']:v for v in kaynaklar}.values()
-                            for k in essiz:
-                                kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                            for char in kaynak_metni:
+            def stream_parser():
+                full_text = ""
+                for chunk in stream:
+                    try:
+                        if chunk.text:
+                            for char in chunk.text:
                                 yield char
                                 time.sleep(0.001)
-
-                response_text = st.write_stream(stream_parser)
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
+                            full_text += chunk.text
+                    except ValueError:
+                        continue 
                 
-                if niyet == "ARAMA" and not detay_modu:
-                    st.rerun()
-            except Exception as e:
-                pass
+                if niyet == "ARAMA" and baglam and kaynaklar:
+                    negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
+                    cevap_olumsuz = any(n in full_text.lower() for n in negatif)
+                    
+                    if not cevap_olumsuz:
+                        kaynak_metni = "\n\n**📚 Kaynaklar / Sources:**\n"
+                        essiz = {v['link']:v for v in kaynaklar}.values()
+                        for k in essiz:
+                            kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
+                        for char in kaynak_metni:
+                            yield char
+                            time.sleep(0.001)
 
-# --- DETAY BUTONU ---
-son_niyet = st.session_state.get('son_niyet', "")
+            response_text = st.write_stream(stream_parser)
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+
+# --- DETAY BUTONU (Döngünün dışında, en altta) ---
+# En son mesaj asistandansa ve butonluk bir durumsa
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
+    son_niyet = st.session_state.get('son_niyet', "")
     
-    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower() and "keine information" not in last_msg.lower():
+    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
+        # Mesaj kısaysa buton göster
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
             with col2:
