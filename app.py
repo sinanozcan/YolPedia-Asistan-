@@ -16,7 +16,8 @@ WP_PASS = st.secrets["WP_PASS"]
 WEBSITE_URL = "https://yolpedia.eu" 
 LOGO_URL = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 DATA_FILE = "yolpedia_data.json"
-ASISTAN_ISMI = "Can | YolPedia Rehberiniz"
+ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
+MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 # ===========================================
 
 # --- FAVICON ---
@@ -28,25 +29,39 @@ except:
 
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 
-# --- CSS (SADE VE TEMİZ) ---
+# --- CSS (TASARIM) ---
 st.markdown("""
 <style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 20px; }
-    .logo-img { width: 80px; margin-right: 15px; }
-    .title-text { font-size: 32px; font-weight: 700; margin: 0; color: #ffffff; }
-    @media (prefers-color-scheme: light) { .title-text { color: #000000; } }
-    /* Sadece Detay butonu için stil */
+    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 10px; margin-bottom: 5px; }
+    .logo-img { width: 85px; margin-right: 15px; }
+    .title-text { font-size: 34px; font-weight: 700; margin: 0; color: #ffffff; }
+    .motto-text { 
+        text-align: center; 
+        font-size: 18px; 
+        font-style: italic; 
+        color: #cccccc; 
+        margin-bottom: 30px; 
+        font-family: 'Georgia', serif;
+    }
+    
+    @media (prefers-color-scheme: light) { 
+        .title-text { color: #000000; } 
+        .motto-text { color: #555555; }
+    }
+    
+    /* Detay butonu stili */
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- BAŞLIK ---
+# --- BAŞLIK VE MOTTO ---
 st.markdown(
     f"""
     <div class="main-header">
         <img src="{LOGO_URL}" class="logo-img">
-        <h1 class="title-text">{ASISTAN_ISMI}</h1>
+        <h1 class="title-text">Can Dede</h1>
     </div>
+    <div class="motto-text">{MOTTO}</div>
     """,
     unsafe_allow_html=True
 )
@@ -77,7 +92,10 @@ def niyet_analizi(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        KARAR: "ARAMA" veya "SOHBET"
+        KARAR:
+        - Bilgi araması: "ARAMA"
+        - Sohbet: "SOHBET"
+        CEVAP: "ARAMA" veya "SOHBET"
         """
         response = model.generate_content(prompt)
         return response.text.strip().upper()
@@ -89,7 +107,7 @@ def anahtar_kelime_ayikla(soru):
     try:
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Konuyu (Entity) bul. Soru eklerini at. Türkçe halini koru.
+        GÖREV: Konuyu (Entity) bul. Soru eklerini at. Türkçe halini koru. "Can Dede" ismini arama terimi yapma.
         CEVAP:
         """
         response = model.generate_content(prompt)
@@ -109,7 +127,7 @@ def veri_yukle():
         return []
 
 if 'db' not in st.session_state:
-    with st.spinner('Can hazırlanıyor...'):
+    with st.spinner('Can Dede hazırlanıyor...'):
         st.session_state.db = veri_yukle()
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -148,22 +166,22 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
         
     return bulunanlar, kaynaklar
 
-# --- SOHBET GEÇMİŞİ (SADECE METİN) ---
+# --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Erenler! Ben Can! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
+        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede! YolPedia'da site rehberinizim. Sizlere nasıl yardımcı olabilirim?"}
     ]
 
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- DETAY BUTONU TETİKLEYİCİ ---
+# --- DETAY BUTONU ---
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
 # --- GİRİŞ VE İŞLEM ---
-prompt = st.chat_input("Can'a bir soru sorun...")
+prompt = st.chat_input("Can Dede'ye bir soru sorun...")
 
 is_user_input = prompt is not None
 is_detail_click = st.session_state.get('detay_istendi', False)
@@ -203,7 +221,7 @@ if is_user_input or is_detail_click:
         niyet = st.session_state.get('son_niyet', "ARAMA")
         stream = None
         
-        with st.spinner("Can düşünüyor..."):
+        with st.spinner("Can Dede düşünüyor..."):
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -218,10 +236,11 @@ if is_user_input or is_detail_click:
             try:
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    Senin adın 'Can'. Sen YolPedia ansiklopedisinin yardımsever rehberisin.
+                    Senin adın 'Can Dede'. Sen YolPedia ansiklopedisinin bilge ve yardımsever rehberisin.
                     Kullanıcı seninle sohbet ediyor. 
                     KURAL 1: Kullanıcı hangi dilde yazdıysa, MUTLAKA o dilde cevap ver.
-                    KURAL 2: "Merhaba ben Can" gibi kendini tanıtan cümlelerle BAŞLAMA.
+                    KURAL 2: "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                    KURAL 3: Üslubun "Erenler" kültürüne uygun, bilge ve nazik olsun.
                     
                     KULLANICI MESAJI: {user_msg}
                     """
@@ -231,13 +250,20 @@ if is_user_input or is_detail_click:
                     if not baglam:
                         full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: Kullanıcı dili."
                     else:
-                        gorev = "EN İNCE DETAYINA KADAR anlat." if detay_modu else "KISA ve ÖZ (Özet) anlat."
+                        if detay_modu:
+                            gorev = f"GÖREVİN: '{user_msg}' konusunu, aşağıdaki BİLGİLER'i kullanarak EN İNCE DETAYINA KADAR anlat."
+                        else:
+                            gorev = f"GÖREVİN: '{user_msg}' sorusuna, aşağıdaki BİLGİLER'i kullanarak KISA VE ÖZ (Özet) bir cevap ver."
+
                         full_prompt = f"""
-                        Sen 'Can'.
+                        Senin adın 'Can Dede'.
                         {gorev}
-                        KURAL 1: Kullanıcı dili neyse cevap o dilde olsun.
-                        KURAL 2: "YolPedia'ya göre" deme. Doğal konuş.
-                        KURAL 3: Bilgi yoksa uydurma.
+                        
+                        KURALLAR:
+                        1. DİL KURALI: Kullanıcı soruyu hangi dilde sorduysa (Almanca, İngilizce vb.), cevabı O DİLDE ver. 
+                        2. Asla uydurma yapma.
+                        3. "YolPedia'ya göre" gibi girişler yapma.
+                        4. Bilgi yoksa 'Bilmiyorum' de (Kullanıcının dilinde).
                         
                         BİLGİLER: {baglam}
                         """
@@ -245,7 +271,7 @@ if is_user_input or is_detail_click:
                 stream = model.generate_content(full_prompt, stream=True)
                 
             except Exception as e:
-                st.error(f"Hata: {e}")
+                st.error(f"Bağlantı Hatası: {e}")
 
         if stream:
             try:
@@ -286,7 +312,6 @@ son_niyet = st.session_state.get('son_niyet', "")
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
-    # Sadece Arama ise ve cevap olumluysa Detay butonu göster
     if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
         if len(last_msg) < 5000:
             col1, col2, col3 = st.columns([1,2,1])
