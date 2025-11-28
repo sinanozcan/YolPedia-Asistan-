@@ -32,7 +32,7 @@ MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 # --- RESİMLER ---
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
-USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
+USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/avatar.png"
 # ===========================================
 
 # --- FAVICON ---
