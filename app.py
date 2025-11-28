@@ -71,11 +71,11 @@ st.markdown("""
     .top-logo-container {
         display: flex;
         justify-content: center;
-        margin-bottom: 15px;
+        margin-bottom: 45px;
         padding-top: 10px;
     }
     .top-logo {
-        width: 50px;
+        width: 120px;
         opacity: 0.8; 
     }
     .motto-text { 
