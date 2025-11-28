@@ -40,19 +40,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME ---
+# --- VERİ YÜKLEME (GÜÇLENDİRİLMİŞ) ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
+            # Veri temizleme ve normalizasyon
+            processed_data = []
             for d in data:
-                d['norm_baslik'] = tr_normalize(d['baslik'])
-                d['norm_icerik'] = tr_normalize(d['icerik'])
-            return data
+                # .get() kullanarak hata riskini sıfırlıyoruz
+                ham_baslik = d.get('baslik', '')
+                ham_icerik = d.get('icerik', '')
+                
+                d['norm_baslik'] = tr_normalize(ham_baslik)
+                d['norm_icerik'] = tr_normalize(ham_icerik)
+                processed_data.append(d)
+            return processed_data
     except: return []
 
 def tr_normalize(text):
+    if not isinstance(text, str): return "" # Eğer metin değilse boş döndür
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
@@ -69,7 +77,7 @@ with st.sidebar:
     st.markdown("---")
     st.info(f"Aktif Mod: **{secilen_mod}**")
 
-# --- HEADER (Ana Sayfa) ---
+# --- HEADER ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">Can Dede</h1></div>
@@ -77,9 +85,9 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 
-# --- ARAMA MOTORU ---
+# --- ARAMA MOTORU (HATASIZ) ---
 def alakali_icerik_bul(kelime, db, mod):
-    # Eğer Sohbet Modundaysak ARAMA YAPMA (Boş dön)
+    # Sohbet modunda arama yapma
     if "Sohbet" in mod:
         return "", []
 
@@ -88,32 +96,40 @@ def alakali_icerik_bul(kelime, db, mod):
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
-    # Araştırma modunda daha kısa kelimelere de izin verelim
     if len(norm_sorgu) < 3: return "", []
 
     sonuclar = []
     for d in db:
         puan = 0
-        if norm_sorgu in d['norm_baslik']: puan += 100
-        elif norm_sorgu in d['norm_icerik']: puan += 50
-        for k in anahtarlar:
-            if k in d['norm_baslik']: puan += 20 # Kelime eşleşme puanı artırıldı
-            elif k in d['norm_icerik']: puan += 5     
+        # .get() kullanarak KeyError hatasını önlüyoruz
+        d_baslik = d.get('norm_baslik', '')
+        d_icerik = d.get('norm_icerik', '')
         
-        # Araştırma modunda barajı DÜŞÜR (15 puan yeterli)
+        if norm_sorgu in d_baslik: puan += 100
+        elif norm_sorgu in d_icerik: puan += 50
+        for k in anahtarlar:
+            if k in d_baslik: puan += 20
+            elif k in d_icerik: puan += 5     
+        
+        # Araştırma modunda baraj 15
         if puan > 15:
             sonuclar.append({"veri": d, "puan": puan})
     
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = sonuclar[:6] # Daha fazla kaynak göster (6 tane)
+    en_iyiler = sonuclar[:6]
     
     context_text = ""
     kaynaklar = []
     
     for item in en_iyiler:
         v = item['veri']
-        context_text += f"\n--- KAYNAK BİLGİ: {v['baslik']} ---\n{v['icerik'][:4000]}\n"
-        kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
+        # Verileri güvenli çek
+        v_baslik = v.get('baslik', 'Başlıksız')
+        v_icerik = v.get('icerik', '')
+        v_link = v.get('link', '#')
+        
+        context_text += f"\n--- KAYNAK BİLGİ: {v_baslik} ---\n{v_icerik[:4000]}\n"
+        kaynaklar.append({"baslik": v_baslik, "link": v_link})
         
     return context_text, kaynaklar
 
@@ -135,9 +151,8 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
         yield "HATA: API Anahtarı eksik."
         return
 
-    # --- MODA GÖRE GÖREV TANIMI ---
+    # --- MODA GÖRE GÖREV ---
     if "Araştırma" in mod:
-        # ARAŞTIRMA MODU PROMPT'U
         gorev_tanimi = """
         MOD: ARAŞTIRMA MODU.
         GÖREVİN:
@@ -148,17 +163,16 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
         """
         kaynak_metni = context_data if context_data else "İlgili kaynak bulunamadı, genel kültürünle cevapla."
     else:
-        # SOHBET MODU PROMPT'U
         gorev_tanimi = """
         MOD: SOHBET MODU.
         GÖREVİN:
         Sadece samimi, edebi ve felsefi bir dille sohbet et. 
         ASLA '###DETAY###' ayırıcı kullanma.
-        ASLA kaynaklardan bahsetme. Sadece muhabbet et.
+        ASLA kaynaklardan bahsetme.
         """
         kaynak_metni = "Sohbet modundasın, kaynak kullanma."
 
-    # --- KARAKTER, ÜSLUP VE DİL AYARLARI ---
+    # --- SİSTEM PROMPT ---
     system_prompt = f"""
     Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
     
@@ -252,7 +266,7 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    # MODA GÖRE ARAMA YAP
+    # ARAMA (Mod'a göre)
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
@@ -281,7 +295,7 @@ if prompt:
         for chunk in stream:
             full_text += chunk
             
-            # Sadece Araştırma Modunda Detay Ayrıştır
+            # Sadece Araştırma Modunda Detay
             if "Araştırma" in secilen_mod and ("###DETAY###" in chunk or "###DETAY###" in full_text):
                 if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
@@ -303,10 +317,10 @@ if prompt:
         
         final_history = full_text
 
-        # --- ARAŞTIRMA MODUNDA KAYNAK GÖSTER ---
+        # --- ARAŞTIRMA MODUNDA KAYNAK LİSTELE ---
         if "Araştırma" in secilen_mod and kaynaklar:
             with detay_container.container():
-                with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True): # Default açık olsun araştırma modunda
+                with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True):
                     if detay_text.strip():
                         st.markdown(detay_text)
                         st.markdown("\n---\n")
