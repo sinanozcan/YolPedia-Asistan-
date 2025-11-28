@@ -12,7 +12,7 @@ from PIL import Image
 from io import BytesIO
 
 # ================= AYARLAR =================
-# Çoklu Anahtar Listesi
+# Çoklu Anahtar Listesi (Senin Ayarların)
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
     st.secrets.get("API_KEY_2", ""),
@@ -20,7 +20,6 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-# Boş olanları temizle
 API_KEYS = [k for k in API_KEYS if k]
 
 WP_USER = st.secrets["WP_USER"]
@@ -30,9 +29,9 @@ DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
-# --- RESİMLER ---
+# --- RESİMLER (SABİT LİNKLER) ---
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
-CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
+CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
 # ===========================================
 
@@ -87,13 +86,11 @@ st.markdown("""
         margin-bottom: 25px; 
         font-family: 'Georgia', serif; 
     }
-    
-    /* Avatar Ayarları */
+    /* Avatar Ayarı */
     .stChatMessage .avatar {
         width: 45px !important;
         height: 45px !important;
     }
-
     @media (prefers-color-scheme: light) { 
         .title-text { color: #000000; } 
         .motto-text { color: #555555; }
@@ -128,27 +125,25 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- GÜÇLENDİRİLMİŞ MODEL YÖNETİCİSİ (GARANTİLİ ÇALIŞMA) ---
+# --- AKILLI API YÖNETİCİSİ (404/429 Korumalı) ---
 def get_model():
-    """Rastgele anahtar seçer ve MUTLAKA çalışan bir model döndürür"""
     if not API_KEYS:
         return None
-        
     secilen_key = random.choice(API_KEYS)
     genai.configure(api_key=secilen_key)
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # Denenecek Modeller (Öncelik sırasına göre)
+    # Garanti Model Listesi
     model_listesi = [
         "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
         "gemini-1.5-flash-latest",
         "gemini-1.5-pro",
-        "gemini-1.0-pro",
-        "gemini-pro" # En eski ve en sağlam model (Fallback)
+        "gemini-pro"
     ]
 
-    # 1. Önce sistemden dinamik bulmaya çalış
+    # 1. Dinamik
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -157,28 +152,24 @@ def get_model():
     except:
         pass
 
-    # 2. Bulamazsa listedekileri sırayla dene
+    # 2. Liste
     for m_adi in model_listesi:
         try:
-            # Sadece tanımlamak yetmez, test edelim
-            test_model = genai.GenerativeModel(m_adi, generation_config=generation_config)
-            return test_model
+            return genai.GenerativeModel(m_adi, generation_config=generation_config)
         except:
             continue
             
-    # 3. Hiçbiri olmazsa varsayılanı döndür (Hata verirse burada versin)
-    return genai.GenerativeModel('gemini-pro', generation_config=generation_config)
+    return None
 
 # --- 1. AJAN: NİYET OKUYUCU ---
 def niyet_analizi(soru):
     try:
         local_model = get_model()
+        if not local_model: return "ARAMA"
         prompt = f"""
         GİRDİ: "{soru}"
-        KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet: "SOHBET"
-        CEVAP: "ARAMA" veya "SOHBET"
+        KARAR: "ARAMA" veya "SOHBET"
+        Sadece tek kelime cevap ver.
         """
         response = local_model.generate_content(prompt)
         return response.text.strip().upper()
@@ -189,6 +180,7 @@ def niyet_analizi(soru):
 def dil_tespiti(soru):
     try:
         local_model = get_model()
+        if not local_model: return "Turkish"
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Dil tespiti (Turkish, English, German...).
@@ -203,6 +195,7 @@ def dil_tespiti(soru):
 def anahtar_kelime_ayikla(soru):
     try:
         local_model = get_model()
+        if not local_model: return soru
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Konuyu bul. Hitapları at.
@@ -266,23 +259,19 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
 # --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Hakikat yolunda merak ettiklerinizi sorabilirsiniz."}
+        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Size nasıl yardımcı olabilirim?"}
     ]
 
+# Geçmiş mesajları ekrana bas
 for message in st.session_state.messages:
-    # İKON ATAMASI
-    if message["role"] == "assistant":
-        avatar_icon = CAN_DEDE_ICON
-    else:
-        avatar_icon = USER_ICON 
-        
-    with st.chat_message(message["role"], avatar=avatar_icon):
+    role_icon = CAN_DEDE_ICON if message["role"] == "assistant" else USER_ICON
+    with st.chat_message(message["role"], avatar=role_icon):
         st.markdown(message["content"])
 
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
-# --- GİRİŞ ---
+# --- GİRİŞ VE İŞLEM ---
 prompt = st.chat_input("Can Dede'ye sor...")
 
 is_user_input = prompt is not None
@@ -290,13 +279,19 @@ is_detail_click = st.session_state.get('detay_istendi', False)
 
 if is_user_input or is_detail_click:
     
+    # 1. Değişkenleri Hazırla
     if is_user_input:
+        # Kullanıcı mesajını hemen ekle ve göster
         st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar=USER_ICON):
+            st.markdown(prompt)
+            
         st.session_state.detay_istendi = False
         st.session_state.son_baglam = None 
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
+        # Analizler (Arka planda)
         niyet = niyet_analizi(prompt)
         dil = dil_tespiti(prompt)
         st.session_state.son_niyet = niyet
@@ -312,12 +307,9 @@ if is_user_input or is_detail_click:
         user_msg = st.session_state.get('son_soru', "")
         arama_kelimesi = anahtar_kelime_ayikla(user_msg)
         st.session_state.son_niyet = "ARAMA"
+        # Dil hafızadan gelir, tekrar tespite gerek yok
 
-    if is_user_input:
-         with st.chat_message("user", avatar=USER_ICON):
-            st.markdown(user_msg)
-            otomatik_kaydir()
-
+    # 2. Asistan Cevabı Üretimi
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         baglam = None
         kaynaklar = None
@@ -329,6 +321,7 @@ if is_user_input or is_detail_click:
         with st.spinner("Can Dede düşünüyor..."):
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
+                    # Detay isteği mi yoksa yeni arama mı?
                     if is_detail_click and st.session_state.get('son_baglam'):
                         baglam = st.session_state.son_baglam
                         kaynaklar = st.session_state.son_kaynaklar
@@ -338,27 +331,32 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # Anahtarı ve Modeli Al
+            # Anahtarı Al
             aktif_model = get_model()
             
             if aktif_model:
                 try:
                     # --- PROMPTLAR ---
+                    identity_rules = f"""
+                    KİMLİK: Senin adın 'Can Dede'. Alevi-Bektaşi yolunda bilge, seküler ve humanist bir rehbersin.
+                    ÜSLUP: Makamın bilgeliktir. Hiyerarşik dil (Evlat, Yavrum) YASAK. Hitap: "Erenler", "Can".
+                    DİL: Cevabı {kullanici_dili} dilinde ver.
+                    """
+
                     if niyet == "SOHBET":
                         full_prompt = f"""
-                        Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
-                        Kullanıcı ile sohbet et.
-                        KURALLAR:
-                        1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
-                        2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                        3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                        {identity_rules}
+                        GÖREV: Kullanıcı ile sohbet et.
+                        KURAL: "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
                         MESAJ: {user_msg}
                         """
                     else:
                         bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                         
                         if not baglam:
-                            full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
+                            full_prompt = f"""{identity_rules}
+                            GÖREV: Kullanıcıya nazikçe, YolPedia arşivinde henüz bu bilginin olmadığını söyle.
+                            """
                         else:
                             if detay_modu:
                                 gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
@@ -366,16 +364,12 @@ if is_user_input or is_detail_click:
                                 gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
                             full_prompt = f"""
-                            Sen 'Can Dede'sin.
-                            HEDEF DİL: {kullanici_dili}
-                            
+                            {identity_rules}
                             {gorev}
-                            
                             KURALLAR:
-                            1. "Yol bir, sürek binbir" ilkesiyle anlat. Farklı görüşleri birleştir.
-                            2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
-                            3. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                            4. Giriş cümlesi yapma.
+                            1. SENTEZ: Farklı görüşleri kucakla, taraf tutma.
+                            2. DOĞALLIK: "YolPedia'ya göre" deme. Bilgi sendeymiş gibi anlat.
+                            3. UYDURMA: Bilmediğin şeyi uydurma.
                             BİLGİLER: {baglam}
                             """
                     
@@ -383,19 +377,16 @@ if is_user_input or is_detail_click:
                 
                 except Exception as e:
                     if "429" in str(e):
-                        time.sleep(3)
-                        aktif_model = get_model() # Anahtar değiştir
+                        time.sleep(2)
+                        aktif_model = get_model()
                         if aktif_model:
-                            stream = aktif_model.generate_content(full_prompt, stream=True)
-                    elif "404" in str(e):
-                         # 404 olursa en temel modeli zorla
-                         yedek_model = genai.GenerativeModel('gemini-pro')
-                         stream = yedek_model.generate_content(full_prompt, stream=True)
+                             stream = aktif_model.generate_content(full_prompt, stream=True)
                     else:
-                        st.error(f"Bir hata oluştu: {e}")
+                        st.error(f"Hata: {e}")
             else:
-                st.error("Bağlantı kurulamadı.")
+                st.error("Model bulunamadı.")
 
+        # --- YAZDIRMA (STREAMING) ---
         if stream:
             try:
                 def stream_parser():
@@ -405,15 +396,17 @@ if is_user_input or is_detail_click:
                             if chunk.text:
                                 for char in chunk.text:
                                     yield char
-                                    time.sleep(0.001)
+                                    time.sleep(0.001) # Daktilo hızı
                                 full_text += chunk.text
                         except ValueError:
                             continue
                     
+                    # Link Gösterimi
                     if niyet == "ARAMA" and baglam and kaynaklar:
                         negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
                         if not cevap_olumsuz:
+                            # Başlık dile göre
                             if "German" in kullanici_dili: link_baslik = "**📚 Quellen:**"
                             elif "English" in kullanici_dili: link_baslik = "**📚 Sources:**"
                             else: link_baslik = "**📚 Kaynaklar:**"
@@ -429,18 +422,24 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
+                # OTOMATİK KAYDIRMA (Cevap bitince)
                 otomatik_kaydir()
 
             except Exception as e:
                 pass
 
 # --- DETAY BUTONU ---
+# Butonun her zaman son asistan mesajının altında çıkması için buraya koyduk
+# st.rerun() olmadığı için buton hemen çıkmayabilir, ama sonraki etkileşimde görünür
+# Anında görünmesi için bu bloğu yukarıdaki stream bloğunun hemen altına alabiliriz ama
+# Streamlit yapısı gereği akış yukarıdan aşağıdır. En altta durması daha sağlıklıdır.
+
 son_niyet = st.session_state.get('son_niyet', "")
 if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]["content"]
     
     if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
-        if len(last_msg) < 5000:
+        if len(last_msg) < 5000: # Sadece özetse göster
             dil = st.session_state.get('son_dil', "Turkish")
             if "German" in dil: btn_txt = "📜 Mehr Details"
             elif "English" in dil: btn_txt = "📜 More Details"
