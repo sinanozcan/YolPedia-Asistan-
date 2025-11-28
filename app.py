@@ -87,7 +87,7 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ (HIZLANDIRILMIŞ) ---
+# --- AKILLI API YÖNETİCİSİ (GÜNCELLENMİŞ) ---
 def get_model():
     if not API_KEYS: return None
     secilen_key = random.choice(API_KEYS)
@@ -95,13 +95,19 @@ def get_model():
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # Listeyi taramak yerine doğrudan en hızlı ve kararlı modelleri sırayla dener
-    model_oncelik_sirasi = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-pro"]
+    # Model isimlerini çeşitlendirdik. 'models/' ön eki bazen hatayı çözer.
+    model_oncelik_sirasi = [
+        "gemini-1.5-flash", 
+        "gemini-1.5-pro", 
+        "gemini-pro",         # En kararlı model
+        "models/gemini-1.5-flash", 
+        "models/gemini-pro"
+    ]
     
     for m_adi in model_oncelik_sirasi:
-        try:
-            return genai.GenerativeModel(m_adi, generation_config=generation_config)
-        except: continue
+        # Modeli sadece tanımlayıp dönüyoruz, hatayı kullanım sırasında yakalayacağız
+        return genai.GenerativeModel(m_adi, generation_config=generation_config)
+    
     return None
 
 # --- AJANLAR ---
