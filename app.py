@@ -98,6 +98,17 @@ if "messages" not in st.session_state:
         "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
     }]
 
+# RATE LIMITING: Kullanıcı başına sayaç
+if 'request_count' not in st.session_state:
+    st.session_state.request_count = 0
+if 'last_reset_time' not in st.session_state:
+    st.session_state.last_reset_time = time.time()
+
+# Saatlik reset
+if time.time() - st.session_state.last_reset_time > 3600:  # 1 saat
+    st.session_state.request_count = 0
+    st.session_state.last_reset_time = time.time()
+
 # --- MOD SEÇİMİ (SIDEBAR) ---
 with st.sidebar:
     st.image(CAN_DEDE_ICON, width=100)
@@ -108,6 +119,15 @@ with st.sidebar:
         st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
     else:
         st.error("⚠️ Veritabanı yüklenemedi!")
+    
+    # Kullanım limiti göster
+    kalan_limit = 50 - st.session_state.request_count
+    if kalan_limit > 30:
+        st.info(f"💬 Kalan mesaj: **{kalan_limit}/50** (saatlik)")
+    elif kalan_limit > 10:
+        st.warning(f"⚠️ Kalan mesaj: **{kalan_limit}/50** (saatlik)")
+    else:
+        st.error(f"🔴 Kalan mesaj: **{kalan_limit}/50** (saatlik)")
     
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
@@ -378,6 +398,14 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
+    # RATE LIMIT KONTROLÜ
+    if st.session_state.request_count >= 50:
+        st.error("⏰ Saatlik mesaj limitine ulaştınız (50 mesaj). Lütfen bir saat sonra tekrar deneyin.")
+        st.info("💡 İpucu: Daha fazla mesaj için birden fazla API key ekleyin veya Google Cloud ücretli planına geçin.")
+        st.stop()
+    
+    st.session_state.request_count += 1
+    
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
