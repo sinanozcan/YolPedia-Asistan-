@@ -30,7 +30,7 @@ ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
 # --- RESİMLER ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 # ===========================================
 
@@ -119,7 +119,7 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ ---
+# --- AKILLI API VE MODEL YÖNETİCİSİ (HATA ÇÖZÜCÜ) ---
 def get_model():
     if not API_KEYS:
         return None
@@ -128,10 +128,33 @@ def get_model():
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
+    # DENENECEK MODELLER LİSTESİ (Biri çalışmazsa diğerine geçer)
+    model_listesi = [
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-001",
+        "gemini-1.5-flash-latest",
+        "gemini-1.5-pro",
+        "gemini-pro"
+    ]
+
+    # 1. Önce sistemden dinamik olarak bulmaya çalış
     try:
-        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
     except:
-        return None
+        pass # Dinamik bulamazsa listeye geç
+
+    # 2. Listeden sırayla dene
+    for model_adi in model_listesi:
+        try:
+            model = genai.GenerativeModel(model_adi, generation_config=generation_config)
+            return model
+        except:
+            continue
+            
+    return None
 
 # --- 1. AJAN: NİYET OKUYUCU ---
 def niyet_analizi(soru):
@@ -169,7 +192,7 @@ def anahtar_kelime_ayikla(soru):
         local_model = get_model()
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Konuyu bul. Hitapları ve ekleri at.
+        GÖREV: Konuyu bul. Hitapları at.
         CEVAP:
         """
         response = local_model.generate_content(prompt)
@@ -230,7 +253,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
 # --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Size nasıl yardımcı olabilirim?"}
+        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Hakikat yolunda merak ettiklerinizi sorabilirsiniz."}
     ]
 
 for message in st.session_state.messages:
@@ -296,58 +319,50 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # Anahtarı Al
+            # Anahtarı Al (Model Garantili)
             aktif_model = get_model()
             
-            try:
-                # --- KİMLİK VE ÜSLUP (YOL BİR SÜREK BİNBİR LAFI YASAKLANDI) ---
-                identity_rules = f"""
-                KİMLİK: Senin adın 'Can Dede'.
-                ÜSLUP: Bilge, kalender, rind ve seküler.
-                HİTAPLAR: "Erenler", "Can", "Dost". (ASLA "Evlat" deme).
-                DİL: Kullanıcı hangi dilde sorduysa ({kullanici_dili}), o dilde cevap ver.
-                
-                YASAKLAR:
-                1. "Yol bir sürek binbir" sözünü papağan gibi tekrar etme. Sadece felsefesini uygula (kapsayıcı ol).
-                2. "Merhaba ben Can Dede" diye kendini tanıtma.
-                3. "Verilere göre..." diye başlama.
-                """
-
-                if niyet == "SOHBET":
-                    full_prompt = f"""
-                    {identity_rules}
-                    GÖREV: Kullanıcı ile sohbet et.
-                    KULLANICI MESAJI: {user_msg}
-                    """
-                else:
-                    bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
-                    
-                    if not baglam:
+            if aktif_model:
+                try:
+                    # --- PROMPTLAR ---
+                    if niyet == "SOHBET":
                         full_prompt = f"""
-                        {identity_rules}
-                        GÖREV: Nazikçe bu bilginin YolPedia arşivinde olmadığını söyle.
+                        Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
+                        Kullanıcı ile sohbet et.
+                        KURALLAR:
+                        1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                        2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                        3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                        MESAJ: {user_msg}
                         """
                     else:
-                        if detay_modu:
-                            gorev = f"GÖREV: '{user_msg}' konusunu, elindeki metinleri harmanlayarak EN İNCE DETAYINA KADAR anlat."
+                        bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
+                        
+                        if not baglam:
+                            full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
                         else:
-                            gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
+                            if detay_modu:
+                                gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
+                            else:
+                                gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
-                        full_prompt = f"""
-                        {identity_rules}
-                        {gorev}
-                        
-                        EK KURALLAR:
-                        1. SENTEZ: Farklı görüşler varsa taraf tutma, hepsini kucakla.
-                        2. DOĞRULUK: Bilmediğin şeyi uydurma.
-                        
-                        KAYNAK METİNLER: {baglam}
-                        """
-                
-                stream = aktif_model.generate_content(full_prompt, stream=True)
-                
-            except Exception as e:
-                st.error(f"Hata: {e}")
+                            full_prompt = f"""
+                            Sen 'Can Dede'sin.
+                            HEDEF DİL: {kullanici_dili}
+                            {gorev}
+                            KURALLAR:
+                            1. "Yol bir, sürek binbir" ilkesiyle anlat. Farklı görüşleri birleştir.
+                            2. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                            3. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                            4. Giriş cümlesi yapma.
+                            BİLGİLER: {baglam}
+                            """
+                    
+                    stream = aktif_model.generate_content(full_prompt, stream=True)
+                except Exception as e:
+                    st.error(f"Hata: {e}")
+            else:
+                st.error("Model bağlantısı kurulamadı. Lütfen sayfayı yenileyin.")
 
         if stream:
             try:
