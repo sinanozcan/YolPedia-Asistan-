@@ -50,8 +50,8 @@ st.markdown("""
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
     .dede-img { width: 80px; height: 80px; border-radius: 50%; margin-right: 15px; object-fit: cover; border: 2px solid #eee; }
     .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
-    .top-logo-container { display: flex; justify-content: center; margin-bottom: 15px; padding-top: 10px; }
-    .top-logo { width: 120px; opacity: 1.0; }
+    .top-logo-container { display: flex; justify-content: center; margin-bottom: 45px; padding-top: 10px; }
+    .top-logo { width: 90px; opacity: 1.0; }
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
     .stChatMessage .avatar { width: 45px !important; height: 45px !important; }
     @media (prefers-color-scheme: light) { 
