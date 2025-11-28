@@ -40,7 +40,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- HIZLANDIRILMIŞ VERİ YÜKLEME ---
+# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -48,13 +48,9 @@ def veri_yukle():
             data = json.load(f)
             processed_data = []
             for d in data:
-                # Sadece başlığı ve içeriğin ilk 500 karakterini normalize et (HIZ İÇİN)
                 ham_baslik = d.get('baslik', '')
                 ham_icerik = d.get('icerik', '')
-                
                 d['norm_baslik'] = tr_normalize(ham_baslik)
-                # Tüm içeriği normalize etmek yerine aramayı hızlandırmak için kısaltıyoruz
-                # (Zaten kelime başta geçiyorsa alakalıdır)
                 d['norm_icerik'] = tr_normalize(ham_icerik) 
                 processed_data.append(d)
             return processed_data
@@ -86,7 +82,7 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 
-# --- HIZLANDIRILMIŞ ARAMA MOTORU ---
+# --- ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db, mod):
     if "Sohbet" in mod: return "", []
     if not db: return "", []
@@ -98,13 +94,11 @@ def alakali_icerik_bul(kelime, db, mod):
 
     sonuclar = []
     
-    # Döngü optimizasyonu: Her kaydı detaylı incelemek yerine basit string kontrolü
     for d in db:
         puan = 0
         d_baslik = d.get('norm_baslik', '')
-        d_icerik = d.get('norm_icerik', '') # Zaten bellekte hazır
+        d_icerik = d.get('norm_icerik', '')
         
-        # Basit string araması (En hızlı yöntem)
         if norm_sorgu in d_baslik: puan += 100
         elif norm_sorgu in d_icerik: puan += 50
         
@@ -192,35 +186,36 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     
     random.shuffle(API_KEYS)
     
-    # --- KRİTİK HIZLANDIRMA: LİSTELEME YOK, DOĞRUDAN ÇAĞRI VAR ---
+    # --- YENİ ZIRHLI BAĞLANTI SİSTEMİ ---
+    # Sırayla dene: Önce Flash, olmazsa Pro, o da olmazsa Eski Pro
+    denenecek_modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+    
     for key in API_KEYS:
         genai.configure(api_key=key)
         
-        # 'uygun_modeli_bul' fonksiyonunu sildik.
-        # Doğrudan en hızlı modeli (Flash) çağırıyoruz.
-        try:
-            model = genai.GenerativeModel("gemini-1.5-flash") # En hızlı model
-            response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
-            for chunk in response:
-                try:
-                    if chunk.text: yield chunk.text
-                except: continue
-            return 
-        except Exception:
-            # Flash yoksa Pro'yu dene (Yedek)
+        for model_adi in denenecek_modeller:
             try:
-                model = genai.GenerativeModel("gemini-pro")
+                model = genai.GenerativeModel(model_adi)
                 response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
+                
+                # Jeneratörden veri geldi mi kontrol et
+                chunk_var_mi = False
                 for chunk in response:
                     try:
-                        if chunk.text: yield chunk.text
+                        if chunk.text: 
+                            yield chunk.text
+                            chunk_var_mi = True
                     except: continue
-                return
-            except:
+                
+                if chunk_var_mi:
+                    return # Başarılı olduysa fonksiyondan çık
+                
+            except Exception:
                 time.sleep(0.5)
-                continue 
-
-    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
+                continue # Bu model olmadı, sıradakine geç
+            
+    # Eğer tüm anahtarlar ve tüm modeller başarısız olduysa:
+    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu). Lütfen biraz sonra tekrar dene Erenler."
 
 def scroll_to_bottom():
     js = """
@@ -263,7 +258,6 @@ if prompt:
         placeholder = st.empty()
         detay_container = st.empty()
         
-        # Animasyon
         animasyon_html = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
             <div style="
