@@ -5,8 +5,6 @@ import google.generativeai as genai
 import time
 import json
 import random
-from PIL import Image
-from io import BytesIO
 
 # ================= AYARLAR =================
 API_KEYS = [
@@ -25,10 +23,8 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-# --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon="🤖")
 
-# --- CSS ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
@@ -39,11 +35,9 @@ st.markdown("""
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } .motto-text { color: #555555; } }
     .stChatMessage { margin-bottom: 10px; }
-    .streamlit-expanderHeader { font-weight: bold; color: #555; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- HEADER ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">Can Dede</h1></div>
@@ -60,33 +54,23 @@ def veri_yukle():
                 d['norm_baslik'] = tr_normalize(d['baslik'])
                 d['norm_icerik'] = tr_normalize(d['icerik'])
             return data
-    except FileNotFoundError:
-        return []
-    except Exception:
-        return []
+    except: return []
 
 def tr_normalize(text):
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
-if 'db' not in st.session_state:
-    st.session_state.db = veri_yukle()
+if 'db' not in st.session_state: st.session_state.db = veri_yukle()
 
 # --- ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db):
     if not db: return "", []
     
-    norm_sorgu = tr_normalize(kelime).strip()
-    
-    # --- KESİN ÇÖZÜM: SELAMLAŞMA FİLTRESİ ---
-    # Eğer sorgu sadece bu kelimelerden oluşuyorsa veya çok kısaysa HİÇBİR ŞEY getirme.
-    yasakli_kelimeler = ["merhaba", "selam", "slm", "mrb", "gunaydin", "iyi aksamlar", "nasilsin", "merhabalar", "selamlar"]
-    
-    # Sadece yasaklı kelime ise veya 2 karakterden kısaysa boş dön
-    if norm_sorgu in yasakli_kelimeler or len(norm_sorgu) < 3:
-        return "", []
-
+    norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
+    # Çok kısa sorgularda arama yapma
+    if len(norm_sorgu) < 3: return "", []
+
     sonuclar = []
     for d in db:
         puan = 0
@@ -96,7 +80,8 @@ def alakali_icerik_bul(kelime, db):
             if k in d['norm_baslik']: puan += 15
             elif k in d['norm_icerik']: puan += 5     
         
-        if puan > 35: # Eşik puanı artırıldı
+        # EŞİK PUANI: Bunu 40 yaptık ki "merhaba" yanlışlıkla eşleşmesin
+        if puan > 40:
             sonuclar.append({"veri": d, "puan": puan})
     
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
@@ -125,18 +110,29 @@ def uygun_modeli_bul_ve_getir():
     except Exception as e:
         return None, str(e)
 
-def can_dede_cevapla(user_prompt, chat_history, context_data):
+def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
     if not API_KEYS:
         yield "HATA: API Anahtarı eksik."
         return
 
+    # Eğer kaynak varsa detaylı format iste, yoksa sadece sohbet et
+    if kaynak_var_mi:
+        gorev_tanimi = """
+        GÖREVİN:
+        1. Sorulan soruya önce **kısa, net ve öz** bir cevap ver.
+        2. Sonra tam olarak '###DETAY###' yaz.
+        3. Sonra detaylı anlatımını yap.
+        """
+    else:
+        gorev_tanimi = """
+        GÖREVİN:
+        Sadece samimi bir şekilde sohbet et. Kısa ve öz cevap ver. 
+        ASLA '###DETAY###' ayırıcı kullanma.
+        """
+
     system_prompt = f"""
     Sen 'Can Dede'sin. Bilge, tasavvuf ehli bir rehbersin.
-    
-    KURALLAR:
-    1. Sorulan soruya önce **kısa, net ve öz** bir cevap ver.
-    2. "Merhaba", "Nasılsın", "Selam" gibi sohbet sorularında ASLA ve ASLA '###DETAY###' kullanma. Sadece samimi ol.
-    3. Ancak Alevilik, Bektaşilik veya tarih/kültür hakkında BİLGİ sorulursa ve elinde kaynak varsa '###DETAY###' ile ayırıp uzun uzun anlat.
+    {gorev_tanimi}
     
     BİLGİ KAYNAKLARI:
     {context_data if context_data else "Ek kaynak yok."}
@@ -144,17 +140,18 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı. Selamlaşmada detay yok, ilimde detay var."] + chat_history[-1]["content"] if chat_history else []}) # Ufak bir trick
+    contents.append({"role": "model", "parts": ["Anlaşıldı."] + chat_history[-1]["content"] if chat_history else []})
     
-    # Geçmişi temizleyerek ekle
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
+        # Geçmişi temizle
         clean_content = msg["content"].replace("###DETAY###", "").split("📚 Yararlanılan Kaynaklar")[0]
         contents.append({"role": role, "parts": [clean_content]})
     
     contents.append({"role": "user", "parts": [user_prompt]})
     
-    guvenlik_ayarlari = [
+    # Güvenlik Filtrelerini Kapat
+    guvenlik = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
@@ -162,51 +159,42 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
     ]
     
     random.shuffle(API_KEYS)
-    st.session_state.son_hata_raporu = []
-
+    
     for key in API_KEYS:
         genai.configure(api_key=key)
         model_adi, hata = uygun_modeli_bul_ve_getir()
         
-        if not model_adi:
-            st.session_state.son_hata_raporu.append(f"Anahtar: ...{key[-5:]} | Hata: {hata}")
-            continue
+        if not model_adi: continue
 
         try:
             model = genai.GenerativeModel(model_adi)
-            response = model.generate_content(contents, stream=True, safety_settings=guvenlik_ayarlari)
+            response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
             for chunk in response:
                 try:
                     if chunk.text: yield chunk.text
-                except ValueError: continue
+                except: continue
             return 
-        except Exception as e:
-            st.session_state.son_hata_raporu.append(f"Model: {model_adi} | HATA: {str(e)}")
+        except:
             time.sleep(0.5)
             continue 
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
-# --- ARAYÜZ ---
 def scroll_to_bottom():
     components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. Buyur, ne sormak istersin?"}]
-if "son_hata_raporu" not in st.session_state:
-    st.session_state.son_hata_raporu = []
 
-# Mesajları Ekrana Basma
+# Mesajları Bas
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
     with st.chat_message(msg["role"], avatar=icon):
         if "###DETAY###" in msg["content"]:
             parts = msg["content"].split("###DETAY###")
             st.markdown(parts[0])
-            # Geçmiş mesajlarda da detayın doluluğunu kontrol et
-            if len(parts) > 1 and len(parts[1].strip()) > 15:
-                with st.expander("📜 Daha Fazla Detay ve Kaynaklar"):
-                    st.markdown(parts[1])
+            with st.expander("📜 Daha Fazla Detay ve Kaynaklar"):
+                st.markdown(parts[1])
         else:
             st.markdown(msg["content"])
 
@@ -219,67 +207,61 @@ if prompt:
     
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     
+    # --- KRİTİK NOKTA: Eğer kaynak listesi boşsa, detay modu KAPALI ---
+    kaynak_var_mi = len(kaynaklar) > 0
+    
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
-        ozet_placeholder = st.empty()
+        placeholder = st.empty()
         detay_container = st.empty()
         
         full_text = ""
         ozet_text = ""
         detay_text = ""
-        detay_modu = False
+        detay_modu_aktif = False
         
-        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni)
+        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni, kaynak_var_mi)
         
         for chunk in stream:
             full_text += chunk
             
-            if "###DETAY###" in chunk or "###DETAY###" in full_text:
-                if not detay_modu:
+            # Kaynak yoksa zaten ###DETAY### hiç gelmeyecek (prompt engelliyor)
+            # Ama yine de kontrol edelim
+            if kaynak_var_mi and ("###DETAY###" in chunk or "###DETAY###" in full_text):
+                if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
                     ozet_text = parts[0]
                     if len(parts) > 1: detay_text = parts[1]
-                    detay_modu = True
+                    detay_modu_aktif = True
                 else:
                     if "###DETAY###" in chunk: chunk = chunk.replace("###DETAY###", "")
                     detay_text += chunk
             else:
                 ozet_text += chunk
             
-            if not detay_modu:
-                ozet_placeholder.markdown(ozet_text + "▌")
+            if not detay_modu_aktif:
+                placeholder.markdown(ozet_text + "▌")
             else:
-                ozet_placeholder.markdown(ozet_text)
-                # Detaylar yüklenirken expander GÖSTERME (sona sakla)
-                # Burayı bilerek boş bıraktık ki yazarken hoplayıp zıplamasın
-
-        # Akış Bitti
-        ozet_placeholder.markdown(ozet_text)
+                placeholder.markdown(ozet_text)
+                # Burayı bilerek boş bırakıyoruz, detay yüklenince toplu basacağız
         
-        final_content_for_history = full_text 
-
-        # --- KESİN KONTROL NOKTASI ---
-        # 1. Detay metni gerçekten dolu mu? (Boşlukları silince 20 karakterden fazla mı?)
-        # 2. Kaynaklar gerçekten dolu mu? (Ve kaynak boş gelmediyse)
-        gercek_detay_var = len(detay_text.strip()) > 20
-        gercek_kaynak_var = len(kaynaklar) > 0 and baglam_metni != ""
+        placeholder.markdown(ozet_text)
         
-        if gercek_detay_var or gercek_kaynak_var:
+        final_history = full_text
+
+        # --- FİNAL KARAR: BUTON ÇIKSIN MI? ---
+        # Sadece ve sadece veritabanından kaynak geldiyse ve metin doluysa
+        if kaynak_var_mi and detay_text.strip():
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
-                    if gercek_detay_var:
-                        st.markdown(detay_text)
+                    st.markdown(detay_text)
                     
-                    if gercek_kaynak_var:
-                        st.markdown("\n\n---\n**📚 Yararlanılan Kaynaklar:**")
-                        seen = set()
-                        for k in kaynaklar:
-                            if k['link'] not in seen:
-                                st.markdown(f"- [{k['baslik']}]({k['link']})")
-                                seen.add(k['link'])
-                                final_content_for_history += f"\n\n[{k['baslik']}]({k['link']})"
-        else:
-            # Emin olmak için konteyneri boşalt
-            detay_container.empty()
+                    st.markdown("\n\n---\n**📚 Yararlanılan Kaynaklar:**")
+                    seen = set()
+                    for k in kaynaklar:
+                        if k['link'] not in seen:
+                            st.markdown(f"- [{k['baslik']}]({k['link']})")
+                            seen.add(k['link'])
+                            final_history += f"\n\n[{k['baslik']}]({k['link']})"
         
-        st.session_state.messages.append({"role": "assistant", "content": final_content_for_history})
+        st.session_state.messages.append({"role": "assistant", "content": final_history})
         scroll_to_bottom()
