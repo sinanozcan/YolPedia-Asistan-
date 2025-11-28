@@ -87,43 +87,42 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- MODEL SEÇİMİNİ ÖNBELLEKLEME (HIZ İÇİN) ---
-@st.cache_resource(show_spinner=False)
-def en_uygun_model_ismini_bul():
+# --- GÜVENLİ VE HIZLI YANIT ÜRETİCİ ---
+def guvenli_stream_baslat(full_prompt):
     """
-    Bu fonksiyon modelleri sadece sunucu açılışında bir kez tarar.
-    Sonucu hafızada tuttuğu için her soruda bekleme yapmaz.
-    404 hatasını önlemek için listede gerçekten var olanı seçer.
+    Bu fonksiyon API anahtarlarını ve modelleri sırayla dener.
+    Eğer bir anahtarın kotası dolmuşsa (429 hatası), hemen diğer anahtara geçer.
+    Önceliği her zaman hızlı ve kotası yüksek olan 'Flash' modeline verir.
     """
-    if not API_KEYS: return "gemini-pro"
+    # Öncelikli model listesi (Hızlıdan yavaşa)
+    denenecek_modeller = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-pro"]
     
-    try:
-        # Listeyi çekmek için geçici olarak ilk anahtarı kullan
-        genai.configure(api_key=API_KEYS[0])
-        
-        # Google'dan güncel listeyi iste
-        tum_modeller = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                tum_modeller.append(m.name)
-        
-        # Öncelik Sıralaması (Hızlıdan Yavaşa)
-        # 1. Flash Modelleri
-        for m in tum_modeller:
-            if "flash" in m.lower() and "1.5" in m: return m
-        
-        # 2. Pro 1.5 Modelleri
-        for m in tum_modeller:
-            if "pro" in m.lower() and "1.5" in m: return m
-            
-        # 3. Standart Pro (En garantisi)
-        for m in tum_modeller:
-            if "gemini-pro" in m: return m
-            
-    except Exception:
-        return "gemini-pro" # Hata olursa en güvenli liman
+    # Anahtarları karıştır ki yük dağılsın
+    mevcut_anahtarlar = API_KEYS.copy()
+    random.shuffle(mevcut_anahtarlar)
 
-    return "gemini-pro"
+    # 1. Döngü: Anahtarları gez
+    for key in mevcut_anahtarlar:
+        genai.configure(api_key=key)
+        
+        # 2. Döngü: Modelleri gez
+        for model_adi in denenecek_modeller:
+            try:
+                config = {"temperature": 0.1, "max_output_tokens": 8192}
+                model = genai.GenerativeModel(model_adi, generation_config=config)
+                # Hata vermezse akışı döndür
+                return model.generate_content(full_prompt, stream=True)
+            except Exception as e:
+                hata = str(e).lower()
+                # 429 (Kota Doldu) veya 404 (Model Yok) ise sessizce diğerine geç
+                if "429" in hata or "quota" in hata or "404" in hata or "not found" in hata:
+                    time.sleep(0.5) # Kısa bir nefes al
+                    continue
+                else:
+                    # Başka kritik bir hataysa da devam etmeye çalış
+                    continue
+    
+    return None # Hiçbir anahtar veya model çalışmazsa
 
 # --- AKILLI API YÖNETİCİSİ (GÜNCELLENMİŞ) ---
 def get_model():
@@ -272,6 +271,7 @@ if is_user_input or is_detail_click:
         stream = None
         
         with st.spinner("Can Dede düşünüyor..."):
+            # 1. Veritabanı Araması (Eğer gerekliyse)
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -283,64 +283,53 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            aktif_model = get_model()
-            
-            if aktif_model:
-                try:
-                    # PROMPTLAR
-                    if niyet == "SOHBET":
-                        full_prompt = f"""
-                        Senin adın 'Can Dede'. Sen YolPedia'nın rehberi ve sanal dedesisin.
-                        Kullanıcı ile sohbet et.
-                        KURALLAR:
-                        1. "Merhaba, erenler. Ben Can Dede" diye kendini tekrar tanıtma.
-                        2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                        3. ASLA "Evlat" deme. Hitabın "Erenler" , "Can Dost" veya veya "Sevgili Can" olsun.
-                        MESAJ: {user_msg}
-                        """
+            # 2. Prompt Hazırlama
+            if niyet == "SOHBET":
+                full_prompt = f"""
+                Senin adın 'Can Dede'. Sen YolPedia'nın rehberi ve sanal dedesisin.
+                Kullanıcı ile sohbet et.
+                KURALLAR:
+                1. "Merhaba, erenler. Ben Can Dede" diye kendini tekrar tanıtma.
+                2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                3. ASLA "Evlat" deme. Hitabın "Erenler", "Can Dost" veya "Sevgili Can" olsun.
+                MESAJ: {user_msg}
+                """
+            else:
+                bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
+                if not baglam:
+                    full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
+                else:
+                    if detay_modu:
+                        gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
                     else:
-                        bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
-                        if not baglam:
-                            full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
-                        else:
-                            if detay_modu:
-                                gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
-                            else:
-                                gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
+                        gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
-                            full_prompt = f"""
-                            Sen 'Can Dede'sin. HEDEF DİL: {kullanici_dili}. {gorev}
-                            KURALLAR:
-                            1. "Yol bir, sürek binbir" ilkesiyle anlat.
-                            2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
-                            3. Giriş cümlesi yapma.
-                            BİLGİLER: {baglam}
-                            """
-                    
-                    try:
-                        stream = aktif_model.generate_content(full_prompt, stream=True)
-                    except Exception as e:
-                        if "429" in str(e):
-                            time.sleep(2)
-                            aktif_model = get_model()
-                            stream = aktif_model.generate_content(full_prompt, stream=True)
-                        else: raise e
-                except Exception as e:
-                    st.error(f"Hata: {e}")
+                    full_prompt = f"""
+                    Sen 'Can Dede'sin. HEDEF DİL: {kullanici_dili}. {gorev}
+                    KURALLAR:
+                    1. "Yol bir, sürek binbir" ilkesiyle anlat.
+                    2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
+                    3. Giriş cümlesi yapma.
+                    BİLGİLER: {baglam}
+                    """
+            
+            # 3. YENİ GÜVENLİ FONKSİYONU ÇAĞIR (Burada hata yakalama otomatik yapılıyor)
+            stream = guvenli_stream_baslat(full_prompt)
 
+        # 4. Yanıtı Yazdır
         if stream:
             try:
                 def stream_parser():
                     full_text = ""
                     for chunk in stream:
                         try:
-                            if chunk.text:
-                                for char in chunk.text:
-                                    yield char
-                                    time.sleep(0.001)
-                                full_text += chunk.text
+                            text_chunk = chunk.text
+                            if text_chunk:
+                                full_text += text_chunk
+                                yield text_chunk
                         except ValueError: continue
                     
+                    # Kaynakları Ekleme
                     if niyet == "ARAMA" and baglam and kaynaklar:
                         negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
                         cevap_olumsuz = any(n in full_text.lower() for n in negatif)
@@ -353,17 +342,16 @@ if is_user_input or is_detail_click:
                             essiz = {v['link']:v for v in kaynaklar}.values()
                             for k in essiz:
                                 kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                            for char in kaynak_metni:
-                                yield char
-                                time.sleep(0.001)
+                            yield kaynak_metni
 
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
-                
-                scroll_to_bottom() # Cevap bitince kaydır
+                scroll_to_bottom()
 
             except Exception as e:
-                pass
+                st.error("Bir teknik hata oluştu, lütfen tekrar deneyin.")
+        else:
+            st.error("Şu anda Can Dede çok yoğun (Tüm anahtarlar limit aşımında). Lütfen 1 dakika sonra tekrar deneyin.")
 
 # --- DETAY BUTONU ---
 son_niyet = st.session_state.get('son_niyet', "")
