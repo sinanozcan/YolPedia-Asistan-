@@ -12,7 +12,7 @@ from PIL import Image
 from io import BytesIO
 
 # ================= AYARLAR =================
-# Çoklu Anahtar Listesi (Rate Limit'e takılmamak için)
+# Çoklu Anahtar Listesi (SENİN AYARLARIN KORUNDU)
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
     st.secrets.get("API_KEY_2", ""),
@@ -120,7 +120,7 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ ---
+# --- AKILLI API YÖNETİCİSİ (RATE LIMIT ÇÖZÜMÜ KORUNDU) ---
 def get_model():
     """Her seferinde rastgele bir anahtar seçip modeli hazırlar"""
     if not API_KEYS:
@@ -129,8 +129,8 @@ def get_model():
     secilen_key = random.choice(API_KEYS)
     genai.configure(api_key=secilen_key)
     
-    # Dede'nin biraz daha esnek ve bilge konuşması için temperature 0.2 (Tamamen robotik olmasın)
-    generation_config = {"temperature": 0.2, "max_output_tokens": 8192}
+    # Dede karakteri için temperature 0.1 (Çok az esneklik, robotik olmasın diye)
+    generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
     try:
         return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
@@ -145,7 +145,7 @@ def niyet_analizi(soru):
         GİRDİ: "{soru}"
         KARAR:
         - Bilgi araması: "ARAMA"
-        - Sohbet, sataşma, teşekkür, selam: "SOHBET"
+        - Sohbet (Selam, hal hatır, kışkırtma, teşekkür): "SOHBET"
         CEVAP: "ARAMA" veya "SOHBET"
         """
         response = local_model.generate_content(prompt)
@@ -173,7 +173,7 @@ def anahtar_kelime_ayikla(soru):
         local_model = get_model()
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Konuyu bul. Hitapları ve ekleri at.
+        GÖREV: Konuyu bul. Hitapları (Dedem, Can, Hocam) ve ekleri at.
         CEVAP:
         """
         response = local_model.generate_content(prompt)
@@ -220,7 +220,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
             puanlanmis.append({"veri": veri, "puan": puan})
     
     puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = puanlanmis[:7]
+    en_iyiler = puanlanmis[:7] # Sentez için daha fazla kaynak (7)
     
     bulunanlar = ""
     kaynaklar = []
@@ -289,7 +289,7 @@ if is_user_input or is_detail_click:
         kullanici_dili = st.session_state.get('son_dil', "Turkish")
         stream = None
         
-        with st.spinner("Can Dede tefekkür ediyor..."):
+        with st.spinner("Can Dede düşünüyor..."):
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -305,67 +305,58 @@ if is_user_input or is_detail_click:
             aktif_model = get_model()
             
             try:
-                # --- CAN DEDE KİMLİK VE RUH AYARLARI (FİNAL) ---
+                # --- YENİLENMİŞ KİMLİK VE ÜSLUP (DEDE FORMATI) ---
                 identity_rules = f"""
-                KİMLİK VE ÜSLUP:
-                1. Adın 'Can Dede'. Alevi-Bektaşi yolunda bir inanç önderi (Mürşid) kimliğindesin.
-                2. Bu makam yaşlılık değil, bilgelik makamıdır.
-                3. Üslubun: Bilge, kalender, rind, felsefik ve hümanist. Seküler bir anlayışla konuş.
-                4. HİTAPLAR: Karşındaki herkes bir "Can"dır. "Erenler", "Can", "Dost", "Aziz Can" diye hitap et.
-                5. YASAKLAR: "Evlat", "Yavrum", "Çocuğum", "My Child" gibi hiyerarşik, üstten bakan kelimeleri ASLA kullanma.
-                6. DİL: Kullanıcı hangi dilde sorduysa ({kullanici_dili}), mutlaka o dilde cevap ver.
+                KİMLİK: Senin adın 'Can Dede'. Alevi-Bektaşi yolunda bilge, seküler ve humanist bir rehbersin.
+                ÜSLUP: 
+                - Makamın bilgelik makamıdır, yaşlılık değil.
+                - Hiyerarşik dil (Evlat, Yavrum, Çocuğum) YASAKTIR.
+                - Hitaplar: "Erenler", "Can", "Dost", "Aziz Can".
+                - Kışkırtma olursa: Kızma, savunmaya geçme. Bektaşi olgunluğuyla kısa, hikmetli cevap ver.
+                - DİL: Kullanıcı hangi dilde ({kullanici_dili}) sorduysa o dilde cevap ver.
                 """
 
                 if niyet == "SOHBET":
                     full_prompt = f"""
                     {identity_rules}
-                    
-                    DURUM: Kullanıcı seninle sohbet ediyor, selam veriyor ya da seni deniyor/kışkırtıyor olabilir.
-                    
-                    GÖREV:
-                    - Eğer selam/hal hatır ise: İçten, samimi ve bilgece karşılık ver.
-                    - Eğer kışkırtma/hakaret/küçümseme varsa ("Sen ne bilirsin", "Aptal bot" vb.): Asla kızma, savunmaya geçme. Bir Bektaşi dervişi olgunluğuyla, mizahi ama derinlikli, taşı gediğine koyan kısa bir cevap ver.
-                    - "Merhaba ben Can Dede" diye kendini tekrar tanıtma. Doğal akışta kal.
-                    
+                    GÖREV: Kullanıcıyla sohbet et.
+                    KURAL: "Merhaba ben Can Dede" diye kendini tekrar tanıtma. Direkt konuya gir.
                     KULLANICI MESAJI: {user_msg}
                     """
                 else:
-                    # ARAMA MODU
                     bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
                         full_prompt = f"""
                         {identity_rules}
-                        GÖREV: Kullanıcıya nazikçe, YolPedia arşivinde henüz bu bilginin olmadığını söyle. 
-                        Bunu yaparken "Maalesef bulamadım" gibi robotik değil, "Erenler, bu konuda heybemizde henüz bir kelam yok" gibi dede üslubuyla söyle.
-                        DİL: {kullanici_dili}
+                        GÖREV: Kullanıcıya nazikçe, YolPedia arşivinde henüz bu bilginin olmadığını söyle.
+                        Üslup: "Üzgünüm Erenler, bu konuda heybemizde şimdilik bir kelam yok" gibi olsun.
                         """
                     else:
                         if detay_modu:
-                            gorev = f"GÖREV: '{user_msg}' konusunu, elindeki metinleri harmanlayıp, derinlemesine, felsefi derinliği olan bir bütünlükle anlat."
+                            gorev = f"GÖREV: '{user_msg}' konusunu, aşağıdaki farklı metinleri HARMANLAYARAK, derinlemesine ve BÜTÜNCÜL bir bakışla anlat."
                         else:
                             gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
                         full_prompt = f"""
                         {identity_rules}
-                        
                         {gorev}
                         
                         EK KURALLAR:
-                        1. SENTEZ YAP: Farklı görüşler varsa taraf tutma. "Yol bir, sürek binbir" düsturunu hatırla ama bu sözü papağan gibi her cümlede tekrarlama. Sadece çelişki varsa kullan.
-                        2. GİRİŞ: "Metinlerde yazana göre..." gibi yapay girişler yapma. Bilgi sendeymiş gibi, bir mürşid edasıyla anlat.
-                        3. UYDURMA: Bilmediğin şeyi uydurma.
+                        1. SENTEZ: Farklı görüşler varsa, "Yol bir, sürek binbir" anlayışıyla hepsini kapsayıcı bir dille anlat. Taraf tutma.
+                        2. DOĞALLIK: "Metinlerde yazdığına göre..." gibi yapay girişler yapma. Bilgi sendeymiş gibi konuş.
+                        3. DOĞRULUK: Bilmediğin şeyi uydurma.
                         
                         KAYNAK METİNLER: {baglam}
                         """
                 
-                # RATE LIMIT HATASI İÇİN KORUMA
+                # İstek Gönder (Rate Limit Korumalı)
                 try:
                     stream = aktif_model.generate_content(full_prompt, stream=True)
                 except Exception as e:
                     if "429" in str(e):
-                        time.sleep(3)
-                        aktif_model = get_model()
+                        time.sleep(2)
+                        aktif_model = get_model() # Başka anahtar dene
                         stream = aktif_model.generate_content(full_prompt, stream=True)
                     else:
                         raise e
