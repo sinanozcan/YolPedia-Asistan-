@@ -16,7 +16,7 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-# Sadece dolu ve geçerli uzunluktaki anahtarları al
+# Anahtarları temizle
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
@@ -96,78 +96,60 @@ def alakali_icerik_bul(kelime, db):
         
     return context_text, kaynaklar
 
-# --- TANK MODU: ASLA PES ETMEYEN YANIT SİSTEMİ ---
+# --- RÖNTGEN MODU: HATA DETAYLARINI YAKALA ---
+# Bu fonksiyon hata loglarını session state'e kaydeder
 def can_dede_cevapla(user_prompt, chat_history, context_data):
     if not API_KEYS:
-        yield "API Anahtarı bulunamadı."
+        yield "HATA: API Anahtarı bulunamadı (Secrets dosyası boş)."
         return
 
     system_prompt = f"""
-    Sen 'Can Dede'sin. Bilge, tasavvuf ehli, Alevi-Bektaşi kültürüne hakim, dede üslubuyla konuşan sanal bir rehbersin.
-    
-    GÖREVİN:
-    Aşağıda verilen "BİLGİ KAYNAKLARI"nı kullanarak kullanıcının sorusunu cevapla.
-    
-    KURALLAR:
-    1. Sadece verilen bilgi kaynaklarını kullan. Eğer kaynaklarda bilgi yoksa, "Bu konuda arşivimde net bir bilgi yok erenler." de.
-    2. Üslubun: Nazik, kapsayıcı, "Erenler", "Can", "Aziz Dostum" gibi hitaplar kullan. Asla "Evlat" deme.
-    3. Sohbet bağlamını hatırla. Önceki konuşmalara referans verebilirsin.
-    4. Cevapların kısa, öz ve hikmetli olsun. Destan yazma.
-    
+    Sen 'Can Dede'sin. Bilge, tasavvuf ehli, Alevi-Bektaşi kültürüne hakim bir rehbersin.
     BİLGİ KAYNAKLARI:
-    {context_data if context_data else "Bu konuyla ilgili veritabanında özel bir bilgi bulunamadı. Genel sohbet et."}
+    {context_data if context_data else "Genel sohbet et."}
     """
 
-    # Mesaj geçmişini hazırla
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı Erenler."]})
+    contents.append({"role": "model", "parts": ["Anlaşıldı."]})
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
         contents.append({"role": role, "parts": [msg["content"]]})
     contents.append({"role": "user", "parts": [user_prompt]})
 
-    # --- STRATEJİ: Önce Hızlıyı, Olmazsa Eskiyi Dene ---
-    modeller = ["gemini-1.5-flash", "gemini-pro"] # Yedek model eklendi
+    modeller = ["gemini-1.5-flash", "gemini-pro"]
     
-    random.shuffle(API_KEYS)
-    hata_loglari = []
+    # Hata raporunu temizle
+    st.session_state.son_hata_raporu = []
 
     for key in API_KEYS:
         genai.configure(api_key=key)
-        
-        # Her anahtar için modelleri sırayla dene
         for model_adi in modeller:
             try:
                 model = genai.GenerativeModel(model_adi)
                 response = model.generate_content(contents, stream=True)
-                
-                # Akış başarılıysa hemen döndür
                 for chunk in response:
                     if chunk.text:
                         yield chunk.text
-                return # Ve çık
+                return # Başarılı oldu, çık
 
             except Exception as e:
-                # Hata aldık, kaydet ve devam et
-                hata_mesaji = str(e)
-                hata_loglari.append(f"Model: {model_adi} | Hata: {hata_mesaji[:100]}")
-                time.sleep(1) # Azıcık bekle
+                hata_kodu = str(e)
+                # Hatayı kaydet
+                st.session_state.son_hata_raporu.append(f"Anahtar Sonu: ...{key[-5:]} | Model: {model_adi} | HATA: {hata_kodu}")
+                time.sleep(1)
                 continue 
 
-    # Buraya geldiyse hiçbir şey çalışmamıştır
-    yield "Şu anda tefekkürdeyim (Sistem yoğun), birazdan tekrar sorabilir misin can?"
-    
-    # Hataları geliştirici görsün diye yield bittikten sonra loglara basmak lazım ama
-    # stream içinde olduğumuz için bunu yapamayız. O yüzden genel hatayı döndük.
-    # Kullanıcıya expander ile hatayı aşağıda göstereceğiz.
+    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
 # --- ARAYÜZ ---
 def scroll_to_bottom():
     components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. Gönül kapımız açık, buyur ne sormak istersin?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede."}]
+if "son_hata_raporu" not in st.session_state:
+    st.session_state.son_hata_raporu = []
 
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
@@ -186,21 +168,21 @@ if prompt:
         full_response_container = st.empty()
         full_text = ""
         
-        # Cevap akışı
         stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni)
         
         for chunk in stream:
             full_text += chunk
             full_response_container.markdown(full_text + "▌")
         
-        # Eğer yine o hata mesajı geldiyse teknik detay gösterelim
+        # Eğer hata varsa RAPORU GÖSTER
         if "tefekkürdeyim" in full_text:
-            with st.expander("Teknik Sorun Detayı (Geliştirici)"):
-                st.write("Tüm anahtarlar ve modeller denendi ama Google yanıt vermedi.")
-                st.write("Olası sebepler: API Kotası doldu veya Bölgesel Kısıtlama.")
+            with st.expander("🛠️ DETAYLI HATA RAPORU (BUNU BANA GÖNDER)", expanded=True):
+                if not st.session_state.son_hata_raporu:
+                    st.write("Hata yakalanamadı ama bağlantı kurulamadı.")
+                for rapor in st.session_state.son_hata_raporu:
+                    st.code(rapor, language="text")
         
-        # Kaynakları Ekle
-        if kaynaklar and "tefekkürdeyim" not in full_text and "arşivimde net bir bilgi yok" not in full_text.lower():
+        if kaynaklar and "tefekkürdeyim" not in full_text:
             link_text = "\n\n**📚 Kaynaklar:**\n"
             seen = set()
             for k in kaynaklar:
