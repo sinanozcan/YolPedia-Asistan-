@@ -69,6 +69,8 @@ def veri_yukle():
             
             if processed_data:
                 st.sidebar.success(f"✅ {len(processed_data)} kayıt yüklendi")
+            else:
+                st.sidebar.warning("⚠️ Veri yüklendi ama hiçbir kayıt işlenemedi!")
             return processed_data
             
     except FileNotFoundError:
@@ -100,6 +102,13 @@ if "messages" not in st.session_state:
 with st.sidebar:
     st.image(CAN_DEDE_ICON, width=100)
     st.title("Mod Seçimi")
+    
+    # Veritabanı durumu göster
+    if st.session_state.db:
+        st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
+    else:
+        st.error("⚠️ Veritabanı yüklenemedi!")
+    
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
         ["☕ Sohbet Modu", "🔍 Araştırma Modu"],
@@ -122,7 +131,7 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- ARAMA MOTORU (HIZLANDIRILMIŞ) ---
+# --- ARAMA MOTORU (HIZLANDIRILMIŞ VE DÜZELTİLMİŞ) ---
 def alakali_icerik_bul(kelime, db, mod):
     if "Sohbet" in mod:
         return "", []
@@ -138,7 +147,7 @@ def alakali_icerik_bul(kelime, db, mod):
 
     sonuclar = []
     
-    # HIZLANDIRMA: Erken çıkış stratejisi
+    # TÜM VERİTABANINI TARA (erken çıkış kaldırıldı)
     for d in db:
         if not isinstance(d, dict):
             continue
@@ -152,38 +161,34 @@ def alakali_icerik_bul(kelime, db, mod):
             puan += 100
         elif norm_sorgu in d_icerik: 
             puan += 50
-        else:
-            # Kısmi eşleşme kontrolü - sadece gerekirse
-            for k in anahtarlar:
-                if k in d_baslik: 
-                    puan += 20
-                elif k in d_icerik: 
-                    puan += 5
         
-        # HIZLANDIRMA: Sadece yeterince yüksek puanlıları al
-        if puan > 15:
+        # Kısmi eşleşme kontrolü
+        for k in anahtarlar:
+            if k in d_baslik: 
+                puan += 20
+            elif k in d_icerik: 
+                puan += 5
+        
+        # Eşik değeri düşürüldü: 15 -> 10 (daha fazla sonuç)
+        if puan > 10:
             sonuclar.append({"veri": d, "puan": puan})
-            
-            # HIZLANDIRMA: İlk 10 sonucu bulduktan sonra erken çık
-            if len(sonuclar) >= 10:
-                break
     
-    # En iyi 6'yı al
+    # En iyi sonuçları sırala ve al
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = sonuclar[:6]
+    en_iyiler = sonuclar[:8]  # 6 -> 8'e çıkarıldı
     
     context_text = ""
     kaynaklar = []
     
-    # HIZLANDIRMA: İçerik limiti düşürüldü (4000 -> 2500)
+    # İçerik limiti optimum seviyede
     for item in en_iyiler:
         v = item['veri']
         v_baslik = v.get('baslik', 'Başlıksız')
         v_icerik = v.get('icerik', '')
         v_link = v.get('link', '#')
         
-        context_text += f"\n--- KAYNAK: {v_baslik} ---\n{v_icerik[:2500]}\n"
-        kaynaklar.append({"baslik": v_baslik, "link": v_link})
+        context_text += f"\n--- KAYNAK: {v_baslik} ---\n{v_icerik[:3000]}\n"
+        kaynaklar.append({"baslik": v_baslik, "link": v_link, "puan": item['puan']})
         
     return context_text, kaynaklar
 
@@ -341,6 +346,12 @@ if prompt:
     if "Araştırma" in secilen_mod:
         with st.spinner("🔍 Lütfen bekleyin, ilgili kaynaklar için arşivi tarıyorum..."):
             baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
+            
+        # DEBUG: Kaç kaynak bulundu?
+        if kaynaklar:
+            st.sidebar.info(f"🎯 **{len(kaynaklar)} kaynak** bulundu")
+        else:
+            st.sidebar.warning("⚠️ İlgili kaynak bulunamadı")
     else:
         baglam_metni, kaynaklar = "", []
     
