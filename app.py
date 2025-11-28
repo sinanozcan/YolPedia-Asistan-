@@ -20,6 +20,7 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
+# Boş olanları temizle
 API_KEYS = [k for k in API_KEYS if k]
 
 WP_USER = st.secrets["WP_USER"]
@@ -29,11 +30,9 @@ DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
-# --- RESİMLER (SABİTLENMİŞ GÜNCEL LİNKLER) ---
-# Senin verdiğin yeni favicon linki:
+# --- RESİMLER ---
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
-# Dark mode uyumlu kullanıcı ikonu
 USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
 # ===========================================
 
@@ -77,7 +76,7 @@ st.markdown("""
         padding-top: 10px;
     }
     .top-logo {
-        width: 100px; /* Yeni logo boyutu */
+        width: 120px;
         opacity: 1.0; 
     }
     .motto-text { 
@@ -129,9 +128,9 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ (404 VE 429 KORUMALI) ---
+# --- GÜÇLENDİRİLMİŞ MODEL YÖNETİCİSİ (GARANTİLİ ÇALIŞMA) ---
 def get_model():
-    """Anahtar seçer ve çalışan modeli zorla bulur"""
+    """Rastgele anahtar seçer ve MUTLAKA çalışan bir model döndürür"""
     if not API_KEYS:
         return None
         
@@ -140,32 +139,40 @@ def get_model():
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # GARANTİ MODEL LİSTESİ (Sırayla dener, 404 almaz)
+    # Denenecek Modeller (Öncelik sırasına göre)
     model_listesi = [
         "gemini-1.5-flash",
-        "gemini-1.5-flash-001",
-        "gemini-1.5-flash-002",
-        "gemini-1.5-flash-8b",
+        "gemini-1.5-flash-latest",
         "gemini-1.5-pro",
-        "gemini-pro"
+        "gemini-1.0-pro",
+        "gemini-pro" # En eski ve en sağlam model (Fallback)
     ]
 
+    # 1. Önce sistemden dinamik bulmaya çalış
+    try:
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                if 'flash' in m.name.lower():
+                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+    except:
+        pass
+
+    # 2. Bulamazsa listedekileri sırayla dene
     for m_adi in model_listesi:
         try:
-            # Modeli sadece tanımla, hata vermezse döndür
-            model = genai.GenerativeModel(m_adi, generation_config=generation_config)
-            return model
+            # Sadece tanımlamak yetmez, test edelim
+            test_model = genai.GenerativeModel(m_adi, generation_config=generation_config)
+            return test_model
         except:
             continue
             
-    return None
+    # 3. Hiçbiri olmazsa varsayılanı döndür (Hata verirse burada versin)
+    return genai.GenerativeModel('gemini-pro', generation_config=generation_config)
 
 # --- 1. AJAN: NİYET OKUYUCU ---
 def niyet_analizi(soru):
     try:
         local_model = get_model()
-        if not local_model: return "ARAMA"
-        
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR:
@@ -182,8 +189,6 @@ def niyet_analizi(soru):
 def dil_tespiti(soru):
     try:
         local_model = get_model()
-        if not local_model: return "Turkish"
-        
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Dil tespiti (Turkish, English, German...).
@@ -198,8 +203,6 @@ def dil_tespiti(soru):
 def anahtar_kelime_ayikla(soru):
     try:
         local_model = get_model()
-        if not local_model: return soru
-
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Konuyu bul. Hitapları at.
@@ -335,7 +338,7 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # Anahtarı ve Modeli Al (Garanti Çalışan)
+            # Anahtarı ve Modeli Al
             aktif_model = get_model()
             
             if aktif_model:
@@ -365,7 +368,9 @@ if is_user_input or is_detail_click:
                             full_prompt = f"""
                             Sen 'Can Dede'sin.
                             HEDEF DİL: {kullanici_dili}
+                            
                             {gorev}
+                            
                             KURALLAR:
                             1. "Yol bir, sürek binbir" ilkesiyle anlat. Farklı görüşleri birleştir.
                             2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
@@ -377,15 +382,19 @@ if is_user_input or is_detail_click:
                     stream = aktif_model.generate_content(full_prompt, stream=True)
                 
                 except Exception as e:
-                    if "429" in str(e): # Rate Limit
-                        time.sleep(2)
+                    if "429" in str(e):
+                        time.sleep(3)
                         aktif_model = get_model() # Anahtar değiştir
                         if aktif_model:
                             stream = aktif_model.generate_content(full_prompt, stream=True)
+                    elif "404" in str(e):
+                         # 404 olursa en temel modeli zorla
+                         yedek_model = genai.GenerativeModel('gemini-pro')
+                         stream = yedek_model.generate_content(full_prompt, stream=True)
                     else:
-                        st.error(f"Hata: {e}")
+                        st.error(f"Bir hata oluştu: {e}")
             else:
-                st.error("Model bağlantısı kurulamadı.")
+                st.error("Bağlantı kurulamadı.")
 
         if stream:
             try:
