@@ -208,7 +208,7 @@ def uygun_modeli_bul_ve_getir():
     except Exception as e:
         return None, str(e)
 
-# --- CAN DEDE CEVAP FONKSİYONU (İYİLEŞTİRİLMİŞ) ---
+# --- CAN DEDE CEVAP FONKSİYONU (TIMEOUT EKLENDİ) ---
 def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     if not API_KEYS:
         yield "HATA: API Anahtarı eksik."
@@ -270,39 +270,79 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     ]
     
     random.shuffle(API_KEYS)
+    api_deneme_sayisi = 0
+    max_deneme = len(API_KEYS)
     
     for idx, key in enumerate(API_KEYS):
+        api_deneme_sayisi += 1
         try:
             genai.configure(api_key=key)
             model_adi, hata = uygun_modeli_bul_ve_getir()
             
             if not model_adi: 
+                if api_deneme_sayisi >= max_deneme:
+                    yield f"❌ Hiçbir model bulunamadı. Lütfen API anahtarlarınızı kontrol edin."
+                    return
                 continue
 
             model = genai.GenerativeModel(model_adi)
-            response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
+            
+            # TIMEOUT: 60 saniye
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("API çağrısı zaman aşımına uğradı")
+            
+            # Not: signal sadece Unix'te çalışır, Windows için alternatif gerekebilir
+            cevap_alindi = False
+            
+            response = model.generate_content(
+                contents, 
+                stream=True, 
+                safety_settings=guvenlik,
+                request_options={"timeout": 60}  # 60 saniye timeout
+            )
             
             for chunk in response:
                 try:
                     if hasattr(chunk, 'text') and chunk.text: 
                         yield chunk.text
+                        cevap_alindi = True
                 except AttributeError:
                     continue
                 except Exception:
                     continue
-            return
+            
+            if cevap_alindi:
+                return
+            
+        except TimeoutError:
+            if api_deneme_sayisi >= max_deneme:
+                yield "⏱️ Bağlantı zaman aşımına uğradı. Lütfen daha sonra tekrar deneyin."
+                return
+            continue
             
         except Exception as e:
             error_msg = str(e).lower()
             if "quota" in error_msg or "429" in error_msg:
+                if api_deneme_sayisi >= max_deneme:
+                    yield "📊 Tüm API kotaları doldu. Lütfen daha sonra tekrar deneyin."
+                    return
+                time.sleep(1)
                 continue
             elif "invalid" in error_msg or "api key" in error_msg:
+                if api_deneme_sayisi >= max_deneme:
+                    yield "🔑 Geçersiz API anahtarı. Lütfen secrets.toml dosyasını kontrol edin."
+                    return
                 continue
             else:
+                if api_deneme_sayisi >= max_deneme:
+                    yield f"❌ Beklenmeyen hata: {str(e)[:100]}"
+                    return
                 time.sleep(0.5)
                 continue
 
-    yield "Şu anda tefekkürderim (Bağlantı Sorunu - Tüm API anahtarları denendi)."
+    yield "❌ Şu anda tefekkürderim (Tüm API anahtarları kullanılamıyor)."
 
 # --- OTOMATİK KAYDIRMA (İYİLEŞTİRİLMİŞ) ---
 def scroll_to_bottom():
