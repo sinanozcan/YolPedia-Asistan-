@@ -82,25 +82,26 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- GÜVENLİ VE TASARRUFLU YANIT ÜRETİCİ (V5 - KOTA DOSTU) ---
+# --- GÜVENLİ VE GERİYE DÖNÜK UYUMLU YANIT ÜRETİCİ (V6) ---
 def guvenli_stream_baslat(full_prompt):
     """
-    Bu versiyon 'list_models' yaparak fazladan kota harcamaz.
-    Doğrudan en verimli modelleri hedefler.
-    429 Hatasında akıllı bekleme yapar.
+    Bu versiyon hem yeni (1.5) hem eski (1.0) modelleri dener.
+    Eğer kütüphane güncellenememişse 'gemini-pro' devreye girer ve hayat kurtarır.
     """
     # 1. Anahtarları Kontrol Et
     if not API_KEYS:
         st.error("❌ HATA: secrets.toml dosyasında geçerli API anahtarı yok.")
         return None
 
-    # Her seferinde anahtarları karıştır (Yükü dağıtmak için)
     random.shuffle(API_KEYS)
     hata_logu = []
 
-    # Google'ın şu an en yüksek kotayı verdiği modeller (Sırayla denenecek)
-    # Flash modeli hem en hızlısı hem de limiti en yüksek olandır.
-    hedef_modeller = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]
+    # LİSTE GÜNCELLENDİ: 'gemini-pro' eklendi. Bu model her sürümde çalışır.
+    hedef_modeller = [
+        "gemini-1.5-flash", 
+        "gemini-1.5-pro", 
+        "gemini-pro" # <--- İŞTE KURTARICI MODEL BU
+    ]
 
     # 2. Anahtarları Dene
     for key in API_KEYS:
@@ -108,7 +109,7 @@ def guvenli_stream_baslat(full_prompt):
         
         for model_adi in hedef_modeller:
             try:
-                # Güvenlik ayarlarını esnet (Bazen hata burdan kaynaklanır)
+                # Güvenlik ayarlarını esnet
                 guvenlik = [
                     {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
                     {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
@@ -124,34 +125,36 @@ def guvenli_stream_baslat(full_prompt):
 
             except Exception as e:
                 err_msg = str(e).lower()
-                hata_logu.append(f"Key: ...{key[-4:]} | Model: {model_adi} -> {err_msg[:60]}")
+                hata_logu.append(f"Key: ...{key[-4:]} | Model: {model_adi} -> {err_msg[:40]}...")
                 
-                # Eğer 429 (Kota) hatasıysa, bu anahtar yanmıştır, diğer anahtara geç
+                # Kota hatasıysa (429) bu anahtarı yakma, diğer anahtara geç
                 if "429" in err_msg or "quota" in err_msg:
-                    time.sleep(1) # Kısa bir es ver
-                    break # Bu anahtarı bırak, döngüden çıkıp sıradaki anahtara geç
+                    time.sleep(1)
+                    break 
                 
-                # Başka hataysa (404 vs) aynı anahtarla diğer modeli dene
+                # 404 (Bulunamadı) hatasıysa aynı anahtarla SIRADAKİ MODELE (gemini-pro) geç
                 continue
 
     # --- BURAYA GELDİYSE HİÇBİR ŞEY ÇALIŞMAMIŞTIR ---
-    st.warning("⚠️ Can Dede şu an çok yoğun (Google Kota Limiti).")
-    with st.expander("Teknik Detaylar (Geliştirici)"):
-        st.write("Tavsiye: Farklı Google hesaplarından alınmış yeni API Key ekleyin.")
+    st.warning("⚠️ Can Dede şu an bağlantı kuramıyor.")
+    with st.expander("Geliştirici Logları"):
         for log in hata_logu:
             st.code(log, language="text")
             
     return None
 
-# --- BASİT MODEL (Yardımcı Araçlar İçin) ---
+# --- YARDIMCI FONKSİYONLAR ---
 def get_model():
     if not API_KEYS: return None
     try:
         genai.configure(api_key=random.choice(API_KEYS))
-        return genai.GenerativeModel("gemini-1.5-flash")
+        # Buraya da eski model desteği ekledik
+        try:
+            return genai.GenerativeModel("gemini-1.5-flash")
+        except:
+            return genai.GenerativeModel("gemini-pro")
     except: return None
 
-# --- AJANLAR ---
 def niyet_analizi(soru):
     try:
         local_model = get_model()
@@ -193,7 +196,7 @@ if 'db' not in st.session_state:
     with st.spinner('Can Dede hazırlanıyor...'):
         st.session_state.db = veri_yukle()
 
-# --- YARDIMCI FONKSİYONLAR ---
+# --- METİN İŞLEME ---
 def tr_normalize(metin):
     kaynak = "ğĞüÜşŞıİöÖçÇ"
     hedef  = "gGuUsSiIoOcC"
