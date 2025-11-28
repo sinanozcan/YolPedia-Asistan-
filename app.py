@@ -87,23 +87,18 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ ---
+# --- AKILLI API YÖNETİCİSİ (HIZLANDIRILMIŞ) ---
 def get_model():
     if not API_KEYS: return None
     secilen_key = random.choice(API_KEYS)
     genai.configure(api_key=secilen_key)
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
-    model_listesi = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-pro"]
     
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
-    except: pass
-
-    for m_adi in model_listesi:
+    # Listeyi taramak yerine doğrudan en hızlı ve kararlı modelleri sırayla dener
+    model_oncelik_sirasi = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-pro"]
+    
+    for m_adi in model_oncelik_sirasi:
         try:
             return genai.GenerativeModel(m_adi, generation_config=generation_config)
         except: continue
