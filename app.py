@@ -87,42 +87,69 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- GÜVENLİ VE HIZLI YANIT ÜRETİCİ ---
+# --- GÜVENLİ VE HIZLI YANIT ÜRETİCİ (V3 - Hata Ayıklamalı) ---
 def guvenli_stream_baslat(full_prompt):
     """
     Bu fonksiyon API anahtarlarını ve modelleri sırayla dener.
-    Eğer bir anahtarın kotası dolmuşsa (429 hatası), hemen diğer anahtara geçer.
-    Önceliği her zaman hızlı ve kotası yüksek olan 'Flash' modeline verir.
+    429 hatasında 'zorunlu bekleme' yapar.
+    Hata durumunda kullanıcıya teknik detay verir.
     """
-    # Öncelikli model listesi (Hızlıdan yavaşa)
-    denenecek_modeller = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-pro"]
-    
-    # Anahtarları karıştır ki yük dağılsın
-    mevcut_anahtarlar = API_KEYS.copy()
-    random.shuffle(mevcut_anahtarlar)
+    # Google'ın şu an kabul ettiği en güncel ve garantili model isimleri
+    denenecek_modeller = [
+        "gemini-1.5-flash",          # Öncelik 1: En hızlısı
+        "models/gemini-1.5-flash",   # Öncelik 2: Alternatif isim
+        "gemini-1.5-pro",            # Öncelik 3: Daha zeki
+        "gemini-pro"                 # Öncelik 4: Eski ama sağlam (Yedek)
+    ]
 
-    # 1. Döngü: Anahtarları gez
+    # Anahtarların dolu olduğundan emin ol
+    mevcut_anahtarlar = [k for k in API_KEYS if k and len(k) > 10]
+    if not mevcut_anahtarlar:
+        st.error("❌ HATA: Geçerli bir API Anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
+        return None
+
+    random.shuffle(mevcut_anahtarlar)
+    hata_logu = []
+
+    # 1. Anahtarları Gez
     for key in mevcut_anahtarlar:
         genai.configure(api_key=key)
-        
-        # 2. Döngü: Modelleri gez
+
+        # 2. Modelleri Gez
         for model_adi in denenecek_modeller:
             try:
-                config = {"temperature": 0.1, "max_output_tokens": 8192}
-                model = genai.GenerativeModel(model_adi, generation_config=config)
-                # Hata vermezse akışı döndür
+                # Güvenlik ayarlarını 'BLOCK_NONE' yaparak gereksiz filtreleri aşalım
+                guvenlik_ayarlari = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
+                ]
+                
+                config = {"temperature": 0.3, "max_output_tokens": 8000}
+                model = genai.GenerativeModel(model_adi, generation_config=config, safety_settings=guvenlik_ayarlari)
+                
+                # İsteği gönder (Hata yoksa döngü burada biter ve yanıt döner)
                 return model.generate_content(full_prompt, stream=True)
+
             except Exception as e:
-                hata = str(e).lower()
-                # 429 (Kota Doldu) veya 404 (Model Yok) ise sessizce diğerine geç
-                if "429" in hata or "quota" in hata or "404" in hata or "not found" in hata:
-                    time.sleep(0.5) # Kısa bir nefes al
-                    continue
-                else:
-                    # Başka kritik bir hataysa da devam etmeye çalış
-                    continue
+                err_msg = str(e).lower()
+                hata_logu.append(f"Model: {model_adi} -> {err_msg[:100]}...") # Hatanın özetini kaydet
+                
+                # Eğer 429 (Kota) hatasıysa, sunucunun nefes alması için bekle
+                if "429" in err_msg or "quota" in err_msg:
+                    time.sleep(2) # 2 saniye zorunlu bekleme
+                
+                # 404 (Model bulunamadı) hatasıysa beklemeden diğer modele geç
+                continue
     
-    return None # Hiçbir anahtar veya model çalışmazsa
+    # --- EĞER BURAYA GELDİYSE HİÇBİR ŞEY ÇALIŞMAMIŞTIR ---
+    st.error("⚠️ Bağlantı Kurulamadı. Hata Detayları:")
+    with st.expander("Teknik Hata Kayıtları (Tıklayıp Bakınız)"):
+        for i, log in enumerate(hata_logu):
+            st.code(f"{i+1}. {log}", language="text")
+            
+    return None
 
 # --- AKILLI API YÖNETİCİSİ (GÜNCELLENMİŞ) ---
 def get_model():
