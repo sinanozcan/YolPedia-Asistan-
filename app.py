@@ -12,7 +12,7 @@ from PIL import Image
 from io import BytesIO
 
 # ================= AYARLAR =================
-# Çoklu Anahtar Listesi (SENİN AYARLARIN KORUNDU)
+# Çoklu Anahtar Listesi
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
     st.secrets.get("API_KEY_2", ""),
@@ -20,7 +20,6 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-# Boş olanları temizle
 API_KEYS = [k for k in API_KEYS if k]
 
 WP_USER = st.secrets["WP_USER"]
@@ -30,8 +29,8 @@ DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
-# --- RESİMLER ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+# --- RESİMLER (SENİN GÖNDERDİĞİN DOĞRU LİNKLER) ---
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 # ===========================================
 
@@ -75,8 +74,8 @@ st.markdown("""
         padding-top: 10px;
     }
     .top-logo {
-        width: 50px;
-        opacity: 0.8; 
+        width: 120px; /* Logoyu biraz daha belirgin yaptık */
+        opacity: 1.0; /* Şeffaflığı kaldırdık, net görünsün */
     }
     .motto-text { 
         text-align: center; 
@@ -97,7 +96,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- SAYFA GÖRÜNÜMÜ ---
+# --- SAYFA GÖRÜNÜMÜ (YOLPEDIA LOGOSU EN ÜSTTE) ---
 st.markdown(
     f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
@@ -120,16 +119,14 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API YÖNETİCİSİ (RATE LIMIT ÇÖZÜMÜ KORUNDU) ---
+# --- AKILLI API YÖNETİCİSİ ---
 def get_model():
-    """Her seferinde rastgele bir anahtar seçip modeli hazırlar"""
     if not API_KEYS:
         return None
-        
     secilen_key = random.choice(API_KEYS)
     genai.configure(api_key=secilen_key)
     
-    # Dede karakteri için temperature 0.1 (Çok az esneklik, robotik olmasın diye)
+    # Dede karakteri için temperature 0.1
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
     try:
@@ -143,10 +140,8 @@ def niyet_analizi(soru):
         local_model = get_model()
         prompt = f"""
         GİRDİ: "{soru}"
-        KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet (Selam, hal hatır, kışkırtma, teşekkür): "SOHBET"
-        CEVAP: "ARAMA" veya "SOHBET"
+        KARAR: "ARAMA" (Bilgi) veya "SOHBET" (Selam, hal hatır)
+        Sadece tek kelime cevap ver.
         """
         response = local_model.generate_content(prompt)
         return response.text.strip().upper()
@@ -173,7 +168,7 @@ def anahtar_kelime_ayikla(soru):
         local_model = get_model()
         prompt = f"""
         GİRDİ: "{soru}"
-        GÖREV: Konuyu bul. Hitapları (Dedem, Can, Hocam) ve ekleri at.
+        GÖREV: Konuyu bul. Hitapları (Dedem, Can) ve ekleri at.
         CEVAP:
         """
         response = local_model.generate_content(prompt)
@@ -220,7 +215,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
             puanlanmis.append({"veri": veri, "puan": puan})
     
     puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = puanlanmis[:7] # Sentez için daha fazla kaynak (7)
+    en_iyiler = puanlanmis[:7]
     
     bulunanlar = ""
     kaynaklar = []
@@ -259,7 +254,6 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # Analizler
         niyet = niyet_analizi(prompt)
         dil = dil_tespiti(prompt)
         st.session_state.son_niyet = niyet
@@ -305,58 +299,45 @@ if is_user_input or is_detail_click:
             aktif_model = get_model()
             
             try:
-                # --- YENİLENMİŞ KİMLİK VE ÜSLUP (DEDE FORMATI) ---
-                identity_rules = f"""
-                KİMLİK: Senin adın 'Can Dede'. Alevi-Bektaşi yolunda bilge, seküler ve humanist bir rehbersin.
-                ÜSLUP: 
-                - Makamın bilgelik makamıdır, yaşlılık değil.
-                - Hiyerarşik dil (Evlat, Yavrum, Çocuğum) YASAKTIR.
-                - Hitaplar: "Erenler", "Can", "Dost", "Aziz Can".
-                - Kışkırtma olursa: Kızma, savunmaya geçme. Bektaşi olgunluğuyla kısa, hikmetli cevap ver.
-                - DİL: Kullanıcı hangi dilde ({kullanici_dili}) sorduysa o dilde cevap ver.
-                """
-
                 if niyet == "SOHBET":
                     full_prompt = f"""
-                    {identity_rules}
-                    GÖREV: Kullanıcıyla sohbet et.
-                    KURAL: "Merhaba ben Can Dede" diye kendini tekrar tanıtma. Direkt konuya gir.
-                    KULLANICI MESAJI: {user_msg}
+                    Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
+                    Kullanıcı ile sohbet et.
+                    KURALLAR:
+                    1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                    2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                    3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                    MESAJ: {user_msg}
                     """
                 else:
                     bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
                     if not baglam:
-                        full_prompt = f"""
-                        {identity_rules}
-                        GÖREV: Kullanıcıya nazikçe, YolPedia arşivinde henüz bu bilginin olmadığını söyle.
-                        Üslup: "Üzgünüm Erenler, bu konuda heybemizde şimdilik bir kelam yok" gibi olsun.
-                        """
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
                     else:
                         if detay_modu:
-                            gorev = f"GÖREV: '{user_msg}' konusunu, aşağıdaki farklı metinleri HARMANLAYARAK, derinlemesine ve BÜTÜNCÜL bir bakışla anlat."
+                            gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
                         else:
                             gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
                         full_prompt = f"""
-                        {identity_rules}
+                        Sen 'Can Dede'sin.
+                        HEDEF DİL: {kullanici_dili}
                         {gorev}
-                        
-                        EK KURALLAR:
-                        1. SENTEZ: Farklı görüşler varsa, "Yol bir, sürek binbir" anlayışıyla hepsini kapsayıcı bir dille anlat. Taraf tutma.
-                        2. DOĞALLIK: "Metinlerde yazdığına göre..." gibi yapay girişler yapma. Bilgi sendeymiş gibi konuş.
-                        3. DOĞRULUK: Bilmediğin şeyi uydurma.
-                        
-                        KAYNAK METİNLER: {baglam}
+                        KURALLAR:
+                        1. "Yol bir, sürek binbir" ilkesiyle anlat. Farklı görüşleri birleştir.
+                        2. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                        3. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                        4. Giriş cümlesi yapma.
+                        BİLGİLER: {baglam}
                         """
                 
-                # İstek Gönder (Rate Limit Korumalı)
                 try:
                     stream = aktif_model.generate_content(full_prompt, stream=True)
                 except Exception as e:
                     if "429" in str(e):
-                        time.sleep(2)
-                        aktif_model = get_model() # Başka anahtar dene
+                        time.sleep(3)
+                        aktif_model = get_model()
                         stream = aktif_model.generate_content(full_prompt, stream=True)
                     else:
                         raise e
@@ -396,7 +377,6 @@ if is_user_input or is_detail_click:
 
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
-                
                 otomatik_kaydir()
 
             except Exception as e:
