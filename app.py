@@ -23,7 +23,7 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-st.set_page_config(page_title=ASISTAN_ISMI, page_icon="🤖")
+st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON)
 
 st.markdown("""
 <style>
