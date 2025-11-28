@@ -122,7 +122,7 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- ARAMA MOTORU (İYİLEŞTİRİLMİŞ) ---
+# --- ARAMA MOTORU (HIZLANDIRILMIŞ) ---
 def alakali_icerik_bul(kelime, db, mod):
     if "Sohbet" in mod:
         return "", []
@@ -137,6 +137,8 @@ def alakali_icerik_bul(kelime, db, mod):
         return "", []
 
     sonuclar = []
+    
+    # HIZLANDIRMA: Erken çıkış stratejisi
     for d in db:
         if not isinstance(d, dict):
             continue
@@ -145,33 +147,42 @@ def alakali_icerik_bul(kelime, db, mod):
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
         
+        # Tam eşleşme varsa direkt yüksek puan ver
         if norm_sorgu in d_baslik: 
             puan += 100
         elif norm_sorgu in d_icerik: 
             puan += 50
-            
-        for k in anahtarlar:
-            if k in d_baslik: 
-                puan += 20
-            elif k in d_icerik: 
-                puan += 5     
+        else:
+            # Kısmi eşleşme kontrolü - sadece gerekirse
+            for k in anahtarlar:
+                if k in d_baslik: 
+                    puan += 20
+                elif k in d_icerik: 
+                    puan += 5
         
+        # HIZLANDIRMA: Sadece yeterince yüksek puanlıları al
         if puan > 15:
             sonuclar.append({"veri": d, "puan": puan})
+            
+            # HIZLANDIRMA: İlk 10 sonucu bulduktan sonra erken çık
+            if len(sonuclar) >= 10:
+                break
     
+    # En iyi 6'yı al
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     en_iyiler = sonuclar[:6]
     
     context_text = ""
     kaynaklar = []
     
+    # HIZLANDIRMA: İçerik limiti düşürüldü (4000 -> 2500)
     for item in en_iyiler:
         v = item['veri']
         v_baslik = v.get('baslik', 'Başlıksız')
         v_icerik = v.get('icerik', '')
         v_link = v.get('link', '#')
         
-        context_text += f"\n--- KAYNAK BİLGİ: {v_baslik} ---\n{v_icerik[:4000]}\n"
+        context_text += f"\n--- KAYNAK: {v_baslik} ---\n{v_icerik[:2500]}\n"
         kaynaklar.append({"baslik": v_baslik, "link": v_link})
         
     return context_text, kaynaklar
@@ -326,8 +337,12 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    # ARAMA (Mod'a göre)
-    baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
+    # ARAMA (Mod'a göre) - İYİLEŞTİRİLMİŞ
+    if "Araştırma" in secilen_mod:
+        with st.spinner("🔍 Lütfen bekleyin, ilgili kaynaklar için arşivi tarıyorum..."):
+            baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
+    else:
+        baglam_metni, kaynaklar = "", []
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
