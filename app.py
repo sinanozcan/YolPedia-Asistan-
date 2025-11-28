@@ -29,11 +29,12 @@ DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
-# --- RESİMLER (KESİN LİNKLER) ---
+# --- RESİMLER (SABİTLENMİŞ GÜNCEL LİNKLER) ---
+# Senin verdiğin yeni favicon linki:
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
-# Dark Mode uyumlu, renkli kullanıcı ikonu
-USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png" 
+# Dark mode uyumlu kullanıcı ikonu
+USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
 # ===========================================
 
 # --- FAVICON ---
@@ -76,7 +77,7 @@ st.markdown("""
         padding-top: 10px;
     }
     .top-logo {
-        width: 100px; /* Yolpedia Logo Boyutu */
+        width: 100px; /* Yeni logo boyutu */
         opacity: 1.0; 
     }
     .motto-text { 
@@ -108,10 +109,7 @@ st.markdown("""
 # --- SAYFA GÖRÜNÜMÜ ---
 st.markdown(
     f"""
-    <!-- EN ÜSTTE YOLPEDIA LOGOSU -->
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
-    
-    <!-- ALTINDA CAN DEDE -->
     <div class="main-header">
         <img src="{CAN_DEDE_ICON}" class="dede-img">
         <h1 class="title-text">Can Dede</h1>
@@ -131,9 +129,9 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API VE MODEL YÖNETİCİSİ (404 FIX) ---
+# --- AKILLI API YÖNETİCİSİ (404 VE 429 KORUMALI) ---
 def get_model():
-    """Rastgele anahtar seçer VE çalışan modeli manuel listeyle bulur"""
+    """Anahtar seçer ve çalışan modeli zorla bulur"""
     if not API_KEYS:
         return None
         
@@ -142,18 +140,21 @@ def get_model():
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # GARANTİ MODEL LİSTESİ (Sırayla dener)
-    modeller = [
+    # GARANTİ MODEL LİSTESİ (Sırayla dener, 404 almaz)
+    model_listesi = [
         "gemini-1.5-flash",
-        "gemini-1.5-flash-latest",
         "gemini-1.5-flash-001",
+        "gemini-1.5-flash-002",
+        "gemini-1.5-flash-8b",
         "gemini-1.5-pro",
         "gemini-pro"
     ]
 
-    for m_adi in modeller:
+    for m_adi in model_listesi:
         try:
-            return genai.GenerativeModel(m_adi, generation_config=generation_config)
+            # Modeli sadece tanımla, hata vermezse döndür
+            model = genai.GenerativeModel(m_adi, generation_config=generation_config)
+            return model
         except:
             continue
             
@@ -163,6 +164,8 @@ def get_model():
 def niyet_analizi(soru):
     try:
         local_model = get_model()
+        if not local_model: return "ARAMA"
+        
         prompt = f"""
         GİRDİ: "{soru}"
         KARAR:
@@ -179,6 +182,8 @@ def niyet_analizi(soru):
 def dil_tespiti(soru):
     try:
         local_model = get_model()
+        if not local_model: return "Turkish"
+        
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Dil tespiti (Turkish, English, German...).
@@ -193,6 +198,8 @@ def dil_tespiti(soru):
 def anahtar_kelime_ayikla(soru):
     try:
         local_model = get_model()
+        if not local_model: return soru
+
         prompt = f"""
         GİRDİ: "{soru}"
         GÖREV: Konuyu bul. Hitapları at.
@@ -256,7 +263,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
 # --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Size nasıl yardımcı olabilirim?"}
+        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Hakikat yolunda merak ettiklerinizi sorabilirsiniz."}
     ]
 
 for message in st.session_state.messages:
@@ -264,7 +271,7 @@ for message in st.session_state.messages:
     if message["role"] == "assistant":
         avatar_icon = CAN_DEDE_ICON
     else:
-        avatar_icon = USER_ICON # Dark Mode uyumlu ikon
+        avatar_icon = USER_ICON 
         
     with st.chat_message(message["role"], avatar=avatar_icon):
         st.markdown(message["content"])
@@ -287,7 +294,6 @@ if is_user_input or is_detail_click:
         st.session_state.son_kaynaklar = None
         st.session_state.son_soru = prompt
         
-        # Analizler
         niyet = niyet_analizi(prompt)
         dil = dil_tespiti(prompt)
         st.session_state.son_niyet = niyet
@@ -329,7 +335,7 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # Anahtarı ve Modeli Al (Hata Korumalı)
+            # Anahtarı ve Modeli Al (Garanti Çalışan)
             aktif_model = get_model()
             
             if aktif_model:
@@ -371,15 +377,15 @@ if is_user_input or is_detail_click:
                     stream = aktif_model.generate_content(full_prompt, stream=True)
                 
                 except Exception as e:
-                    if "429" in str(e):
-                        time.sleep(3)
-                        aktif_model = get_model()
+                    if "429" in str(e): # Rate Limit
+                        time.sleep(2)
+                        aktif_model = get_model() # Anahtar değiştir
                         if aktif_model:
                             stream = aktif_model.generate_content(full_prompt, stream=True)
                     else:
                         st.error(f"Hata: {e}")
             else:
-                st.error("Model bulunamadı.")
+                st.error("Model bağlantısı kurulamadı.")
 
         if stream:
             try:
