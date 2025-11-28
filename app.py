@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components # <--- BU SATIR ÇOK ÖNEMLİ, BUNSUZ ÇALIŞMAZ
 import requests
 from requests.auth import HTTPBasicAuth
 from bs4 import BeautifulSoup
@@ -11,6 +12,7 @@ from PIL import Image
 from io import BytesIO
 
 # ================= AYARLAR =================
+# Çoklu Anahtar Listesi
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
     st.secrets.get("API_KEY_2", ""),
@@ -27,10 +29,10 @@ DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
-# --- RESİMLER (SENİN İSTEDİĞİN KESİN LİNKLER) ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
+# --- RESİMLER ---
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
-USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png" # Dark mode uyumlu user
+USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
 # ===========================================
 
 # --- FAVICON ---
@@ -45,57 +47,19 @@ st.set_page_config(page_title=ASISTAN_ISMI, page_icon=favicon)
 # --- CSS TASARIM ---
 st.markdown("""
 <style>
-    .main-header { 
-        display: flex; 
-        align-items: center; 
-        justify-content: center; 
-        margin-top: 5px; 
-        margin-bottom: 5px; 
-    }
-    .dede-img { 
-        width: 80px; 
-        height: 80px; 
-        border-radius: 50%; 
-        margin-right: 15px; 
-        object-fit: cover;
-        border: 2px solid #eee; 
-    }
-    .title-text { 
-        font-size: 36px; 
-        font-weight: 700; 
-        margin: 0; 
-        color: #ffffff; 
-    }
-    .top-logo-container {
-        display: flex;
-        justify-content: center;
-        margin-bottom: 15px;
-        padding-top: 10px;
-    }
-    .top-logo {
-        width: 120px;
-        opacity: 1.0; 
-    }
-    .motto-text { 
-        text-align: center; 
-        font-size: 16px; 
-        font-style: italic; 
-        color: #cccccc; 
-        margin-bottom: 25px; 
-        font-family: 'Georgia', serif; 
-    }
-    /* Avatar Ayarı */
-    .stChatMessage .avatar {
-        width: 45px !important;
-        height: 45px !important;
-    }
+    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
+    .dede-img { width: 80px; height: 80px; border-radius: 50%; margin-right: 15px; object-fit: cover; border: 2px solid #eee; }
+    .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
+    .top-logo-container { display: flex; justify-content: center; margin-bottom: 15px; padding-top: 10px; }
+    .top-logo { width: 120px; opacity: 1.0; }
+    .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
+    .stChatMessage .avatar { width: 45px !important; height: 45px !important; }
     @media (prefers-color-scheme: light) { 
         .title-text { color: #000000; } 
         .motto-text { color: #555555; }
         .dede-img { border: 2px solid #ccc; }
     }
     .stButton button { width: 100%; border-radius: 10px; font-weight: bold; border: 1px solid #ccc; }
-    
     .element-container { margin-bottom: 0px !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -113,6 +77,16 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+# --- FONKSİYON: OTOMATİK KAYDIRMA (TEK YERDE TANIMLANDI) ---
+def scroll_to_bottom():
+    js = """
+    <script>
+        var body = window.parent.document.querySelector(".main");
+        body.scrollTop = body.scrollHeight;
+    </script>
+    """
+    components.html(js, height=0)
+
 # --- AKILLI API YÖNETİCİSİ ---
 def get_model():
     if not API_KEYS: return None
@@ -120,10 +94,8 @@ def get_model():
     genai.configure(api_key=secilen_key)
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
-    
-    # Garanti Model Listesi
     model_listesi = ["gemini-1.5-flash", "gemini-1.5-flash-001", "gemini-1.5-pro", "gemini-pro"]
-
+    
     try:
         for m in genai.list_models():
             if 'generateContent' in m.supported_generation_methods:
@@ -135,35 +107,32 @@ def get_model():
         try:
             return genai.GenerativeModel(m_adi, generation_config=generation_config)
         except: continue
-            
     return None
 
-# --- 1. AJAN: NİYET OKUYUCU ---
+# --- AJANLAR ---
 def niyet_analizi(soru):
     try:
         local_model = get_model()
-        prompt = f"""GİRDİ: "{soru}"
-        KARAR: "ARAMA" veya "SOHBET"."""
+        if not local_model: return "ARAMA"
+        prompt = f"""GİRDİ: "{soru}"\nKARAR: "ARAMA" veya "SOHBET". Tek kelime."""
         response = local_model.generate_content(prompt)
         return response.text.strip().upper()
     except: return "ARAMA"
 
-# --- 2. AJAN: DİL DEDEKTİFİ ---
 def dil_tespiti(soru):
     try:
         local_model = get_model()
-        prompt = f"""GİRDİ: "{soru}"
-        CEVAP (Sadece dil): Turkish, English, German..."""
+        if not local_model: return "Turkish"
+        prompt = f"""GİRDİ: "{soru}"\nCEVAP (Sadece dil): Turkish, English, German..."""
         response = local_model.generate_content(prompt)
         return response.text.strip()
     except: return "Turkish"
 
-# --- 3. AJAN: KONU AYIKLAYICI ---
 def anahtar_kelime_ayikla(soru):
     try:
         local_model = get_model()
-        prompt = f"""GİRDİ: "{soru}"
-        GÖREV: Konuyu bul. Hitapları at. CEVAP:"""
+        if not local_model: return soru
+        prompt = f"""GİRDİ: "{soru}"\nGÖREV: Konuyu bul. Hitapları at.\nCEVAP:"""
         response = local_model.generate_content(prompt)
         return response.text.strip()
     except: return soru
@@ -192,7 +161,6 @@ def tr_normalize(metin):
 def alakali_icerik_bul(temiz_kelime, tum_veriler):
     soru_temiz = tr_normalize(temiz_kelime)
     anahtar = [k for k in soru_temiz.split() if len(k) > 2]
-    
     puanlanmis = []
     for veri in tum_veriler:
         baslik_norm = tr_normalize(veri['baslik'])
@@ -205,20 +173,17 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
             elif k in icerik_norm: puan += 2
         if puan > 0:
             puanlanmis.append({"veri": veri, "puan": puan})
-    
     puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
     en_iyiler = puanlanmis[:7]
-    
     bulunanlar = ""
     kaynaklar = []
     for item in en_iyiler:
         v = item['veri']
         bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:12000]}\n"
         kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
-        
     return bulunanlar, kaynaklar
 
-# --- SOHBET GEÇMİŞİ ---
+# --- SOHBET BAŞLANGICI ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Size nasıl yardımcı olabilirim?"}
@@ -232,14 +197,13 @@ for message in st.session_state.messages:
 def detay_tetikle():
     st.session_state.detay_istendi = True
 
-# --- GİRİŞ ---
+# --- GİRİŞ ALANI ---
 prompt = st.chat_input("Can Dede'ye sor...")
 
 is_user_input = prompt is not None
 is_detail_click = st.session_state.get('detay_istendi', False)
 
 if is_user_input or is_detail_click:
-    
     if is_user_input:
         st.session_state.messages.append({"role": "user", "content": prompt})
         st.session_state.detay_istendi = False
@@ -266,9 +230,7 @@ if is_user_input or is_detail_click:
     if is_user_input:
          with st.chat_message("user", avatar=USER_ICON):
             st.markdown(user_msg)
-            # Manuel kaydırma JS kodu
-            js = """<script>var body = window.parent.document.querySelector(".main");body.scrollTop = body.scrollHeight;</script>"""
-            components.html(js, height=0)
+            scroll_to_bottom() # Sorunca kaydır
 
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         baglam = None
@@ -292,47 +254,48 @@ if is_user_input or is_detail_click:
             
             aktif_model = get_model()
             
-            try:
-                if niyet == "SOHBET":
-                    full_prompt = f"""
-                    Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
-                    Kullanıcı ile sohbet et.
-                    KURALLAR:
-                    1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
-                    2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                    3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
-                    MESAJ: {user_msg}
-                    """
-                else:
-                    bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
-                    if not baglam:
-                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
-                    else:
-                        if detay_modu:
-                            gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
-                        else:
-                            gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
-
-                        full_prompt = f"""
-                        Sen 'Can Dede'sin. HEDEF DİL: {kullanici_dili}. {gorev}
-                        KURALLAR:
-                        1. "Yol bir, sürek binbir" ilkesiyle anlat.
-                        2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
-                        3. Giriş cümlesi yapma.
-                        BİLGİLER: {baglam}
-                        """
-                
+            if aktif_model:
                 try:
-                    stream = aktif_model.generate_content(full_prompt, stream=True)
-                except Exception as e:
-                    if "429" in str(e):
-                        time.sleep(2)
-                        aktif_model = get_model()
-                        stream = aktif_model.generate_content(full_prompt, stream=True)
-                    else: raise e
+                    # PROMPTLAR
+                    if niyet == "SOHBET":
+                        full_prompt = f"""
+                        Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
+                        Kullanıcı ile sohbet et.
+                        KURALLAR:
+                        1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                        2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                        3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                        MESAJ: {user_msg}
+                        """
+                    else:
+                        bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
+                        if not baglam:
+                            full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
+                        else:
+                            if detay_modu:
+                                gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
+                            else:
+                                gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
 
-            except Exception as e:
-                st.error(f"Hata: {e}")
+                            full_prompt = f"""
+                            Sen 'Can Dede'sin. HEDEF DİL: {kullanici_dili}. {gorev}
+                            KURALLAR:
+                            1. "Yol bir, sürek binbir" ilkesiyle anlat.
+                            2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
+                            3. Giriş cümlesi yapma.
+                            BİLGİLER: {baglam}
+                            """
+                    
+                    try:
+                        stream = aktif_model.generate_content(full_prompt, stream=True)
+                    except Exception as e:
+                        if "429" in str(e):
+                            time.sleep(2)
+                            aktif_model = get_model()
+                            stream = aktif_model.generate_content(full_prompt, stream=True)
+                        else: raise e
+                except Exception as e:
+                    st.error(f"Hata: {e}")
 
         if stream:
             try:
@@ -354,6 +317,7 @@ if is_user_input or is_detail_click:
                             if "German" in kullanici_dili: link_baslik = "**📚 Quellen:**"
                             elif "English" in kullanici_dili: link_baslik = "**📚 Sources:**"
                             else: link_baslik = "**📚 Kaynaklar:**"
+                            
                             kaynak_metni = f"\n\n{link_baslik}\n"
                             essiz = {v['link']:v for v in kaynaklar}.values()
                             for k in essiz:
@@ -365,9 +329,7 @@ if is_user_input or is_detail_click:
                 response_text = st.write_stream(stream_parser)
                 st.session_state.messages.append({"role": "assistant", "content": response_text})
                 
-                # OTOMATİK KAYDIRMA (Cevap bitince)
-                js = """<script>var body = window.parent.document.querySelector(".main");body.scrollTop = body.scrollHeight;</script>"""
-                components.html(js, height=0)
+                scroll_to_bottom() # Cevap bitince kaydır
 
             except Exception as e:
                 pass
