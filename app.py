@@ -1,10 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components 
 import requests
-from requests.auth import HTTPBasicAuth
-from bs4 import BeautifulSoup
 import google.generativeai as genai
-import sys
 import time
 import json
 import random
@@ -20,7 +17,8 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-API_KEYS = [k for k in API_KEYS if k] # Boş olanları temizle
+# Boşlukları temizle ve sadece dolu anahtarları al
+API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
@@ -84,95 +82,74 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- GÜVENLİ VE GARANTİLİ YANIT ÜRETİCİ (V4 - OTOMATİK MODEL BULUCU) ---
+# --- GÜVENLİ VE TASARRUFLU YANIT ÜRETİCİ (V5 - KOTA DOSTU) ---
 def guvenli_stream_baslat(full_prompt):
     """
-    Model ismini tahmin etmez. Doğrudan API'ye 'Elinizde ne var?' diye sorar
-    ve 'generateContent' özelliğini destekleyen İLK modeli seçip kullanır.
-    Böylece 404 hatası ve çökme imkansız hale gelir.
+    Bu versiyon 'list_models' yaparak fazladan kota harcamaz.
+    Doğrudan en verimli modelleri hedefler.
+    429 Hatasında akıllı bekleme yapar.
     """
     # 1. Anahtarları Kontrol Et
-    gecerli_anahtarlar = [k for k in API_KEYS if k and len(k) > 10]
-    if not gecerli_anahtarlar:
+    if not API_KEYS:
         st.error("❌ HATA: secrets.toml dosyasında geçerli API anahtarı yok.")
         return None
 
-    random.shuffle(gecerli_anahtarlar)
+    # Her seferinde anahtarları karıştır (Yükü dağıtmak için)
+    random.shuffle(API_KEYS)
     hata_logu = []
 
+    # Google'ın şu an en yüksek kotayı verdiği modeller (Sırayla denenecek)
+    # Flash modeli hem en hızlısı hem de limiti en yüksek olandır.
+    hedef_modeller = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro"]
+
     # 2. Anahtarları Dene
-    for key in gecerli_anahtarlar:
-        try:
-            genai.configure(api_key=key)
-            
-            # --- KRİTİK NOKTA: Model ismini biz uydurmuyoruz, Google'dan istiyoruz ---
-            bulunan_model = None
-            
+    for key in API_KEYS:
+        genai.configure(api_key=key)
+        
+        for model_adi in hedef_modeller:
             try:
-                # Mevcut modelleri listele
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        # Öncelik sırasına göre tercih yap
-                        if 'flash' in m.name and '1.5' in m.name: # Varsa Flash 1.5 kullan
-                            bulunan_model = m.name
-                            break
-                        if 'pro' in m.name and '1.5' in m.name: # Yoksa Pro 1.5
-                            bulunan_model = m.name
+                # Güvenlik ayarlarını esnet (Bazen hata burdan kaynaklanır)
+                guvenlik = [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}
+                ]
                 
-                # Eğer özel bir şey bulamazsa, listenin en başındakini al (örn: gemini-pro)
-                if not bulunan_model:
-                    for m in genai.list_models():
-                        if 'generateContent' in m.supported_generation_methods:
-                            bulunan_model = m.name
-                            break
-            except:
-                # Liste alamazsa manuel yedek
-                bulunan_model = "models/gemini-1.5-flash"
-            
-            if not bulunan_model:
-                hata_logu.append(f"Anahtar: {key[:5]}... -> Hiçbir model bulunamadı.")
+                config = {"temperature": 0.3, "max_output_tokens": 8000}
+                model_instance = genai.GenerativeModel(model_adi, generation_config=config, safety_settings=guvenlik)
+                
+                # İsteği gönder
+                return model_instance.generate_content(full_prompt, stream=True)
+
+            except Exception as e:
+                err_msg = str(e).lower()
+                hata_logu.append(f"Key: ...{key[-4:]} | Model: {model_adi} -> {err_msg[:60]}")
+                
+                # Eğer 429 (Kota) hatasıysa, bu anahtar yanmıştır, diğer anahtara geç
+                if "429" in err_msg or "quota" in err_msg:
+                    time.sleep(1) # Kısa bir es ver
+                    break # Bu anahtarı bırak, döngüden çıkıp sıradaki anahtara geç
+                
+                # Başka hataysa (404 vs) aynı anahtarla diğer modeli dene
                 continue
 
-            # Modeli Bulduk, Ayarlayıp Çalıştıralım
-            config = {"temperature": 0.3, "max_output_tokens": 8000}
-            guvenlik = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}
-            ]
-            
-            api_model = genai.GenerativeModel(bulunan_model, generation_config=config, safety_settings=guvenlik)
-            return api_model.generate_content(full_prompt, stream=True)
-
-        except Exception as e:
-            err_msg = str(e).lower()
-            hata_logu.append(f"Hata: {err_msg[:100]}")
-            
-            if "429" in err_msg or "quota" in err_msg:
-                time.sleep(2) # Hız limiti hatasında bekle
-            continue
-
     # --- BURAYA GELDİYSE HİÇBİR ŞEY ÇALIŞMAMIŞTIR ---
-    st.error("⚠️ Can Dede şu an bağlantı kuramadı.")
-    with st.expander("Son Teknik Durum (Geliştirici İçin)"):
-        st.write("Kütüphane Sürümü: google-generativeai >= 0.8.3 olmalı.")
+    st.warning("⚠️ Can Dede şu an çok yoğun (Google Kota Limiti).")
+    with st.expander("Teknik Detaylar (Geliştirici)"):
+        st.write("Tavsiye: Farklı Google hesaplarından alınmış yeni API Key ekleyin.")
         for log in hata_logu:
             st.code(log, language="text")
             
     return None
 
-# --- BASİT API YÖNETİCİSİ (Yardımcı Araçlar İçin) ---
+# --- BASİT MODEL (Yardımcı Araçlar İçin) ---
 def get_model():
-    # Bu fonksiyon sadece dil tespiti gibi küçük işler için hızlı bir model döndürür
     if not API_KEYS: return None
     try:
-        secilen_key = random.choice(API_KEYS)
-        genai.configure(api_key=secilen_key)
-        # Hızlı model ismi (Library güncel olduğu için bunu tanıyacaktır)
+        genai.configure(api_key=random.choice(API_KEYS))
         return genai.GenerativeModel("gemini-1.5-flash")
-    except:
-        return None
+    except: return None
 
 # --- AJANLAR ---
 def niyet_analizi(soru):
@@ -306,7 +283,7 @@ if is_user_input or is_detail_click:
         stream = None
         
         with st.spinner("Can Dede düşünüyor..."):
-            # 1. Veritabanı Araması (Eğer gerekliyse)
+            # 1. Veritabanı Araması
             if niyet == "ARAMA":
                 if 'db' in st.session_state and st.session_state.db:
                     if is_detail_click and st.session_state.get('son_baglam'):
@@ -385,8 +362,6 @@ if is_user_input or is_detail_click:
 
             except Exception as e:
                 st.error("Bir teknik hata oluştu, lütfen tekrar deneyin.")
-        else:
-            st.error("Şu anda Can Dede çok yoğun (Tüm anahtarlar limit aşımında). Lütfen 1 dakika sonra tekrar deneyin.")
 
 # --- DETAY BUTONU ---
 son_niyet = st.session_state.get('son_niyet', "")
