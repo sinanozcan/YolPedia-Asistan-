@@ -16,6 +16,10 @@ API_KEYS = [
 ]
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
+if not API_KEYS or all(len(k) < 20 for k in API_KEYS):
+    st.error("❌ Geçerli API anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
+    st.stop()
+
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
