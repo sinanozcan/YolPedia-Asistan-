@@ -187,7 +187,7 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
 # --- SOHBET BAŞLANGICI ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba, Erenler! Ben Can Dede. YolPedia'da rehberinizim. Rızanız da olursa, size ışık olmaya gayret edeceğim."}
+        {"role": "assistant", "content": "Merhaba, Erenler! Ben Can Dede. YolPedia'da rehberinizim. Rızanız da olursa, size delil olmaya gayret edeceğim."}
     ]
 
 for message in st.session_state.messages:
