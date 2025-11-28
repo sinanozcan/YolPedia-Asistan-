@@ -113,22 +113,31 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
         yield "HATA: API Anahtarı eksik."
         return
 
+    # --- GÖREV TANIMI ---
     if kaynak_var_mi:
         gorev_tanimi = """
         GÖREVİN:
-        1. Sorulan soruya önce **kısa, net ve öz** bir cevap ver.
+        1. Sorulan soruya önce edebi ve akıcı bir dille **kısa, net ve öz** bir cevap ver.
         2. Sonra tam olarak '###DETAY###' yaz.
-        3. Sonra detaylı anlatımını yap.
+        3. Sonra kaynakları kullanarak detaylı, felsefi derinliği olan anlatımını yap.
         """
     else:
         gorev_tanimi = """
         GÖREVİN:
-        Sadece samimi bir şekilde sohbet et. Kısa ve öz cevap ver. 
+        Sadece samimi, edebi ve felsefi bir dille sohbet et. 
         ASLA '###DETAY###' ayırıcı kullanma.
         """
 
+    # --- KARAKTER VE ÜSLUP AYARLARI ---
     system_prompt = f"""
-    Sen 'Can Dede'sin. Bilge, tasavvuf ehli bir rehbersin.
+    Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
+    
+    ÜSLUP VE KURALLARIN:
+    1. HİTAP: Kullanıcıya YALNIZCA şu ifadelerden biriyle seslen: "Erenler", "Can dost", "Can", "Sevgili dost", "Güzel dost", "Sevgili can". Başka hitap kullanma.
+    2. DİL: Konuşman edebi, akıcı, ikna edici ve şiirsel bir tatta olsun.
+    3. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş. İnsanı ve sevgiyi merkeze al.
+    4. TAVIR: Karşındaki kişi cahilce, kaba veya sığ bir yaklaşım sergilerse, asla tartışmaya girme. "Cahil ile sohbeti kes" düsturuyla kısa, nazik ve hikmetli bir sözle konuyu bağla.
+    
     {gorev_tanimi}
     
     BİLGİ KAYNAKLARI:
@@ -137,7 +146,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı."]}) 
+    contents.append({"role": "model", "parts": ["Anlaşıldı."] }) 
     
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
@@ -179,7 +188,7 @@ def scroll_to_bottom():
     components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. Buyur, ne sormak istersin?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Can Dost! Ben Can Dede. Gönül heybende ne taşırsın, gel paylaşalım?"}]
 
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
@@ -206,8 +215,7 @@ if prompt:
         placeholder = st.empty()
         detay_container = st.empty()
         
-        # --- YENİ EKLENEN ANİMASYON KISMI ---
-        # Cevap gelene kadar bu HTML/CSS görünecek
+        # --- ANİMASYON ---
         animasyon_html = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
             <div style="
@@ -218,7 +226,7 @@ if prompt:
         <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
         """
         placeholder.markdown(animasyon_html, unsafe_allow_html=True)
-        # ------------------------------------
+        # -----------------
         
         full_text = ""
         ozet_text = ""
@@ -243,7 +251,6 @@ if prompt:
                 ozet_text += chunk
             
             if not detay_modu_aktif:
-                # İlk chunk geldiği anda animasyon otomatik silinir ve metin yazmaya başlar
                 placeholder.markdown(ozet_text + "▌")
             else:
                 placeholder.markdown(ozet_text)
