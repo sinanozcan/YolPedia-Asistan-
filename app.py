@@ -16,7 +16,6 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-# Anahtarları temizle
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
@@ -96,11 +95,42 @@ def alakali_icerik_bul(kelime, db):
         
     return context_text, kaynaklar
 
-# --- RÖNTGEN MODU: HATA DETAYLARINI YAKALA ---
-# Bu fonksiyon hata loglarını session state'e kaydeder
+# --- AKILLI MODEL SEÇİCİ (404 HATASINI YOK EDER) ---
+def uygun_modeli_bul_ve_getir():
+    """
+    Sisteme 'Gemini Flash ver' demez.
+    'Elinizde ne varsa listele' der ve listedeki İLK modeli alır.
+    Böylece olmayan modeli çağırma hatası (404) imkansız olur.
+    """
+    try:
+        # Mevcut modelleri listele
+        mevcut_modeller = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                mevcut_modeller.append(m.name)
+        
+        # Eğer liste boşsa
+        if not mevcut_modeller:
+            return None, "Hiçbir model bulunamadı"
+
+        # Varsa tercihlerimiz (Yeni -> Eski)
+        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-pro", "models/gemini-pro", "gemini-pro"]
+        
+        for t in tercihler:
+            for m in mevcut_modeller:
+                if t in m: # Tercih ettiğimiz model isminin bir parçası listede var mı?
+                    return m, None
+        
+        # Tercihler yoksa listenin ilkini al (Ne olursa olsun çalışır)
+        return mevcut_modeller[0], None
+
+    except Exception as e:
+        return None, str(e)
+
+
 def can_dede_cevapla(user_prompt, chat_history, context_data):
     if not API_KEYS:
-        yield "HATA: API Anahtarı bulunamadı (Secrets dosyası boş)."
+        yield "HATA: API Anahtarı bulunamadı."
         return
 
     system_prompt = f"""
@@ -116,29 +146,35 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
         role = "user" if msg["role"] == "user" else "model"
         contents.append({"role": role, "parts": [msg["content"]]})
     contents.append({"role": "user", "parts": [user_prompt]})
-
-    modeller = ["gemini-1.5-flash", "gemini-pro"]
+    
+    random.shuffle(API_KEYS)
     
     # Hata raporunu temizle
     st.session_state.son_hata_raporu = []
 
     for key in API_KEYS:
         genai.configure(api_key=key)
-        for model_adi in modeller:
-            try:
-                model = genai.GenerativeModel(model_adi)
-                response = model.generate_content(contents, stream=True)
-                for chunk in response:
-                    if chunk.text:
-                        yield chunk.text
-                return # Başarılı oldu, çık
+        
+        # --- KRİTİK NOKTA: Model ismini dinamik olarak buluyoruz ---
+        model_adi, hata = uygun_modeli_bul_ve_getir()
+        
+        if not model_adi:
+            st.session_state.son_hata_raporu.append(f"Anahtar: ...{key[-5:]} | Liste Hatası: {hata}")
+            continue
 
-            except Exception as e:
-                hata_kodu = str(e)
-                # Hatayı kaydet
-                st.session_state.son_hata_raporu.append(f"Anahtar Sonu: ...{key[-5:]} | Model: {model_adi} | HATA: {hata_kodu}")
-                time.sleep(1)
-                continue 
+        try:
+            model = genai.GenerativeModel(model_adi)
+            response = model.generate_content(contents, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+            return # Başarılı oldu, çık
+
+        except Exception as e:
+            hata_kodu = str(e)
+            st.session_state.son_hata_raporu.append(f"Model: {model_adi} | HATA: {hata_kodu}")
+            time.sleep(1)
+            continue 
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
@@ -174,11 +210,9 @@ if prompt:
             full_text += chunk
             full_response_container.markdown(full_text + "▌")
         
-        # Eğer hata varsa RAPORU GÖSTER
         if "tefekkürdeyim" in full_text:
-            with st.expander("🛠️ DETAYLI HATA RAPORU (BUNU BANA GÖNDER)", expanded=True):
-                if not st.session_state.son_hata_raporu:
-                    st.write("Hata yakalanamadı ama bağlantı kurulamadı.")
+            with st.expander("🛠️ DETAYLI HATA RAPORU", expanded=True):
+                st.write("**Geliştirici Notu:** Bu rapor, Google sunucusunda hangi modellerin mevcut olduğunu gösterir.")
                 for rapor in st.session_state.son_hata_raporu:
                     st.code(rapor, language="text")
         
