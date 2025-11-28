@@ -80,7 +80,7 @@ def alakali_icerik_bul(kelime, db):
             if k in d['norm_baslik']: puan += 15
             elif k in d['norm_icerik']: puan += 5     
         
-        # EŞİK PUANI: Bunu 40 yaptık ki "merhaba" yanlışlıkla eşleşmesin
+        # EŞİK PUANI: 40
         if puan > 40:
             sonuclar.append({"veri": d, "puan": puan})
     
@@ -140,7 +140,10 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı."] + chat_history[-1]["content"] if chat_history else []})
+    
+    # --- DÜZELTİLEN KISIM BURASI ---
+    # Hataya sebep olan karmaşık satırı sildim.
+    contents.append({"role": "model", "parts": ["Anlaşıldı."]}) 
     
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
@@ -207,7 +210,7 @@ if prompt:
     
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     
-    # --- KRİTİK NOKTA: Eğer kaynak listesi boşsa, detay modu KAPALI ---
+    # Kaynak var mı kontrolü
     kaynak_var_mi = len(kaynaklar) > 0
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
@@ -224,8 +227,6 @@ if prompt:
         for chunk in stream:
             full_text += chunk
             
-            # Kaynak yoksa zaten ###DETAY### hiç gelmeyecek (prompt engelliyor)
-            # Ama yine de kontrol edelim
             if kaynak_var_mi and ("###DETAY###" in chunk or "###DETAY###" in full_text):
                 if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
@@ -242,14 +243,13 @@ if prompt:
                 placeholder.markdown(ozet_text + "▌")
             else:
                 placeholder.markdown(ozet_text)
-                # Burayı bilerek boş bırakıyoruz, detay yüklenince toplu basacağız
         
         placeholder.markdown(ozet_text)
         
         final_history = full_text
 
-        # --- FİNAL KARAR: BUTON ÇIKSIN MI? ---
-        # Sadece ve sadece veritabanından kaynak geldiyse ve metin doluysa
+        # FİNAL KARAR: BUTON ÇIKSIN MI?
+        # Sadece veritabanından kaynak geldiyse ve metin doluysa
         if kaynak_var_mi and detay_text.strip():
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
