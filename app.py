@@ -87,28 +87,58 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
+# --- MODEL SEÇİMİNİ ÖNBELLEKLEME (HIZ İÇİN) ---
+@st.cache_resource(show_spinner=False)
+def en_uygun_model_ismini_bul():
+    """
+    Bu fonksiyon modelleri sadece sunucu açılışında bir kez tarar.
+    Sonucu hafızada tuttuğu için her soruda bekleme yapmaz.
+    404 hatasını önlemek için listede gerçekten var olanı seçer.
+    """
+    if not API_KEYS: return "gemini-pro"
+    
+    try:
+        # Listeyi çekmek için geçici olarak ilk anahtarı kullan
+        genai.configure(api_key=API_KEYS[0])
+        
+        # Google'dan güncel listeyi iste
+        tum_modeller = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                tum_modeller.append(m.name)
+        
+        # Öncelik Sıralaması (Hızlıdan Yavaşa)
+        # 1. Flash Modelleri
+        for m in tum_modeller:
+            if "flash" in m.lower() and "1.5" in m: return m
+        
+        # 2. Pro 1.5 Modelleri
+        for m in tum_modeller:
+            if "pro" in m.lower() and "1.5" in m: return m
+            
+        # 3. Standart Pro (En garantisi)
+        for m in tum_modeller:
+            if "gemini-pro" in m: return m
+            
+    except Exception:
+        return "gemini-pro" # Hata olursa en güvenli liman
+
+    return "gemini-pro"
+
 # --- AKILLI API YÖNETİCİSİ (GÜNCELLENMİŞ) ---
 def get_model():
     if not API_KEYS: return None
+    
+    # Her seferinde farklı anahtar seçmeye devam et (Limit aşımını önler)
     secilen_key = random.choice(API_KEYS)
     genai.configure(api_key=secilen_key)
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # Model isimlerini çeşitlendirdik. 'models/' ön eki bazen hatayı çözer.
-    model_oncelik_sirasi = [
-        "gemini-1.5-flash", 
-        "gemini-1.5-pro", 
-        "gemini-pro",         # En kararlı model
-        "models/gemini-1.5-flash", 
-        "models/gemini-pro"
-    ]
+    # Önbellekteki doğru ismi al (Bekleme yapmaz)
+    dogru_model_adi = en_uygun_model_ismini_bul()
     
-    for m_adi in model_oncelik_sirasi:
-        # Modeli sadece tanımlayıp dönüyoruz, hatayı kullanım sırasında yakalayacağız
-        return genai.GenerativeModel(m_adi, generation_config=generation_config)
-    
-    return None
+    return genai.GenerativeModel(dogru_model_adi, generation_config=generation_config)
 
 # --- AJANLAR ---
 def niyet_analizi(soru):
