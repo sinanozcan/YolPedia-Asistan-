@@ -24,98 +24,96 @@ CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.pn
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
 # --- SAYFA AYARLARI ---
-st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON)
+st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="wide")
 
+# --- CSS ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
     .dede-img { width: 80px; height: 80px; border-radius: 50%; margin-right: 15px; object-fit: cover; border: 2px solid #eee; }
     .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
-    .top-logo-container { display: flex; justify-content: center; margin-bottom: 45px; padding-top: 10px; }
-    .top-logo { width: 90px; opacity: 1.0; }
+    .top-logo-container { display: flex; justify-content: center; margin-bottom: 20px; padding-top: 10px; }
+    .top-logo { width: 80px; opacity: 1.0; }
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
     @media (prefers-color-scheme: light) { .title-text { color: #000000; } .motto-text { color: #555555; } }
     .stChatMessage { margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- VERİ YÜKLEME ---
+@st.cache_data(persist="disk", show_spinner=False)
+def veri_yukle():
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f: 
+            data = json.load(f)
+            for d in data:
+                d['norm_baslik'] = tr_normalize(d['baslik'])
+                d['norm_icerik'] = tr_normalize(d['icerik'])
+            return data
+    except: return []
+
+def tr_normalize(text):
+    return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
+
+if 'db' not in st.session_state: st.session_state.db = veri_yukle()
+
+# --- MOD SEÇİMİ (SIDEBAR) ---
+with st.sidebar:
+    st.image(CAN_DEDE_ICON, width=100)
+    st.title("Mod Seçimi")
+    secilen_mod = st.radio(
+        "Can Dede nasıl yardımcı olsun?",
+        ["☕ Sohbet Modu", "🔍 Araştırma Modu"],
+        captions=["Sadece muhabbet eder, kaynak taramaz.", "YolPedia kütüphanesini tarar ve kaynak sunar."]
+    )
+    st.markdown("---")
+    st.info(f"Aktif Mod: **{secilen_mod}**")
+
+# --- HEADER (Ana Sayfa) ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">Can Dede</h1></div>
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- BASİTLEŞTİRİLMİŞ VERİ YÜKLEME ---
-@st.cache_data(persist="disk", show_spinner=False)
-def veri_yukle():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f: 
-            data = json.load(f)
-            # Karmaşık normalizasyonu kaldırdık, sadece küçük harfe çeviriyoruz
-            for d in data:
-                d['arama_metni'] = (d.get('baslik', '') + " " + d.get('icerik', '')).lower()
-            return data
-    except Exception as e:
-        return [] # Hata varsa boş dön
 
-if 'db' not in st.session_state: 
-    st.session_state.db = veri_yukle()
+# --- ARAMA MOTORU ---
+def alakali_icerik_bul(kelime, db, mod):
+    # Eğer Sohbet Modundaysak ARAMA YAPMA (Boş dön)
+    if "Sohbet" in mod:
+        return "", []
 
-# --- GEÇİCİ HATA AYIKLAMA (SİSTEM ÇALIŞINCA KALDIRABİLİRSİN) ---
-if not st.session_state.db:
-    st.error(f"⚠️ HATA: '{DATA_FILE}' dosyası okunamadı veya içi boş! Lütfen dosya adını ve JSON formatını kontrol et.")
-else:
-    # Veri yüklendiyse kullanıcının içini rahatlatmak için küçük bir not (Sonra silebilirsin)
-    pass 
-
-# --- AGRESİF ARAMA MOTORU ---
-def alakali_icerik_bul(kelime, db):
     if not db: return "", []
     
-    # Sorguyu küçük harfe çevir ve kelimelere böl
-    sorgu_kelimeleri = kelime.lower().split()
+    norm_sorgu = tr_normalize(kelime)
+    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
-    # Gereksiz kelimeleri filtrele
-    etkisizler = ["merhaba", "selam", "hakkinda", "nedir", "kimdir", "kaynak", "ariyorum", "bilgi", "var", "mi", "istiyorum"]
-    anahtarlar = [k for k in sorgu_kelimeleri if k not in etkisizler and len(k) > 2]
-    
-    # Eğer filtreleme sonrası hiç kelime kalmadıysa (sadece "merhaba" denmişse) boş dön
-    if not anahtarlar: return "", []
+    # Araştırma modunda daha kısa kelimelere de izin verelim
+    if len(norm_sorgu) < 3: return "", []
 
     sonuclar = []
-    
     for d in db:
         puan = 0
-        baslik = d.get('baslik', '').lower()
-        icerik = d.get('icerik', '').lower()
+        if norm_sorgu in d['norm_baslik']: puan += 100
+        elif norm_sorgu in d['norm_icerik']: puan += 50
+        for k in anahtarlar:
+            if k in d['norm_baslik']: puan += 20 # Kelime eşleşme puanı artırıldı
+            elif k in d['norm_icerik']: puan += 5     
         
-        # BASİT VE KESİN ARAMA MANTIĞI
-        for anahtar in anahtarlar:
-            if anahtar in baslik:
-                puan += 50  # Başlıkta geçiyorsa yüksek puan
-            elif anahtar in icerik:
-                puan += 10  # İçerikte geçiyorsa puan ver
-        
-        # BARAJ PUANI 1 (Yani içerikte 1 kere bile geçse getir!)
-        if puan > 0:
+        # Araştırma modunda barajı DÜŞÜR (15 puan yeterli)
+        if puan > 15:
             sonuclar.append({"veri": d, "puan": puan})
     
-    # Puana göre sırala
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = sonuclar[:5] # En iyi 5 sonucu al
+    en_iyiler = sonuclar[:6] # Daha fazla kaynak göster (6 tane)
     
     context_text = ""
     kaynaklar = []
     
     for item in en_iyiler:
         v = item['veri']
-        # Baslik veya link yoksa hata vermesin diye .get kullaniyoruz
-        b = v.get('baslik', 'Başlıksız')
-        l = v.get('link', '#')
-        c = v.get('icerik', '')
-        
-        context_text += f"\n--- KAYNAK BİLGİ: {b} ---\n{c[:4000]}\n"
-        kaynaklar.append({"baslik": b, "link": l})
+        context_text += f"\n--- KAYNAK BİLGİ: {v['baslik']} ---\n{v['icerik'][:4000]}\n"
+        kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
     return context_text, kaynaklar
 
@@ -132,25 +130,35 @@ def uygun_modeli_bul_ve_getir():
     except Exception as e:
         return None, str(e)
 
-def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
+def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     if not API_KEYS:
         yield "HATA: API Anahtarı eksik."
         return
 
-    if kaynak_var_mi:
+    # --- MODA GÖRE GÖREV TANIMI ---
+    if "Araştırma" in mod:
+        # ARAŞTIRMA MODU PROMPT'U
         gorev_tanimi = """
+        MOD: ARAŞTIRMA MODU.
         GÖREVİN:
-        1. Sorulan soruya önce edebi ve akıcı bir dille **kısa, net ve öz** bir cevap ver.
-        2. Sonra tam olarak '###DETAY###' yaz.
-        3. Sonra kaynakları kullanarak detaylı, felsefi derinliği olan anlatımını yap.
+        1. Kullanıcının sorusunu 'BİLGİ KAYNAKLARI' kısmındaki verileri temel alarak cevapla.
+        2. Önce kısa bir özet geç.
+        3. Sonra tam olarak '###DETAY###' yaz.
+        4. Sonra konuyu kaynaklara dayanarak detaylandır.
         """
+        kaynak_metni = context_data if context_data else "İlgili kaynak bulunamadı, genel kültürünle cevapla."
     else:
+        # SOHBET MODU PROMPT'U
         gorev_tanimi = """
+        MOD: SOHBET MODU.
         GÖREVİN:
         Sadece samimi, edebi ve felsefi bir dille sohbet et. 
         ASLA '###DETAY###' ayırıcı kullanma.
+        ASLA kaynaklardan bahsetme. Sadece muhabbet et.
         """
+        kaynak_metni = "Sohbet modundasın, kaynak kullanma."
 
+    # --- KARAKTER, ÜSLUP VE DİL AYARLARI ---
     system_prompt = f"""
     Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
     
@@ -158,11 +166,12 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
     1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa MUTLAKA O DİLDE cevap ver.
     2. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
     3. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
+    4. TAVIR: Kaba veya cahilce sorulara tartışmaya girmeden, hikmetle kısa cevap verip geç.
     
     {gorev_tanimi}
     
-    BİLGİ KAYNAKLARI (YolPedia):
-    {context_data if context_data else "Ek kaynak yok."}
+    BİLGİ KAYNAKLARI:
+    {kaynak_metni}
     """
 
     contents = []
@@ -205,6 +214,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
+# --- OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
     js = """
     <script>
@@ -222,7 +232,7 @@ def scroll_to_bottom():
     components.html(js, height=0)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Can Dost! Ben Can Dede. Gönül heybende ne taşırsın, gel paylaşalım?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."}]
 
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
@@ -242,9 +252,8 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    # Yeni arama fonksiyonu
-    baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
-    kaynak_var_mi = len(kaynaklar) > 0
+    # MODA GÖRE ARAMA YAP
+    baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
@@ -256,7 +265,7 @@ if prompt:
             <div style="
                 width: 12px; height: 12px; border-radius: 50%; background-color: #aaa;
                 animation: pulse 1s infinite alternate;"></div>
-            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede tefekkür ediyor...</span>
+            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede tefekkür ediyor... ({secilen_mod})</span>
         </div>
         <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
         """
@@ -267,12 +276,13 @@ if prompt:
         detay_text = ""
         detay_modu_aktif = False
         
-        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni, kaynak_var_mi)
+        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni, secilen_mod)
         
         for chunk in stream:
             full_text += chunk
             
-            if kaynak_var_mi and ("###DETAY###" in chunk or "###DETAY###" in full_text):
+            # Sadece Araştırma Modunda Detay Ayrıştır
+            if "Araştırma" in secilen_mod and ("###DETAY###" in chunk or "###DETAY###" in full_text):
                 if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
                     ozet_text = parts[0]
@@ -293,10 +303,10 @@ if prompt:
         
         final_history = full_text
 
-        # --- KAYNAK LİSTELEME ---
-        if kaynak_var_mi:
+        # --- ARAŞTIRMA MODUNDA KAYNAK GÖSTER ---
+        if "Araştırma" in secilen_mod and kaynaklar:
             with detay_container.container():
-                with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
+                with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True): # Default açık olsun araştırma modunda
                     if detay_text.strip():
                         st.markdown(detay_text)
                         st.markdown("\n---\n")
