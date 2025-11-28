@@ -16,7 +16,6 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-# Boşlukları temizle
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
@@ -56,114 +55,137 @@ def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
-            # Basit normalizasyon
             for d in data:
-                d['norm_baslik'] = d['baslik'].lower()
-                d['norm_icerik'] = d['icerik'].lower()
+                d['norm_baslik'] = tr_normalize(d['baslik'])
+                d['norm_icerik'] = tr_normalize(d['icerik'])
             return data
     except: return []
 
+def tr_normalize(text):
+    return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
+
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
-
-# --- ARTIK HATA YAPMAYAN MODEL SEÇİCİ ---
-@st.cache_resource
-def get_working_model_name():
-    """
-    Bu fonksiyon sistemi tarar ve çalışan İLK modeli bulur.
-    Böylece 'model bulunamadı' hatası imkansız hale gelir.
-    """
-    if not API_KEYS: return None
-    try:
-        genai.configure(api_key=API_KEYS[0])
-        # Sistemdeki modelleri listele
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                # Flash veya Pro öncelikli, yoksa ne varsa o.
-                if 'gemini' in m.name:
-                    return m.name
-        return "gemini-pro" # Hiçbir şey bulamazsa varsayılan
-    except:
-        return "gemini-pro"
-
-MODEL_ADI = get_working_model_name()
 
 # --- ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db):
-    sorgu = kelime.lower()
-    sonuclar = []
+    norm_sorgu = tr_normalize(kelime)
+    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
+    sonuclar = []
     for d in db:
         puan = 0
-        if sorgu in d['norm_baslik']: puan += 100
-        elif sorgu in d['norm_icerik']: puan += 50
-        
+        if norm_sorgu in d['norm_baslik']: puan += 100
+        elif norm_sorgu in d['norm_icerik']: puan += 50
+        for k in anahtarlar:
+            if k in d['norm_baslik']: puan += 15
+            elif k in d['norm_icerik']: puan += 5     
         if puan > 0:
-            sonuclar.append(d)
+            sonuclar.append({"veri": d, "puan": puan})
     
-    # En iyi 3 sonucu al
-    sonuclar = sorted(sonuclar, key=lambda x: len(x['icerik']), reverse=True)[:3]
+    sonuclar.sort(key=lambda x: x['puan'], reverse=True)
+    en_iyiler = sonuclar[:4] 
     
-    context = ""
+    context_text = ""
     kaynaklar = []
-    for s in sonuclar:
-        context += f"\nKonu: {s['baslik']}\nBilgi: {s['icerik'][:3000]}\n"
-        kaynaklar.append({"baslik": s['baslik'], "link": s['link']})
+    
+    for item in en_iyiler:
+        v = item['veri']
+        context_text += f"\n--- BİLGİ KAYNAĞI: {v['baslik']} ---\n{v['icerik'][:4000]}\n"
+        kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
         
-    return context, kaynaklar
+    return context_text, kaynaklar
 
-# --- YANIT ÜRETİCİ ---
+# --- AKILLI MODEL SEÇİCİ (404 HATASINI YOK EDER) ---
+def uygun_modeli_bul_ve_getir():
+    """
+    Sisteme 'Gemini Flash ver' demez.
+    'Elinizde ne varsa listele' der ve listedeki İLK modeli alır.
+    Böylece olmayan modeli çağırma hatası (404) imkansız olur.
+    """
+    try:
+        # Mevcut modelleri listele
+        mevcut_modeller = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                mevcut_modeller.append(m.name)
+        
+        # Eğer liste boşsa
+        if not mevcut_modeller:
+            return None, "Hiçbir model bulunamadı"
+
+        # Varsa tercihlerimiz (Yeni -> Eski)
+        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-pro", "models/gemini-pro", "gemini-pro"]
+        
+        for t in tercihler:
+            for m in mevcut_modeller:
+                if t in m: # Tercih ettiğimiz model isminin bir parçası listede var mı?
+                    return m, None
+        
+        # Tercihler yoksa listenin ilkini al (Ne olursa olsun çalışır)
+        return mevcut_modeller[0], None
+
+    except Exception as e:
+        return None, str(e)
+
+
 def can_dede_cevapla(user_prompt, chat_history, context_data):
     if not API_KEYS:
-        yield "Sistem hatası: API anahtarı yok."
+        yield "HATA: API Anahtarı bulunamadı."
         return
 
-    # Basit ve net talimat
     system_prompt = f"""
-    Sen Can Dede'sin. Alevi-Bektaşi kültürüne hakim, bilge bir rehbersin.
-    Kullanıcıya nazikçe, "Erenler", "Can" gibi hitaplarla cevap ver.
-    
-    KAYNAK BİLGİLER:
-    {context_data}
-    
-    Yukarıdaki bilgileri kullanarak soruyu cevapla. Bilgi yoksa genel bilginden nazikçe cevapla.
+    Sen 'Can Dede'sin. Bilge, tasavvuf ehli, Alevi-Bektaşi kültürüne hakim bir rehbersin.
+    BİLGİ KAYNAKLARI:
+    {context_data if context_data else "Genel sohbet et."}
     """
-    
-    # Sohbet geçmişini modele uygun hale getir
+
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Tamam erenler, dinliyorum."]});
-    
-    for msg in chat_history[-3:]: # Sadece son 3 mesajı hatırla (Hız için)
+    contents.append({"role": "model", "parts": ["Anlaşıldı."]})
+    for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
         contents.append({"role": role, "parts": [msg["content"]]})
-    
     contents.append({"role": "user", "parts": [user_prompt]})
-
-    # Anahtarları sırayla dene
+    
     random.shuffle(API_KEYS)
+    
+    # Hata raporunu temizle
+    st.session_state.son_hata_raporu = []
+
     for key in API_KEYS:
+        genai.configure(api_key=key)
+        
+        # --- KRİTİK NOKTA: Model ismini dinamik olarak buluyoruz ---
+        model_adi, hata = uygun_modeli_bul_ve_getir()
+        
+        if not model_adi:
+            st.session_state.son_hata_raporu.append(f"Anahtar: ...{key[-5:]} | Liste Hatası: {hata}")
+            continue
+
         try:
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(MODEL_ADI) # Bulunan garanti modeli kullan
+            model = genai.GenerativeModel(model_adi)
             response = model.generate_content(contents, stream=True)
-            
             for chunk in response:
                 if chunk.text:
                     yield chunk.text
-            return # Başarılıysa çık
-            
-        except Exception:
-            time.sleep(0.5)
-            continue # Diğer anahtara geç
+            return # Başarılı oldu, çık
 
-    yield "Şu an sistemlerimiz çok yoğun erenler, lütfen birazdan tekrar dene."
+        except Exception as e:
+            hata_kodu = str(e)
+            st.session_state.son_hata_raporu.append(f"Model: {model_adi} | HATA: {hata_kodu}")
+            time.sleep(1)
+            continue 
+
+    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
 # --- ARAYÜZ ---
 def scroll_to_bottom():
     components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. Buyur, nasıl yardımcı olabilirim?"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede."}]
+if "son_hata_raporu" not in st.session_state:
+    st.session_state.son_hata_raporu = []
 
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
@@ -176,21 +198,25 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    baglam, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
+    baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         full_response_container = st.empty()
         full_text = ""
         
-        # Yanıtı üret
-        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam)
+        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni)
         
         for chunk in stream:
             full_text += chunk
             full_response_container.markdown(full_text + "▌")
         
-        # Kaynakları ekle
-        if kaynaklar and "sistemlerimiz çok yoğun" not in full_text:
+        if "tefekkürdeyim" in full_text:
+            with st.expander("🛠️ DETAYLI HATA RAPORU", expanded=True):
+                st.write("**Geliştirici Notu:** Bu rapor, Google sunucusunda hangi modellerin mevcut olduğunu gösterir.")
+                for rapor in st.session_state.son_hata_raporu:
+                    st.code(rapor, language="text")
+        
+        if kaynaklar and "tefekkürdeyim" not in full_text:
             link_text = "\n\n**📚 Kaynaklar:**\n"
             seen = set()
             for k in kaynaklar:
@@ -198,7 +224,7 @@ if prompt:
                     link_text += f"- [{k['baslik']}]({k['link']})\n"
                     seen.add(k['link'])
             full_text += link_text
-            
+        
         full_response_container.markdown(full_text)
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         scroll_to_bottom()
