@@ -95,7 +95,7 @@ if 'db' not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "Merhaba, Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
+        "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
     }]
 
 # --- MOD SEÇİMİ (SIDEBAR) ---
@@ -120,7 +120,7 @@ with st.sidebar:
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{
             "role": "assistant", 
-            "content": "Sohbet sıfırlandı. Yeni bir sohbet başlatalım mı, Can Dost?"
+            "content": "Sohbet sıfırlandı. Yeni bir konuşma başlayalım Can Dost!"
         }]
         st.rerun()
 
@@ -342,11 +342,42 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    # ARAMA (Mod'a göre) - İYİLEŞTİRİLMİŞ
+    # ARAMA (Mod'a göre) - GÖRÜNÜR STATUS MESAJI
     if "Araştırma" in secilen_mod:
-        with st.spinner("🔍 Lütfen bekleyin, ilgili kaynaklar için arşivi tarıyorum..."):
-            baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
-            
+        # Görünür status container oluştur
+        status_container = st.empty()
+        status_container.markdown("""
+            <div style="
+                background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                text-align: center;
+                font-size: 16px;
+                font-weight: 500;
+                margin: 20px 0;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+                animation: pulse 2s infinite;
+            ">
+                🔍 <strong>Lütfen bekleyin...</strong><br>
+                <span style="font-size: 14px; opacity: 0.9;">
+                YolPedia arşivinde ilgili kaynaklar taranıyor (2236 kayıt)
+                </span>
+            </div>
+            <style>
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; transform: scale(1); }
+                    50% { opacity: 0.85; transform: scale(0.98); }
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        # Arama yap
+        baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
+        
+        # Status mesajını temizle
+        status_container.empty()
+        
         # DEBUG: Kaç kaynak bulundu?
         if kaynaklar:
             st.sidebar.info(f"🎯 **{len(kaynaklar)} kaynak** bulundu")
