@@ -30,7 +30,7 @@ ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
 # --- RESİMLER ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png"
 # ===========================================
@@ -259,12 +259,12 @@ if is_user_input or is_detail_click:
                     # PROMPTLAR
                     if niyet == "SOHBET":
                         full_prompt = f"""
-                        Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
+                        Senin adın 'Can Dede'. Sen YolPedia'nın rehberi ve sanal dedesisin.
                         Kullanıcı ile sohbet et.
                         KURALLAR:
-                        1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                        1. "Merhaba, erenler. Ben Can Dede" diye kendini tekrar tanıtma.
                         2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                        3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                        3. ASLA "Evlat" deme. Hitabın "Erenler" , "Can Dost" veya veya "Sevgili Can" olsun.
                         MESAJ: {user_msg}
                         """
                     else:
