@@ -30,8 +30,9 @@ ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
 # --- RESİMLER ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
-CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
+USER_ICON = "https://cdn-icons-png.flaticon.com/512/1077/1077114.png" # Şık bir kullanıcı ikonu
 # ===========================================
 
 # --- FAVICON ---
@@ -85,6 +86,13 @@ st.markdown("""
         margin-bottom: 25px; 
         font-family: 'Georgia', serif; 
     }
+    
+    /* Sohbet Balonları için Avatar Ayarı */
+    .stChatMessage .avatar {
+        width: 50px !important;
+        height: 50px !important;
+    }
+    
     @media (prefers-color-scheme: light) { 
         .title-text { color: #000000; } 
         .motto-text { color: #555555; }
@@ -119,7 +127,7 @@ def otomatik_kaydir():
     """
     components.html(js, height=0)
 
-# --- AKILLI API VE MODEL YÖNETİCİSİ (HATA ÇÖZÜCÜ) ---
+# --- AKILLI API YÖNETİCİSİ ---
 def get_model():
     if not API_KEYS:
         return None
@@ -128,33 +136,10 @@ def get_model():
     
     generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
     
-    # DENENECEK MODELLER LİSTESİ (Biri çalışmazsa diğerine geçer)
-    model_listesi = [
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-001",
-        "gemini-1.5-flash-latest",
-        "gemini-1.5-pro",
-        "gemini-pro"
-    ]
-
-    # 1. Önce sistemden dinamik olarak bulmaya çalış
     try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                if 'flash' in m.name.lower():
-                    return genai.GenerativeModel(m.name, generation_config=generation_config)
+        return genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
     except:
-        pass # Dinamik bulamazsa listeye geç
-
-    # 2. Listeden sırayla dene
-    for model_adi in model_listesi:
-        try:
-            model = genai.GenerativeModel(model_adi, generation_config=generation_config)
-            return model
-        except:
-            continue
-            
-    return None
+        return None
 
 # --- 1. AJAN: NİYET OKUYUCU ---
 def niyet_analizi(soru):
@@ -162,10 +147,8 @@ def niyet_analizi(soru):
         local_model = get_model()
         prompt = f"""
         GİRDİ: "{soru}"
-        KARAR:
-        - Bilgi araması: "ARAMA"
-        - Sohbet: "SOHBET"
-        CEVAP: "ARAMA" veya "SOHBET"
+        KARAR: "ARAMA" veya "SOHBET"
+        Sadece tek kelime cevap ver.
         """
         response = local_model.generate_content(prompt)
         return response.text.strip().upper()
@@ -253,11 +236,17 @@ def alakali_icerik_bul(temiz_kelime, tum_veriler):
 # --- SOHBET GEÇMİŞİ ---
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Hakikat yolunda merak ettiklerinizi sorabilirsiniz."}
+        {"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. YolPedia rehberinizim. Size nasıl yardımcı olabilirim?"}
     ]
 
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
+    # İKON AYARLAMASI BURADA YAPILIYOR
+    if message["role"] == "assistant":
+        avatar_img = CAN_DEDE_ICON
+    else:
+        avatar_img = USER_ICON # Kullanıcı ikonu
+        
+    with st.chat_message(message["role"], avatar=avatar_img):
         st.markdown(message["content"])
 
 def detay_tetikle():
@@ -295,11 +284,11 @@ if is_user_input or is_detail_click:
         st.session_state.son_niyet = "ARAMA"
 
     if is_user_input:
-         with st.chat_message("user"):
+         with st.chat_message("user", avatar=USER_ICON):
             st.markdown(user_msg)
             otomatik_kaydir()
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         baglam = None
         kaynaklar = None
         detay_modu = False
@@ -319,50 +308,55 @@ if is_user_input or is_detail_click:
                         st.session_state.son_baglam = baglam
                         st.session_state.son_kaynaklar = kaynaklar
             
-            # Anahtarı Al (Model Garantili)
             aktif_model = get_model()
             
-            if aktif_model:
-                try:
-                    # --- PROMPTLAR ---
-                    if niyet == "SOHBET":
-                        full_prompt = f"""
-                        Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
-                        Kullanıcı ile sohbet et.
-                        KURALLAR:
-                        1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
-                        2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                        3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
-                        MESAJ: {user_msg}
-                        """
-                    else:
-                        bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
-                        
-                        if not baglam:
-                            full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
-                        else:
-                            if detay_modu:
-                                gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
-                            else:
-                                gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
-
-                            full_prompt = f"""
-                            Sen 'Can Dede'sin.
-                            HEDEF DİL: {kullanici_dili}
-                            {gorev}
-                            KURALLAR:
-                            1. "Yol bir, sürek binbir" ilkesiyle anlat. Farklı görüşleri birleştir.
-                            2. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
-                            3. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                            4. Giriş cümlesi yapma.
-                            BİLGİLER: {baglam}
-                            """
+            try:
+                # --- PROMPTLAR ---
+                if niyet == "SOHBET":
+                    full_prompt = f"""
+                    Senin adın 'Can Dede'. Sen YolPedia'nın bilge rehberisin.
+                    Kullanıcı ile sohbet et.
+                    KURALLAR:
+                    1. "Merhaba ben Can Dede" diye kendini tekrar tanıtma.
+                    2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                    3. ASLA "Evlat" deme. Hitabın "Erenler" veya "Can" olsun.
+                    MESAJ: {user_msg}
+                    """
+                else:
+                    bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
                     
+                    if not baglam:
+                        full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
+                    else:
+                        if detay_modu:
+                            gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
+                        else:
+                            gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
+
+                        full_prompt = f"""
+                        Sen 'Can Dede'sin.
+                        HEDEF DİL: {kullanici_dili}
+                        {gorev}
+                        KURALLAR:
+                        1. "Yol bir, sürek binbir" ilkesiyle anlat.
+                        2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
+                        3. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
+                        4. Giriş cümlesi yapma.
+                        BİLGİLER: {baglam}
+                        """
+                
+                try:
                     stream = aktif_model.generate_content(full_prompt, stream=True)
                 except Exception as e:
-                    st.error(f"Hata: {e}")
-            else:
-                st.error("Model bağlantısı kurulamadı. Lütfen sayfayı yenileyin.")
+                    if "429" in str(e):
+                        time.sleep(3)
+                        aktif_model = get_model() # Anahtarı değiştir
+                        stream = aktif_model.generate_content(full_prompt, stream=True)
+                    else:
+                        raise e
+
+            except Exception as e:
+                st.error(f"Hata: {e}")
 
         if stream:
             try:
