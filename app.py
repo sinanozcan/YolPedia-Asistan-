@@ -45,66 +45,77 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME ---
+# --- BASİTLEŞTİRİLMİŞ VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
+            # Karmaşık normalizasyonu kaldırdık, sadece küçük harfe çeviriyoruz
             for d in data:
-                d['norm_baslik'] = tr_normalize(d['baslik'])
-                d['norm_icerik'] = tr_normalize(d['icerik'])
+                d['arama_metni'] = (d.get('baslik', '') + " " + d.get('icerik', '')).lower()
             return data
-    except: return []
+    except Exception as e:
+        return [] # Hata varsa boş dön
 
-def tr_normalize(text):
-    return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
+if 'db' not in st.session_state: 
+    st.session_state.db = veri_yukle()
 
-if 'db' not in st.session_state: st.session_state.db = veri_yukle()
+# --- GEÇİCİ HATA AYIKLAMA (SİSTEM ÇALIŞINCA KALDIRABİLİRSİN) ---
+if not st.session_state.db:
+    st.error(f"⚠️ HATA: '{DATA_FILE}' dosyası okunamadı veya içi boş! Lütfen dosya adını ve JSON formatını kontrol et.")
+else:
+    # Veri yüklendiyse kullanıcının içini rahatlatmak için küçük bir not (Sonra silebilirsin)
+    pass 
 
-# --- GÜÇLENDİRİLMİŞ ARAMA MOTORU ---
+# --- AGRESİF ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db):
     if not db: return "", []
     
-    norm_sorgu = tr_normalize(kelime)
-    # 2 karakterden uzun kelimeleri anahtar olarak al
-    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
+    # Sorguyu küçük harfe çevir ve kelimelere böl
+    sorgu_kelimeleri = kelime.lower().split()
     
-    # "kaynak", "ariyorum", "merhaba" gibi kelimeler aramayı bozmasın diye puanı etkilemesin
-    etkisiz_kelimeler = ["merhaba", "selam", "kaynak", "ariyorum", "hakkinda", "nedir", "kimdir"]
-    anahtarlar = [k for k in anahtarlar if k not in etkisiz_kelimeler]
-
-    if len(norm_sorgu) < 3: return "", []
+    # Gereksiz kelimeleri filtrele
+    etkisizler = ["merhaba", "selam", "hakkinda", "nedir", "kimdir", "kaynak", "ariyorum", "bilgi", "var", "mi", "istiyorum"]
+    anahtarlar = [k for k in sorgu_kelimeleri if k not in etkisizler and len(k) > 2]
+    
+    # Eğer filtreleme sonrası hiç kelime kalmadıysa (sadece "merhaba" denmişse) boş dön
+    if not anahtarlar: return "", []
 
     sonuclar = []
+    
     for d in db:
         puan = 0
+        baslik = d.get('baslik', '').lower()
+        icerik = d.get('icerik', '').lower()
         
-        # Tam eşleşme (en yüksek puan)
-        if norm_sorgu in d['norm_baslik']: puan += 100
+        # BASİT VE KESİN ARAMA MANTIĞI
+        for anahtar in anahtarlar:
+            if anahtar in baslik:
+                puan += 50  # Başlıkta geçiyorsa yüksek puan
+            elif anahtar in icerik:
+                puan += 10  # İçerikte geçiyorsa puan ver
         
-        # Kelime bazlı eşleşme
-        for k in anahtarlar:
-            if k in d['norm_baslik']: 
-                puan += 40  # BAŞLIKTA GEÇİYORSA PUANI ARTIRDIM (Eskiden 15'ti)
-            elif k in d['norm_icerik']: 
-                puan += 10  # İÇERİKTE GEÇİYORSA
-        
-        # BARAJ PUANI DÜŞÜRÜLDÜ: Artık 20 puan yetiyor (Eskiden 40'tı)
-        # Böylece "Dersim" başlıkta geçiyorsa (40 puan) direkt kabul edilecek.
-        if puan >= 20:
+        # BARAJ PUANI 1 (Yani içerikte 1 kere bile geçse getir!)
+        if puan > 0:
             sonuclar.append({"veri": d, "puan": puan})
     
+    # Puana göre sırala
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = sonuclar[:4] 
+    en_iyiler = sonuclar[:5] # En iyi 5 sonucu al
     
     context_text = ""
     kaynaklar = []
     
     for item in en_iyiler:
         v = item['veri']
-        context_text += f"\n--- KAYNAK BİLGİ: {v['baslik']} ---\n{v['icerik'][:4000]}\n"
-        kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
+        # Baslik veya link yoksa hata vermesin diye .get kullaniyoruz
+        b = v.get('baslik', 'Başlıksız')
+        l = v.get('link', '#')
+        c = v.get('icerik', '')
+        
+        context_text += f"\n--- KAYNAK BİLGİ: {b} ---\n{c[:4000]}\n"
+        kaynaklar.append({"baslik": b, "link": l})
         
     return context_text, kaynaklar
 
@@ -126,7 +137,6 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
         yield "HATA: API Anahtarı eksik."
         return
 
-    # --- GÖREV TANIMI ---
     if kaynak_var_mi:
         gorev_tanimi = """
         GÖREVİN:
@@ -141,16 +151,13 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
         ASLA '###DETAY###' ayırıcı kullanma.
         """
 
-    # --- KARAKTER, ÜSLUP VE DİL AYARLARI ---
     system_prompt = f"""
     Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
     
     ÜSLUP VE KURALLARIN:
-    1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa (İngilizce, Almanca, vb.) MUTLAKA O DİLDE cevap ver.
-    2. Yabancı dilde bile olsa "Can Dede" bilgeliğini ve sıcaklığını o dile uyarla.
-    3. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
-    4. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
-    5. TAVIR: Kaba veya cahilce sorulara tartışmaya girmeden, hikmetle kısa cevap verip geç.
+    1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa MUTLAKA O DİLDE cevap ver.
+    2. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
+    3. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
     
     {gorev_tanimi}
     
@@ -198,7 +205,6 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
-# --- OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
     js = """
     <script>
@@ -236,6 +242,7 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
+    # Yeni arama fonksiyonu
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     kaynak_var_mi = len(kaynaklar) > 0
     
@@ -243,7 +250,7 @@ if prompt:
         placeholder = st.empty()
         detay_container = st.empty()
         
-        # --- ANİMASYON ---
+        # Animasyon
         animasyon_html = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
             <div style="
@@ -254,7 +261,6 @@ if prompt:
         <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
         """
         placeholder.markdown(animasyon_html, unsafe_allow_html=True)
-        # -----------------
         
         full_text = ""
         ozet_text = ""
@@ -287,7 +293,7 @@ if prompt:
         
         final_history = full_text
 
-        # --- KAYNAK VARSA, LİNKLERİ GÖSTER ---
+        # --- KAYNAK LİSTELEME ---
         if kaynak_var_mi:
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
