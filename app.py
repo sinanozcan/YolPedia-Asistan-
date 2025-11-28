@@ -68,7 +68,6 @@ def alakali_icerik_bul(kelime, db):
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
-    # Çok kısa sorgularda arama yapma
     if len(norm_sorgu) < 3: return "", []
 
     sonuclar = []
@@ -80,7 +79,6 @@ def alakali_icerik_bul(kelime, db):
             if k in d['norm_baslik']: puan += 15
             elif k in d['norm_icerik']: puan += 5     
         
-        # EŞİK PUANI: 40
         if puan > 40:
             sonuclar.append({"veri": d, "puan": puan})
     
@@ -115,7 +113,6 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
         yield "HATA: API Anahtarı eksik."
         return
 
-    # Eğer kaynak varsa detaylı format iste, yoksa sadece sohbet et
     if kaynak_var_mi:
         gorev_tanimi = """
         GÖREVİN:
@@ -140,20 +137,15 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    
-    # --- DÜZELTİLEN KISIM BURASI ---
-    # Hataya sebep olan karmaşık satırı sildim.
     contents.append({"role": "model", "parts": ["Anlaşıldı."]}) 
     
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
-        # Geçmişi temizle
         clean_content = msg["content"].replace("###DETAY###", "").split("📚 Yararlanılan Kaynaklar")[0]
         contents.append({"role": role, "parts": [clean_content]})
     
     contents.append({"role": "user", "parts": [user_prompt]})
     
-    # Güvenlik Filtrelerini Kapat
     guvenlik = [
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
         {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
@@ -189,7 +181,6 @@ def scroll_to_bottom():
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Merhaba Erenler! Ben Can Dede. Buyur, ne sormak istersin?"}]
 
-# Mesajları Bas
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
     with st.chat_message(msg["role"], avatar=icon):
@@ -209,13 +200,25 @@ if prompt:
     scroll_to_bottom()
     
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
-    
-    # Kaynak var mı kontrolü
     kaynak_var_mi = len(kaynaklar) > 0
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
         detay_container = st.empty()
+        
+        # --- YENİ EKLENEN ANİMASYON KISMI ---
+        # Cevap gelene kadar bu HTML/CSS görünecek
+        animasyon_html = f"""
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+            <div style="
+                width: 12px; height: 12px; border-radius: 50%; background-color: #aaa;
+                animation: pulse 1s infinite alternate;"></div>
+            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede tefekkür ediyor...</span>
+        </div>
+        <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
+        """
+        placeholder.markdown(animasyon_html, unsafe_allow_html=True)
+        # ------------------------------------
         
         full_text = ""
         ozet_text = ""
@@ -240,6 +243,7 @@ if prompt:
                 ozet_text += chunk
             
             if not detay_modu_aktif:
+                # İlk chunk geldiği anda animasyon otomatik silinir ve metin yazmaya başlar
                 placeholder.markdown(ozet_text + "▌")
             else:
                 placeholder.markdown(ozet_text)
@@ -248,8 +252,6 @@ if prompt:
         
         final_history = full_text
 
-        # FİNAL KARAR: BUTON ÇIKSIN MI?
-        # Sadece veritabanından kaynak geldiyse ve metin doluysa
         if kaynak_var_mi and detay_text.strip():
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
