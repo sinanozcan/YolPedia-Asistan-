@@ -75,13 +75,18 @@ if 'db' not in st.session_state:
 def alakali_icerik_bul(kelime, db):
     if not db: return "", []
     
-    norm_sorgu = tr_normalize(kelime)
-    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
+    norm_sorgu = tr_normalize(kelime).strip()
     
-    # "Merhaba", "Selam" gibi sorgularda veritabanını meşgul etme
-    if len(anahtarlar) == 0: 
+    # --- KESİN ÇÖZÜM: SELAMLAŞMA FİLTRESİ ---
+    # Eğer sorgu sadece bu kelimelerden oluşuyorsa veya çok kısaysa HİÇBİR ŞEY getirme.
+    yasakli_kelimeler = ["merhaba", "selam", "slm", "mrb", "gunaydin", "iyi aksamlar", "nasilsin", "merhabalar", "selamlar"]
+    
+    # Sadece yasaklı kelime ise veya 2 karakterden kısaysa boş dön
+    if norm_sorgu in yasakli_kelimeler or len(norm_sorgu) < 3:
         return "", []
 
+    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
+    
     sonuclar = []
     for d in db:
         puan = 0
@@ -91,8 +96,7 @@ def alakali_icerik_bul(kelime, db):
             if k in d['norm_baslik']: puan += 15
             elif k in d['norm_icerik']: puan += 5     
         
-        # Puan eşiğini artırdık ki alakasız "merhaba" eşleşmeleri gelmesin
-        if puan > 30: 
+        if puan > 35: # Eşik puanı artırıldı
             sonuclar.append({"veri": d, "puan": puan})
     
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
@@ -131,8 +135,8 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
     
     KURALLAR:
     1. Sorulan soruya önce **kısa, net ve öz** bir cevap ver.
-    2. Eğer soru sadece selamlaşma, hal hatır sorma ise (örneğin: 'merhaba', 'nasılsın') SAKIN '###DETAY###' kullanma. Sadece samimi cevap ver.
-    3. Eğer derinlemesine açıklama gerektiren bir konuysa veya elinde kaynaklar varsa, kısa cevaptan sonra "###DETAY###" yaz ve detayları anlat.
+    2. "Merhaba", "Nasılsın", "Selam" gibi sohbet sorularında ASLA ve ASLA '###DETAY###' kullanma. Sadece samimi ol.
+    3. Ancak Alevilik, Bektaşilik veya tarih/kültür hakkında BİLGİ sorulursa ve elinde kaynak varsa '###DETAY###' ile ayırıp uzun uzun anlat.
     
     BİLGİ KAYNAKLARI:
     {context_data if context_data else "Ek kaynak yok."}
@@ -140,12 +144,14 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı Erenler. Selamlaşmada detay yok, ilimde detay var."]})
+    contents.append({"role": "model", "parts": ["Anlaşıldı. Selamlaşmada detay yok, ilimde detay var."] + chat_history[-1]["content"] if chat_history else []}) # Ufak bir trick
+    
+    # Geçmişi temizleyerek ekle
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
-        # Geçmiş mesajlarda ayırıcıyı temizle
         clean_content = msg["content"].replace("###DETAY###", "").split("📚 Yararlanılan Kaynaklar")[0]
         contents.append({"role": role, "parts": [clean_content]})
+    
     contents.append({"role": "user", "parts": [user_prompt]})
     
     guvenlik_ayarlari = [
@@ -194,12 +200,11 @@ if "son_hata_raporu" not in st.session_state:
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
     with st.chat_message(msg["role"], avatar=icon):
-        # Eğer mesajda "###DETAY###" varsa ayrıştırıp göster
         if "###DETAY###" in msg["content"]:
             parts = msg["content"].split("###DETAY###")
-            st.markdown(parts[0]) # Özet
-            # Geçmiş mesajlarda da detayın boş olup olmadığını kontrol et
-            if len(parts) > 1 and len(parts[1].strip()) > 5:
+            st.markdown(parts[0])
+            # Geçmiş mesajlarda da detayın doluluğunu kontrol et
+            if len(parts) > 1 and len(parts[1].strip()) > 15:
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar"):
                     st.markdown(parts[1])
         else:
@@ -228,7 +233,6 @@ if prompt:
         for chunk in stream:
             full_text += chunk
             
-            # Ayırıcıyı kontrol et
             if "###DETAY###" in chunk or "###DETAY###" in full_text:
                 if not detay_modu:
                     parts = full_text.split("###DETAY###")
@@ -241,34 +245,31 @@ if prompt:
             else:
                 ozet_text += chunk
             
-            # Ekrana basma
             if not detay_modu:
                 ozet_placeholder.markdown(ozet_text + "▌")
             else:
                 ozet_placeholder.markdown(ozet_text)
-                # Detaylar stream edilirken expander içinde görünsün
-                with detay_container.container():
-                     # Sadece detay metni anlamlı bir uzunluğa ulaştıysa göster
-                     if len(detay_text.strip()) > 0:
-                        with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True):
-                            st.markdown(detay_text + "▌")
+                # Detaylar yüklenirken expander GÖSTERME (sona sakla)
+                # Burayı bilerek boş bıraktık ki yazarken hoplayıp zıplamasın
 
-        # Akış bitti, temizle
+        # Akış Bitti
         ozet_placeholder.markdown(ozet_text)
         
         final_content_for_history = full_text 
 
-        # --- KRİTİK KONTROL: Detay veya Kaynak gerçekten var mı? ---
-        detay_var = len(detay_text.strip()) > 10  # En az 10 karakter detay olmalı
-        kaynak_var = len(kaynaklar) > 0 and "tefekkürdeyim" not in full_text
+        # --- KESİN KONTROL NOKTASI ---
+        # 1. Detay metni gerçekten dolu mu? (Boşlukları silince 20 karakterden fazla mı?)
+        # 2. Kaynaklar gerçekten dolu mu? (Ve kaynak boş gelmediyse)
+        gercek_detay_var = len(detay_text.strip()) > 20
+        gercek_kaynak_var = len(kaynaklar) > 0 and baglam_metni != ""
         
-        if detay_var or kaynak_var:
+        if gercek_detay_var or gercek_kaynak_var:
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
-                    if detay_text:
+                    if gercek_detay_var:
                         st.markdown(detay_text)
                     
-                    if kaynak_var:
+                    if gercek_kaynak_var:
                         st.markdown("\n\n---\n**📚 Yararlanılan Kaynaklar:**")
                         seen = set()
                         for k in kaynaklar:
@@ -277,7 +278,7 @@ if prompt:
                                 seen.add(k['link'])
                                 final_content_for_history += f"\n\n[{k['baslik']}]({k['link']})"
         else:
-            # Eğer detay yoksa container'ı temizle (boşluk kalmasın)
+            # Emin olmak için konteyneri boşalt
             detay_container.empty()
         
         st.session_state.messages.append({"role": "assistant", "content": final_content_for_history})
