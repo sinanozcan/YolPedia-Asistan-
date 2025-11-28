@@ -62,25 +62,37 @@ def tr_normalize(text):
 
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
 
-# --- ARAMA MOTORU ---
+# --- GÜÇLENDİRİLMİŞ ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db):
     if not db: return "", []
     
     norm_sorgu = tr_normalize(kelime)
+    # 2 karakterden uzun kelimeleri anahtar olarak al
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
+    # "kaynak", "ariyorum", "merhaba" gibi kelimeler aramayı bozmasın diye puanı etkilemesin
+    etkisiz_kelimeler = ["merhaba", "selam", "kaynak", "ariyorum", "hakkinda", "nedir", "kimdir"]
+    anahtarlar = [k for k in anahtarlar if k not in etkisiz_kelimeler]
+
     if len(norm_sorgu) < 3: return "", []
 
     sonuclar = []
     for d in db:
         puan = 0
-        if norm_sorgu in d['norm_baslik']: puan += 100
-        elif norm_sorgu in d['norm_icerik']: puan += 50
-        for k in anahtarlar:
-            if k in d['norm_baslik']: puan += 15
-            elif k in d['norm_icerik']: puan += 5     
         
-        if puan > 40:
+        # Tam eşleşme (en yüksek puan)
+        if norm_sorgu in d['norm_baslik']: puan += 100
+        
+        # Kelime bazlı eşleşme
+        for k in anahtarlar:
+            if k in d['norm_baslik']: 
+                puan += 40  # BAŞLIKTA GEÇİYORSA PUANI ARTIRDIM (Eskiden 15'ti)
+            elif k in d['norm_icerik']: 
+                puan += 10  # İÇERİKTE GEÇİYORSA
+        
+        # BARAJ PUANI DÜŞÜRÜLDÜ: Artık 20 puan yetiyor (Eskiden 40'tı)
+        # Böylece "Dersim" başlıkta geçiyorsa (40 puan) direkt kabul edilecek.
+        if puan >= 20:
             sonuclar.append({"veri": d, "puan": puan})
     
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
@@ -186,7 +198,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
-# --- GÜÇLENDİRİLMİŞ OTOMATİK KAYDIRMA ---
+# --- OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
     js = """
     <script>
@@ -275,7 +287,7 @@ if prompt:
         
         final_history = full_text
 
-        # --- YENİ MANTIK: KAYNAK VARSA, LİNKLERİ GÖSTER ---
+        # --- KAYNAK VARSA, LİNKLERİ GÖSTER ---
         if kaynak_var_mi:
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=False):
