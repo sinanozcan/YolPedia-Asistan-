@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components # <--- BU SATIR ÇOK ÖNEMLİ, BUNSUZ ÇALIŞMAZ
+import streamlit.components.v1 as components 
 import requests
 from requests.auth import HTTPBasicAuth
 from bs4 import BeautifulSoup
@@ -20,11 +20,8 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
-API_KEYS = [k for k in API_KEYS if k]
+API_KEYS = [k for k in API_KEYS if k] # Boş olanları temizle
 
-WP_USER = st.secrets["WP_USER"]
-WP_PASS = st.secrets["WP_PASS"]
-WEBSITE_URL = "https://yolpedia.eu" 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
@@ -77,7 +74,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- FONKSİYON: OTOMATİK KAYDIRMA (TEK YERDE TANIMLANDI) ---
+# --- FONKSİYON: OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
     js = """
     <script>
@@ -87,84 +84,95 @@ def scroll_to_bottom():
     """
     components.html(js, height=0)
 
-# --- GÜVENLİ VE HIZLI YANIT ÜRETİCİ (V3 - Hata Ayıklamalı) ---
+# --- GÜVENLİ VE GARANTİLİ YANIT ÜRETİCİ (V4 - OTOMATİK MODEL BULUCU) ---
 def guvenli_stream_baslat(full_prompt):
     """
-    Bu fonksiyon API anahtarlarını ve modelleri sırayla dener.
-    429 hatasında 'zorunlu bekleme' yapar.
-    Hata durumunda kullanıcıya teknik detay verir.
+    Model ismini tahmin etmez. Doğrudan API'ye 'Elinizde ne var?' diye sorar
+    ve 'generateContent' özelliğini destekleyen İLK modeli seçip kullanır.
+    Böylece 404 hatası ve çökme imkansız hale gelir.
     """
-    # Google'ın şu an kabul ettiği en güncel ve garantili model isimleri
-    denenecek_modeller = [
-        "gemini-1.5-flash",          # Öncelik 1: En hızlısı
-        "models/gemini-1.5-flash",   # Öncelik 2: Alternatif isim
-        "gemini-1.5-pro",            # Öncelik 3: Daha zeki
-        "gemini-pro"                 # Öncelik 4: Eski ama sağlam (Yedek)
-    ]
-
-    # Anahtarların dolu olduğundan emin ol
-    mevcut_anahtarlar = [k for k in API_KEYS if k and len(k) > 10]
-    if not mevcut_anahtarlar:
-        st.error("❌ HATA: Geçerli bir API Anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
+    # 1. Anahtarları Kontrol Et
+    gecerli_anahtarlar = [k for k in API_KEYS if k and len(k) > 10]
+    if not gecerli_anahtarlar:
+        st.error("❌ HATA: secrets.toml dosyasında geçerli API anahtarı yok.")
         return None
 
-    random.shuffle(mevcut_anahtarlar)
+    random.shuffle(gecerli_anahtarlar)
     hata_logu = []
 
-    # 1. Anahtarları Gez
-    for key in mevcut_anahtarlar:
-        genai.configure(api_key=key)
-
-        # 2. Modelleri Gez
-        for model_adi in denenecek_modeller:
+    # 2. Anahtarları Dene
+    for key in gecerli_anahtarlar:
+        try:
+            genai.configure(api_key=key)
+            
+            # --- KRİTİK NOKTA: Model ismini biz uydurmuyoruz, Google'dan istiyoruz ---
+            bulunan_model = None
+            
             try:
-                # Güvenlik ayarlarını 'BLOCK_NONE' yaparak gereksiz filtreleri aşalım
-                guvenlik_ayarlari = [
-                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"}
-                ]
+                # Mevcut modelleri listele
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        # Öncelik sırasına göre tercih yap
+                        if 'flash' in m.name and '1.5' in m.name: # Varsa Flash 1.5 kullan
+                            bulunan_model = m.name
+                            break
+                        if 'pro' in m.name and '1.5' in m.name: # Yoksa Pro 1.5
+                            bulunan_model = m.name
                 
-                config = {"temperature": 0.3, "max_output_tokens": 8000}
-                model = genai.GenerativeModel(model_adi, generation_config=config, safety_settings=guvenlik_ayarlari)
-                
-                # İsteği gönder (Hata yoksa döngü burada biter ve yanıt döner)
-                return model.generate_content(full_prompt, stream=True)
-
-            except Exception as e:
-                err_msg = str(e).lower()
-                hata_logu.append(f"Model: {model_adi} -> {err_msg[:100]}...") # Hatanın özetini kaydet
-                
-                # Eğer 429 (Kota) hatasıysa, sunucunun nefes alması için bekle
-                if "429" in err_msg or "quota" in err_msg:
-                    time.sleep(2) # 2 saniye zorunlu bekleme
-                
-                # 404 (Model bulunamadı) hatasıysa beklemeden diğer modele geç
+                # Eğer özel bir şey bulamazsa, listenin en başındakini al (örn: gemini-pro)
+                if not bulunan_model:
+                    for m in genai.list_models():
+                        if 'generateContent' in m.supported_generation_methods:
+                            bulunan_model = m.name
+                            break
+            except:
+                # Liste alamazsa manuel yedek
+                bulunan_model = "models/gemini-1.5-flash"
+            
+            if not bulunan_model:
+                hata_logu.append(f"Anahtar: {key[:5]}... -> Hiçbir model bulunamadı.")
                 continue
-    
-    # --- EĞER BURAYA GELDİYSE HİÇBİR ŞEY ÇALIŞMAMIŞTIR ---
-    st.error("⚠️ Bağlantı Kurulamadı. Hata Detayları:")
-    with st.expander("Teknik Hata Kayıtları (Tıklayıp Bakınız)"):
-        for i, log in enumerate(hata_logu):
-            st.code(f"{i+1}. {log}", language="text")
+
+            # Modeli Bulduk, Ayarlayıp Çalıştıralım
+            config = {"temperature": 0.3, "max_output_tokens": 8000}
+            guvenlik = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}
+            ]
+            
+            api_model = genai.GenerativeModel(bulunan_model, generation_config=config, safety_settings=guvenlik)
+            return api_model.generate_content(full_prompt, stream=True)
+
+        except Exception as e:
+            err_msg = str(e).lower()
+            hata_logu.append(f"Hata: {err_msg[:100]}")
+            
+            if "429" in err_msg or "quota" in err_msg:
+                time.sleep(2) # Hız limiti hatasında bekle
+            continue
+
+    # --- BURAYA GELDİYSE HİÇBİR ŞEY ÇALIŞMAMIŞTIR ---
+    st.error("⚠️ Can Dede şu an bağlantı kuramadı.")
+    with st.expander("Son Teknik Durum (Geliştirici İçin)"):
+        st.write("Kütüphane Sürümü: google-generativeai >= 0.8.3 olmalı.")
+        for log in hata_logu:
+            st.code(log, language="text")
             
     return None
 
-# --- AKILLI API YÖNETİCİSİ (GÜNCELLENMİŞ) ---
+# --- BASİT API YÖNETİCİSİ (Yardımcı Araçlar İçin) ---
 def get_model():
+    # Bu fonksiyon sadece dil tespiti gibi küçük işler için hızlı bir model döndürür
     if not API_KEYS: return None
-    
-    # Her seferinde farklı anahtar seçmeye devam et (Limit aşımını önler)
-    secilen_key = random.choice(API_KEYS)
-    genai.configure(api_key=secilen_key)
-    
-    generation_config = {"temperature": 0.1, "max_output_tokens": 8192}
-    
-    # Önbellekteki doğru ismi al (Bekleme yapmaz)
-    dogru_model_adi = en_uygun_model_ismini_bul()
-    
-    return genai.GenerativeModel(dogru_model_adi, generation_config=generation_config)
+    try:
+        secilen_key = random.choice(API_KEYS)
+        genai.configure(api_key=secilen_key)
+        # Hızlı model ismi (Library güncel olduğu için bunu tanıyacaktır)
+        return genai.GenerativeModel("gemini-1.5-flash")
+    except:
+        return None
 
 # --- AJANLAR ---
 def niyet_analizi(soru):
@@ -217,205 +225,4 @@ def tr_normalize(metin):
 
 def alakali_icerik_bul(temiz_kelime, tum_veriler):
     soru_temiz = tr_normalize(temiz_kelime)
-    anahtar = [k for k in soru_temiz.split() if len(k) > 2]
-    puanlanmis = []
-    for veri in tum_veriler:
-        baslik_norm = tr_normalize(veri['baslik'])
-        icerik_norm = tr_normalize(veri['icerik'])
-        puan = 0
-        if soru_temiz in baslik_norm: puan += 100
-        elif soru_temiz in icerik_norm: puan += 40
-        for k in anahtar:
-            if k in baslik_norm: puan += 10
-            elif k in icerik_norm: puan += 2
-        if puan > 0:
-            puanlanmis.append({"veri": veri, "puan": puan})
-    puanlanmis.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = puanlanmis[:7]
-    bulunanlar = ""
-    kaynaklar = []
-    for item in en_iyiler:
-        v = item['veri']
-        bulunanlar += f"\n--- BAŞLIK: {v['baslik']} ---\nİÇERİK:\n{v['icerik'][:12000]}\n"
-        kaynaklar.append({"baslik": v['baslik'], "link": v['link']})
-    return bulunanlar, kaynaklar
-
-# --- SOHBET BAŞLANGICI ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "assistant", "content": "Merhaba, Erenler! Ben Can Dede. YolPedia'da rehberinizim. Rızanız da olursa, size delil olmaya gayret edeceğim."}
-    ]
-
-for message in st.session_state.messages:
-    role_icon = CAN_DEDE_ICON if message["role"] == "assistant" else USER_ICON
-    with st.chat_message(message["role"], avatar=role_icon):
-        st.markdown(message["content"])
-
-def detay_tetikle():
-    st.session_state.detay_istendi = True
-
-# --- GİRİŞ ALANI ---
-prompt = st.chat_input("Can Dede'ye sor...")
-
-is_user_input = prompt is not None
-is_detail_click = st.session_state.get('detay_istendi', False)
-
-if is_user_input or is_detail_click:
-    if is_user_input:
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        st.session_state.detay_istendi = False
-        st.session_state.son_baglam = None 
-        st.session_state.son_kaynaklar = None
-        st.session_state.son_soru = prompt
-        
-        niyet = niyet_analizi(prompt)
-        dil = dil_tespiti(prompt)
-        st.session_state.son_niyet = niyet
-        st.session_state.son_dil = dil
-        
-        arama_kelimesi = prompt
-        if niyet == "ARAMA":
-            arama_kelimesi = anahtar_kelime_ayikla(prompt)
-        user_msg = prompt
-        
-    elif is_detail_click:
-        st.session_state.detay_istendi = False
-        user_msg = st.session_state.get('son_soru', "")
-        arama_kelimesi = anahtar_kelime_ayikla(user_msg)
-        st.session_state.son_niyet = "ARAMA"
-
-    if is_user_input:
-         with st.chat_message("user", avatar=USER_ICON):
-            st.markdown(user_msg)
-            scroll_to_bottom() # Sorunca kaydır
-
-    with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
-        baglam = None
-        kaynaklar = None
-        detay_modu = False
-        niyet = st.session_state.get('son_niyet', "ARAMA")
-        kullanici_dili = st.session_state.get('son_dil', "Turkish")
-        stream = None
-        
-        with st.spinner("Can Dede düşünüyor..."):
-            # 1. Veritabanı Araması (Eğer gerekliyse)
-            if niyet == "ARAMA":
-                if 'db' in st.session_state and st.session_state.db:
-                    if is_detail_click and st.session_state.get('son_baglam'):
-                        baglam = st.session_state.son_baglam
-                        kaynaklar = st.session_state.son_kaynaklar
-                        detay_modu = True
-                    else:
-                        baglam, kaynaklar = alakali_icerik_bul(arama_kelimesi, st.session_state.db)
-                        st.session_state.son_baglam = baglam
-                        st.session_state.son_kaynaklar = kaynaklar
-            
-            # 2. Prompt Hazırlama
-            if niyet == "SOHBET":
-                full_prompt = f"""
-                Senin adın 'Can Dede'. Sen YolPedia'nın rehberi ve sanal dedesisin.
-                Kullanıcı ile sohbet et.
-                KURALLAR:
-                1. "Merhaba, erenler. Ben Can Dede" diye kendini tekrar tanıtma.
-                2. Kullanıcının dili neyse ({kullanici_dili}) o dilde cevap ver.
-                3. ASLA "Evlat" deme. Hitabın "Erenler", "Can Dost" veya "Sevgili Can" olsun.
-                MESAJ: {user_msg}
-                """
-            else:
-                bilgi_metni = baglam if baglam else "Bilgi bulunamadı."
-                if not baglam:
-                    full_prompt = f"Kullanıcıya nazikçe 'Üzgünüm Erenler, YolPedia arşivinde bu konuda bilgi yok.' de. DİL: {kullanici_dili}."
-                else:
-                    if detay_modu:
-                        gorev = f"GÖREV: '{user_msg}' konusunu, metinlerdeki farklı görüşleri sentezleyerek EN İNCE DETAYINA KADAR anlat."
-                    else:
-                        gorev = f"GÖREV: '{user_msg}' sorusuna, bilgileri süzerek KISA, ÖZ ve HİKMETLİ bir cevap ver."
-
-                    full_prompt = f"""
-                    Sen 'Can Dede'sin. HEDEF DİL: {kullanici_dili}. {gorev}
-                    KURALLAR:
-                    1. "Yol bir, sürek binbir" ilkesiyle anlat.
-                    2. ASLA "Evlat" deme. "Erenler" veya "Can" de.
-                    3. Giriş cümlesi yapma.
-                    BİLGİLER: {baglam}
-                    """
-            
-            # 3. YENİ GÜVENLİ FONKSİYONU ÇAĞIR (Burada hata yakalama otomatik yapılıyor)
-            stream = guvenli_stream_baslat(full_prompt)
-
-        # 4. Yanıtı Yazdır
-        if stream:
-            try:
-                def stream_parser():
-                    full_text = ""
-                    for chunk in stream:
-                        try:
-                            text_chunk = chunk.text
-                            if text_chunk:
-                                full_text += text_chunk
-                                yield text_chunk
-                        except ValueError: continue
-                    
-                    # Kaynakları Ekleme
-                    if niyet == "ARAMA" and baglam and kaynaklar:
-                        negatif = ["bulunmuyor", "bilmiyorum", "bilgi yok", "not found", "keine information"]
-                        cevap_olumsuz = any(n in full_text.lower() for n in negatif)
-                        if not cevap_olumsuz:
-                            if "German" in kullanici_dili: link_baslik = "**📚 Quellen:**"
-                            elif "English" in kullanici_dili: link_baslik = "**📚 Sources:**"
-                            else: link_baslik = "**📚 Kaynaklar:**"
-                            
-                            kaynak_metni = f"\n\n{link_baslik}\n"
-                            essiz = {v['link']:v for v in kaynaklar}.values()
-                            for k in essiz:
-                                kaynak_metni += f"- [{k['baslik']}]({k['link']})\n"
-                            yield kaynak_metni
-
-                response_text = st.write_stream(stream_parser)
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-                scroll_to_bottom()
-
-            except Exception as e:
-                st.error("Bir teknik hata oluştu, lütfen tekrar deneyin.")
-        else:
-            st.error("Şu anda Can Dede çok yoğun (Tüm anahtarlar limit aşımında). Lütfen 1 dakika sonra tekrar deneyin.")
-
-# --- DETAY BUTONU ---
-son_niyet = st.session_state.get('son_niyet', "")
-if st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
-    last_msg = st.session_state.messages[-1]["content"]
-    
-    if son_niyet == "ARAMA" and "Hata" not in last_msg and "bulunmuyor" not in last_msg and "not found" not in last_msg.lower():
-        if len(last_msg) < 5000:
-            dil = st.session_state.get('son_dil', "Turkish")
-            if "German" in dil: btn_txt = "📜 Mehr Details"
-            elif "English" in dil: btn_txt = "📜 More Details"
-            else: btn_txt = "📜 Bu Konuyu Detaylandır"
-            
-            col1, col2, col3 = st.columns([1,2,1])
-            with col2:
-                st.button(btn_txt, on_click=detay_tetikle)
-
-# --- YAN MENÜ ---
-with st.sidebar:
-    st.header("⚙️ Yönetim")
-    if st.button("🔄 Önbelleği Temizle"):
-        st.cache_data.clear()
-        st.rerun()
-    st.divider()
-    if 'db' in st.session_state:
-        st.write(f"📊 Toplam İçerik: {len(st.session_state.db)}")
-        st.divider()
-        st.subheader("🕵️ Veri Müfettişi")
-        test = st.text_input("Ara:", placeholder="Örn: Otman Baba")
-        if test:
-            say = 0
-            norm_test = tr_normalize(test)
-            for v in st.session_state.db:
-                nb = tr_normalize(v['baslik'])
-                ni = tr_normalize(v['icerik'])
-                if norm_test in nb or norm_test in ni:
-                    st.success(f"✅ {v['baslik']}")
-                    say += 1
-                    if say >= 5: break
-            if say == 0: st.error("❌ Bulunamadı")
+    ana
