@@ -16,6 +16,7 @@ API_KEYS = [
     st.secrets.get("API_KEY_4", ""),
     st.secrets.get("API_KEY_5", "")
 ]
+# Sadece dolu ve geçerli uzunluktaki anahtarları al
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
@@ -49,13 +50,12 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME VE OPTİMİZASYON ---
+# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
-            # Aramayı hızlandırmak için veriyi önceden normalize edelim
             for d in data:
                 d['norm_baslik'] = tr_normalize(d['baslik'])
                 d['norm_icerik'] = tr_normalize(d['icerik'])
@@ -67,7 +67,7 @@ def tr_normalize(text):
 
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
 
-# --- GELİŞMİŞ ARAMA MOTORU ---
+# --- ARAMA MOTORU ---
 def alakali_icerik_bul(kelime, db):
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
@@ -75,20 +75,14 @@ def alakali_icerik_bul(kelime, db):
     sonuclar = []
     for d in db:
         puan = 0
-        # Başlıkta tam eşleşme çok değerli
         if norm_sorgu in d['norm_baslik']: puan += 100
-        # İçerikte tam eşleşme
         elif norm_sorgu in d['norm_icerik']: puan += 50
-        
-        # Kelime bazlı arama
         for k in anahtarlar:
             if k in d['norm_baslik']: puan += 15
-            elif k in d['norm_icerik']: puan += 5
-            
+            elif k in d['norm_icerik']: puan += 5     
         if puan > 0:
             sonuclar.append({"veri": d, "puan": puan})
     
-    # Puana göre sırala ve en iyi 3 sonucu al (Fazla veri modelin kafasını karıştırır)
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     en_iyiler = sonuclar[:4] 
     
@@ -102,13 +96,12 @@ def alakali_icerik_bul(kelime, db):
         
     return context_text, kaynaklar
 
-# --- API İSTEĞİ (HIZLI VE HAFIZALI) ---
+# --- TANK MODU: ASLA PES ETMEYEN YANIT SİSTEMİ ---
 def can_dede_cevapla(user_prompt, chat_history, context_data):
     if not API_KEYS:
         yield "API Anahtarı bulunamadı."
         return
 
-    # Prompt Mühendisliği: Kimlik ve Kurallar
     system_prompt = f"""
     Sen 'Can Dede'sin. Bilge, tasavvuf ehli, Alevi-Bektaşi kültürüne hakim, dede üslubuyla konuşan sanal bir rehbersin.
     
@@ -116,7 +109,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
     Aşağıda verilen "BİLGİ KAYNAKLARI"nı kullanarak kullanıcının sorusunu cevapla.
     
     KURALLAR:
-    1. Sadece verilen bilgi kaynaklarını kullan. Eğer kaynaklarda bilgi yoksa, "Bu konuda arşivimde net bir bilgi yok erenler, yanlış yönlendirmek istemem." de.
+    1. Sadece verilen bilgi kaynaklarını kullan. Eğer kaynaklarda bilgi yoksa, "Bu konuda arşivimde net bir bilgi yok erenler." de.
     2. Üslubun: Nazik, kapsayıcı, "Erenler", "Can", "Aziz Dostum" gibi hitaplar kullan. Asla "Evlat" deme.
     3. Sohbet bağlamını hatırla. Önceki konuşmalara referans verebilirsin.
     4. Cevapların kısa, öz ve hikmetli olsun. Destan yazma.
@@ -125,42 +118,49 @@ def can_dede_cevapla(user_prompt, chat_history, context_data):
     {context_data if context_data else "Bu konuyla ilgili veritabanında özel bir bilgi bulunamadı. Genel sohbet et."}
     """
 
-    # Chat formatına çevir (Hafıza için)
+    # Mesaj geçmişini hazırla
     contents = []
-    contents.append({"role": "user", "parts": [system_prompt]}) # Sistem talimatını ilk mesaj gibi gömüyoruz
-    contents.append({"role": "model", "parts": ["Anlaşıldı Erenler. Hizmetinizdeyim."]}) # Yapay onay
-    
-    # Geçmiş sohbeti ekle (Son 4 mesaj - Hafıza)
+    contents.append({"role": "user", "parts": [system_prompt]})
+    contents.append({"role": "model", "parts": ["Anlaşıldı Erenler."]})
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
         contents.append({"role": role, "parts": [msg["content"]]})
-    
-    # Son soruyu ekle
     contents.append({"role": "user", "parts": [user_prompt]})
 
-    # İstek Gönder
+    # --- STRATEJİ: Önce Hızlıyı, Olmazsa Eskiyi Dene ---
+    modeller = ["gemini-1.5-flash", "gemini-pro"] # Yedek model eklendi
+    
     random.shuffle(API_KEYS)
+    hata_loglari = []
+
     for key in API_KEYS:
-        try:
-            genai.configure(api_key=key)
-            # En hızlı model: Flash
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(contents, stream=True)
-            
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-            return # Başarılıysa çık
-            
-        except Exception as e:
-            err = str(e).lower()
-            if "429" in err: 
-                time.sleep(1) # Hız limiti, diğer anahtara geç
-                continue
-            # Başka hataysa da diğerine geç
-            continue
-            
+        genai.configure(api_key=key)
+        
+        # Her anahtar için modelleri sırayla dene
+        for model_adi in modeller:
+            try:
+                model = genai.GenerativeModel(model_adi)
+                response = model.generate_content(contents, stream=True)
+                
+                # Akış başarılıysa hemen döndür
+                for chunk in response:
+                    if chunk.text:
+                        yield chunk.text
+                return # Ve çık
+
+            except Exception as e:
+                # Hata aldık, kaydet ve devam et
+                hata_mesaji = str(e)
+                hata_loglari.append(f"Model: {model_adi} | Hata: {hata_mesaji[:100]}")
+                time.sleep(1) # Azıcık bekle
+                continue 
+
+    # Buraya geldiyse hiçbir şey çalışmamıştır
     yield "Şu anda tefekkürdeyim (Sistem yoğun), birazdan tekrar sorabilir misin can?"
+    
+    # Hataları geliştirici görsün diye yield bittikten sonra loglara basmak lazım ama
+    # stream içinde olduğumuz için bunu yapamayız. O yüzden genel hatayı döndük.
+    # Kullanıcıya expander ile hatayı aşağıda göstereceğiz.
 
 # --- ARAYÜZ ---
 def scroll_to_bottom():
@@ -176,28 +176,31 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
-    # 1. Kullanıcı Mesajını Ekle
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    # 2. Bağlam Bul
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     
-    # 3. Cevap Üret
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         full_response_container = st.empty()
         full_text = ""
         
-        # Fonksiyonu çağırırken geçmişi de (st.session_state.messages) gönderiyoruz
+        # Cevap akışı
         stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni)
         
         for chunk in stream:
             full_text += chunk
             full_response_container.markdown(full_text + "▌")
         
+        # Eğer yine o hata mesajı geldiyse teknik detay gösterelim
+        if "tefekkürdeyim" in full_text:
+            with st.expander("Teknik Sorun Detayı (Geliştirici)"):
+                st.write("Tüm anahtarlar ve modeller denendi ama Google yanıt vermedi.")
+                st.write("Olası sebepler: API Kotası doldu veya Bölgesel Kısıtlama.")
+        
         # Kaynakları Ekle
-        if kaynaklar and "arşivimde net bir bilgi yok" not in full_text.lower():
+        if kaynaklar and "tefekkürdeyim" not in full_text and "arşivimde net bir bilgi yok" not in full_text.lower():
             link_text = "\n\n**📚 Kaynaklar:**\n"
             seen = set()
             for k in kaynaklar:
