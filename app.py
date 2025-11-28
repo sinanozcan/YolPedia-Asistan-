@@ -95,7 +95,7 @@ if 'db' not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
+        "content": "Merhaba, Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
     }]
 
 # --- MOD SEÇİMİ (SIDEBAR) ---
@@ -120,7 +120,7 @@ with st.sidebar:
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{
             "role": "assistant", 
-            "content": "Sohbet sıfırlandı. Yeni bir konuşma başlayalım Can Dost!"
+            "content": "Sohbet sıfırlandı. Yeni bir sohbet başlatalım mı, Can Dost?"
         }]
         st.rerun()
 
