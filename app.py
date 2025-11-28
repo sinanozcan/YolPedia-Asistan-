@@ -40,29 +40,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME ---
+# --- VERİ YÜKLEME (GÜÇLENDİRİLMİŞ) ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
+            # Veri temizleme ve normalizasyon
             processed_data = []
             for d in data:
+                # .get() kullanarak hata riskini sıfırlıyoruz
                 ham_baslik = d.get('baslik', '')
                 ham_icerik = d.get('icerik', '')
+                
                 d['norm_baslik'] = tr_normalize(ham_baslik)
-                d['norm_icerik'] = tr_normalize(ham_icerik) 
+                d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
             return processed_data
     except: return []
 
 def tr_normalize(text):
-    if not isinstance(text, str): return ""
+    if not isinstance(text, str): return "" # Eğer metin değilse boş döndür
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
 
-# --- MOD SEÇİMİ ---
+# --- MOD SEÇİMİ (SIDEBAR) ---
 with st.sidebar:
     st.image(CAN_DEDE_ICON, width=100)
     st.title("Mod Seçimi")
@@ -82,9 +85,12 @@ st.markdown(f"""
     """, unsafe_allow_html=True)
 
 
-# --- ARAMA MOTORU ---
+# --- ARAMA MOTORU (HATASIZ) ---
 def alakali_icerik_bul(kelime, db, mod):
-    if "Sohbet" in mod: return "", []
+    # Sohbet modunda arama yapma
+    if "Sohbet" in mod:
+        return "", []
+
     if not db: return "", []
     
     norm_sorgu = tr_normalize(kelime)
@@ -93,19 +99,19 @@ def alakali_icerik_bul(kelime, db, mod):
     if len(norm_sorgu) < 3: return "", []
 
     sonuclar = []
-    
     for d in db:
         puan = 0
+        # .get() kullanarak KeyError hatasını önlüyoruz
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
         
         if norm_sorgu in d_baslik: puan += 100
         elif norm_sorgu in d_icerik: puan += 50
-        
         for k in anahtarlar:
             if k in d_baslik: puan += 20
             elif k in d_icerik: puan += 5     
         
+        # Araştırma modunda baraj 15
         if puan > 15:
             sonuclar.append({"veri": d, "puan": puan})
     
@@ -117,6 +123,7 @@ def alakali_icerik_bul(kelime, db, mod):
     
     for item in en_iyiler:
         v = item['veri']
+        # Verileri güvenli çek
         v_baslik = v.get('baslik', 'Başlıksız')
         v_icerik = v.get('icerik', '')
         v_link = v.get('link', '#')
@@ -125,6 +132,19 @@ def alakali_icerik_bul(kelime, db, mod):
         kaynaklar.append({"baslik": v_baslik, "link": v_link})
         
     return context_text, kaynaklar
+
+# --- MODEL SEÇİCİ ---
+def uygun_modeli_bul_ve_getir():
+    try:
+        mevcut_modeller = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        if not mevcut_modeller: return None, "Hiçbir model bulunamadı"
+        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        for t in tercihler:
+            for m in mevcut_modeller:
+                if t in m: return m, None
+        return mevcut_modeller[0], None
+    except Exception as e:
+        return None, str(e)
 
 def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     if not API_KEYS:
@@ -152,6 +172,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
         """
         kaynak_metni = "Sohbet modundasın, kaynak kullanma."
 
+    # --- SİSTEM PROMPT ---
     system_prompt = f"""
     Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
     
@@ -159,6 +180,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa MUTLAKA O DİLDE cevap ver.
     2. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
     3. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
+    4. TAVIR: Kaba veya cahilce sorulara tartışmaya girmeden, hikmetle kısa cevap verip geç.
     
     {gorev_tanimi}
     
@@ -186,43 +208,35 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     
     random.shuffle(API_KEYS)
     
-    # --- YENİ ZIRHLI BAĞLANTI SİSTEMİ ---
-    # Sırayla dene: Önce Flash, olmazsa Pro, o da olmazsa Eski Pro
-    denenecek_modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
-    
     for key in API_KEYS:
         genai.configure(api_key=key)
+        model_adi, hata = uygun_modeli_bul_ve_getir()
         
-        for model_adi in denenecek_modeller:
-            try:
-                model = genai.GenerativeModel(model_adi)
-                response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
-                
-                # Jeneratörden veri geldi mi kontrol et
-                chunk_var_mi = False
-                for chunk in response:
-                    try:
-                        if chunk.text: 
-                            yield chunk.text
-                            chunk_var_mi = True
-                    except: continue
-                
-                if chunk_var_mi:
-                    return # Başarılı olduysa fonksiyondan çık
-                
-            except Exception:
-                time.sleep(0.5)
-                continue # Bu model olmadı, sıradakine geç
-            
-    # Eğer tüm anahtarlar ve tüm modeller başarısız olduysa:
-    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu). Lütfen biraz sonra tekrar dene Erenler."
+        if not model_adi: continue
 
+        try:
+            model = genai.GenerativeModel(model_adi)
+            response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
+            for chunk in response:
+                try:
+                    if chunk.text: yield chunk.text
+                except: continue
+            return 
+        except:
+            time.sleep(0.5)
+            continue 
+
+    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
+
+# --- OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
     js = """
     <script>
     function forceScroll() {
         var main = window.parent.document.querySelector(".main");
-        if (main) { main.scrollTop = main.scrollHeight; }
+        if (main) {
+            main.scrollTop = main.scrollHeight;
+        }
     }
     forceScroll();
     setTimeout(forceScroll, 100);
@@ -252,12 +266,14 @@ if prompt:
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
+    # ARAMA (Mod'a göre)
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
         detay_container = st.empty()
         
+        # Animasyon
         animasyon_html = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
             <div style="
@@ -278,6 +294,8 @@ if prompt:
         
         for chunk in stream:
             full_text += chunk
+            
+            # Sadece Araştırma Modunda Detay
             if "Araştırma" in secilen_mod and ("###DETAY###" in chunk or "###DETAY###" in full_text):
                 if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
@@ -296,8 +314,10 @@ if prompt:
                 placeholder.markdown(ozet_text)
         
         placeholder.markdown(ozet_text)
+        
         final_history = full_text
 
+        # --- ARAŞTIRMA MODUNDA KAYNAK LİSTELE ---
         if "Araştırma" in secilen_mod and kaynaklar:
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True):
