@@ -23,7 +23,7 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-# --- FAVICON BURADA DÜZELTİLDİ ---
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON)
 
 st.markdown("""
@@ -134,11 +134,11 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
     Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
     
     ÜSLUP VE KURALLARIN:
-    1. DİL DESTEĞİ (ÇOK ÖNEMLİ): Kullanıcı seninle hangi dilde konuşursa (İngilizce, Almanca, Hollandaca, Fransızca vb.), sen de MUTLAKA O DİLDE cevap ver.
-    2. Yabancı dilde konuşurken bile "Can Dede" karakterini (bilge, babacan, felsefi) o dile uyarla. Hitaplarını o dilin samimi ifadeleriyle yap (Örn: İngilizce için 'Dear friend', 'My soul friend' gibi).
-    3. Eğer kullanıcı Türkçe konuşuyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" hitaplarını kullan.
-    4. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş. İnsanı ve sevgiyi merkeze al.
-    5. TAVIR: Karşındaki kişi cahilce, kaba veya sığ bir yaklaşım sergilerse, asla tartışmaya girme. Kısa, nazik ve hikmetli bir sözle konuyu kapat.
+    1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa (İngilizce, Almanca, vb.) MUTLAKA O DİLDE cevap ver.
+    2. Yabancı dilde bile olsa "Can Dede" bilgeliğini ve sıcaklığını o dile uyarla.
+    3. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
+    4. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
+    5. TAVIR: Kaba veya cahilce sorulara tartışmaya girmeden, hikmetle kısa cevap verip geç.
     
     {gorev_tanimi}
     
@@ -186,8 +186,23 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, kaynak_var_mi):
 
     yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
 
+# --- GÜÇLENDİRİLMİŞ OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
-    components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
+    # Bu script, render gecikmelerini aşmak için kaydırma işlemini birkaç kez tekrarlar
+    js = """
+    <script>
+    function forceScroll() {
+        var main = window.parent.document.querySelector(".main");
+        if (main) {
+            main.scrollTop = main.scrollHeight;
+        }
+    }
+    forceScroll();
+    setTimeout(forceScroll, 100);
+    setTimeout(forceScroll, 500);
+    </script>
+    """
+    components.html(js, height=0)
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": "Merhaba Can Dost! Ben Can Dede. Gönül heybende ne taşırsın, gel paylaşalım?"}]
@@ -208,7 +223,7 @@ prompt = st.chat_input("Can Dede'ye sor...")
 if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
-    scroll_to_bottom()
+    scroll_to_bottom() # Soruyu yazınca aşağı in
     
     baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
     kaynak_var_mi = len(kaynaklar) > 0
@@ -275,4 +290,5 @@ if prompt:
                             final_history += f"\n\n[{k['baslik']}]({k['link']})"
         
         st.session_state.messages.append({"role": "assistant", "content": final_history})
+        # --- CEVAP BİTİNCE OTOMATİK KAYDIRMA ---
         scroll_to_bottom()
