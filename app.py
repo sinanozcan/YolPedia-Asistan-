@@ -30,7 +30,7 @@ ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildigimin âlimiyim, bilmedigimin tâlibiyim!"'
 
 # --- RESİMLER (KESİN LİNKLER) ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/cropped-Yolpedia-Favicon-e1620391336469.png"
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
 # Dark Mode uyumlu, renkli kullanıcı ikonu
 USER_ICON = "https://cdn-icons-png.flaticon.com/512/3177/3177440.png" 
