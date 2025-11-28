@@ -16,10 +16,6 @@ API_KEYS = [
 ]
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
-if not API_KEYS or all(len(k) < 20 for k in API_KEYS):
-    st.error("❌ Geçerli API anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
-    st.stop()
-
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
@@ -29,6 +25,11 @@ USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="wide")
+
+# --- API KEY KONTROLÜ ---
+if not API_KEYS:
+    st.error("❌ Geçerli API anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
+    st.stop()
 
 # --- CSS ---
 st.markdown("""
@@ -44,30 +45,56 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME (GÜÇLENDİRİLMİŞ) ---
+# --- VERİ YÜKLEME (İYİLEŞTİRİLMİŞ) ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
-            # Veri temizleme ve normalizasyon
+            if not isinstance(data, list):
+                st.error(f"❌ {DATA_FILE} geçersiz format (liste olmalı).")
+                return []
+            
             processed_data = []
             for d in data:
-                # .get() kullanarak hata riskini sıfırlıyoruz
+                if not isinstance(d, dict):
+                    continue
+                    
                 ham_baslik = d.get('baslik', '')
                 ham_icerik = d.get('icerik', '')
                 
                 d['norm_baslik'] = tr_normalize(ham_baslik)
                 d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
+            
+            if processed_data:
+                st.sidebar.success(f"✅ {len(processed_data)} kayıt yüklendi")
             return processed_data
-    except: return []
+            
+    except FileNotFoundError:
+        st.sidebar.warning(f"⚠️ {DATA_FILE} bulunamadı. Araştırma modu çalışmayacak.")
+        return []
+    except json.JSONDecodeError:
+        st.sidebar.error(f"❌ {DATA_FILE} geçersiz JSON formatında.")
+        return []
+    except Exception as e:
+        st.sidebar.error(f"❌ Veri yükleme hatası: {str(e)}")
+        return []
 
 def tr_normalize(text):
-    if not isinstance(text, str): return "" # Eğer metin değilse boş döndür
+    if not isinstance(text, str): 
+        return ""
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
-if 'db' not in st.session_state: st.session_state.db = veri_yukle()
+# Session state başlatma
+if 'db' not in st.session_state: 
+    st.session_state.db = veri_yukle()
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{
+        "role": "assistant", 
+        "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
+    }]
 
 # --- MOD SEÇİMİ (SIDEBAR) ---
 with st.sidebar:
@@ -80,6 +107,13 @@ with st.sidebar:
     )
     st.markdown("---")
     st.info(f"Aktif Mod: **{secilen_mod}**")
+    
+    if st.button("🗑️ Sohbeti Sıfırla"):
+        st.session_state.messages = [{
+            "role": "assistant", 
+            "content": "Sohbet sıfırlandı. Yeni bir konuşma başlayalım Can Dost!"
+        }]
+        st.rerun()
 
 # --- HEADER ---
 st.markdown(f"""
@@ -88,34 +122,40 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-
-# --- ARAMA MOTORU (HATASIZ) ---
+# --- ARAMA MOTORU (İYİLEŞTİRİLMİŞ) ---
 def alakali_icerik_bul(kelime, db, mod):
-    # Sohbet modunda arama yapma
     if "Sohbet" in mod:
         return "", []
 
-    if not db: return "", []
+    if not db or not kelime or not isinstance(kelime, str): 
+        return "", []
     
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
-    if len(norm_sorgu) < 3: return "", []
+    if len(norm_sorgu) < 3: 
+        return "", []
 
     sonuclar = []
     for d in db:
+        if not isinstance(d, dict):
+            continue
+            
         puan = 0
-        # .get() kullanarak KeyError hatasını önlüyoruz
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
         
-        if norm_sorgu in d_baslik: puan += 100
-        elif norm_sorgu in d_icerik: puan += 50
+        if norm_sorgu in d_baslik: 
+            puan += 100
+        elif norm_sorgu in d_icerik: 
+            puan += 50
+            
         for k in anahtarlar:
-            if k in d_baslik: puan += 20
-            elif k in d_icerik: puan += 5     
+            if k in d_baslik: 
+                puan += 20
+            elif k in d_icerik: 
+                puan += 5     
         
-        # Araştırma modunda baraj 15
         if puan > 15:
             sonuclar.append({"veri": d, "puan": puan})
     
@@ -127,7 +167,6 @@ def alakali_icerik_bul(kelime, db, mod):
     
     for item in en_iyiler:
         v = item['veri']
-        # Verileri güvenli çek
         v_baslik = v.get('baslik', 'Başlıksız')
         v_icerik = v.get('icerik', '')
         v_link = v.get('link', '#')
@@ -137,19 +176,23 @@ def alakali_icerik_bul(kelime, db, mod):
         
     return context_text, kaynaklar
 
-# --- MODEL SEÇİCİ ---
+# --- MODEL SEÇİCİ (İYİLEŞTİRİLMİŞ) ---
 def uygun_modeli_bul_ve_getir():
     try:
         mevcut_modeller = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if not mevcut_modeller: return None, "Hiçbir model bulunamadı"
+        if not mevcut_modeller: 
+            return None, "Hiçbir model bulunamadı"
+            
         tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
         for t in tercihler:
             for m in mevcut_modeller:
-                if t in m: return m, None
+                if t in m: 
+                    return m, None
         return mevcut_modeller[0], None
     except Exception as e:
         return None, str(e)
 
+# --- CAN DEDE CEVAP FONKSİYONU (İYİLEŞTİRİLMİŞ) ---
 def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     if not API_KEYS:
         yield "HATA: API Anahtarı eksik."
@@ -194,7 +237,7 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
 
     contents = []
     contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı."] }) 
+    contents.append({"role": "model", "parts": ["Anlaşıldı."]}) 
     
     for msg in chat_history[-4:]:
         role = "user" if msg["role"] == "user" else "model"
@@ -212,46 +255,58 @@ def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
     
     random.shuffle(API_KEYS)
     
-    for key in API_KEYS:
-        genai.configure(api_key=key)
-        model_adi, hata = uygun_modeli_bul_ve_getir()
-        
-        if not model_adi: continue
-
+    for idx, key in enumerate(API_KEYS):
         try:
+            genai.configure(api_key=key)
+            model_adi, hata = uygun_modeli_bul_ve_getir()
+            
+            if not model_adi: 
+                continue
+
             model = genai.GenerativeModel(model_adi)
             response = model.generate_content(contents, stream=True, safety_settings=guvenlik)
+            
             for chunk in response:
                 try:
-                    if chunk.text: yield chunk.text
-                except: continue
-            return 
-        except:
-            time.sleep(0.5)
-            continue 
+                    if hasattr(chunk, 'text') and chunk.text: 
+                        yield chunk.text
+                except AttributeError:
+                    continue
+                except Exception:
+                    continue
+            return
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "quota" in error_msg or "429" in error_msg:
+                continue
+            elif "invalid" in error_msg or "api key" in error_msg:
+                continue
+            else:
+                time.sleep(0.5)
+                continue
 
-    yield "Şu anda tefekkürdeyim (Bağlantı Sorunu)."
+    yield "Şu anda tefekkürderim (Bağlantı Sorunu - Tüm API anahtarları denendi)."
 
-# --- OTOMATİK KAYDIRMA ---
+# --- OTOMATİK KAYDIRMA (İYİLEŞTİRİLMİŞ) ---
 def scroll_to_bottom():
     js = """
     <script>
     function forceScroll() {
-        var main = window.parent.document.querySelector(".main");
+        const main = window.parent.document.querySelector(".main");
         if (main) {
             main.scrollTop = main.scrollHeight;
         }
     }
-    forceScroll();
     setTimeout(forceScroll, 100);
-    setTimeout(forceScroll, 500);
+    setTimeout(forceScroll, 300);
+    setTimeout(forceScroll, 600);
+    setTimeout(forceScroll, 1000);
     </script>
     """
     components.html(js, height=0)
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."}]
-
+# --- MESAJ GEÇMİŞİ ---
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
     with st.chat_message(msg["role"], avatar=icon):
@@ -263,6 +318,7 @@ for msg in st.session_state.messages:
         else:
             st.markdown(msg["content"])
 
+# --- KULLANICI GİRİŞİ ---
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
@@ -304,10 +360,12 @@ if prompt:
                 if not detay_modu_aktif:
                     parts = full_text.split("###DETAY###")
                     ozet_text = parts[0]
-                    if len(parts) > 1: detay_text = parts[1]
+                    if len(parts) > 1: 
+                        detay_text = parts[1]
                     detay_modu_aktif = True
                 else:
-                    if "###DETAY###" in chunk: chunk = chunk.replace("###DETAY###", "")
+                    if "###DETAY###" in chunk: 
+                        chunk = chunk.replace("###DETAY###", "")
                     detay_text += chunk
             else:
                 ozet_text += chunk
@@ -322,7 +380,7 @@ if prompt:
         final_history = full_text
 
         # --- ARAŞTIRMA MODUNDA KAYNAK LİSTELE ---
-        if "Araştırma" in secilen_mod and kaynaklar:
+        if "Araştırma" in secilen_mod and kaynaklar and detay_modu_aktif:
             with detay_container.container():
                 with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True):
                     if detay_text.strip():
