@@ -57,7 +57,6 @@ def veri_yukle():
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             data = json.load(f)
             if not isinstance(data, list):
-                st.error(f"❌ {DATA_FILE} geçersiz format (liste olmalı).")
                 return []
             
             processed_data = []
@@ -72,20 +71,13 @@ def veri_yukle():
                 d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
             
-            if processed_data:
-                st.sidebar.success(f"✅ {len(processed_data)} kayıt yüklendi")
-            else:
-                st.sidebar.warning("⚠️ Veri yüklendi ama hiçbir kayıt işlenemedi!")
             return processed_data
             
     except FileNotFoundError:
-        st.sidebar.warning(f"⚠️ {DATA_FILE} bulunamadı. Araştırma modu çalışmayacak.")
         return []
     except json.JSONDecodeError:
-        st.sidebar.error(f"❌ {DATA_FILE} geçersiz JSON formatında.")
         return []
     except Exception as e:
-        st.sidebar.error(f"❌ Veri yükleme hatası: {str(e)}")
         return []
 
 def tr_normalize(text):
@@ -102,6 +94,10 @@ if "messages" not in st.session_state:
         "role": "assistant", 
         "content": "Merhaba Can Dost! Ben Can Dede. **Sol menüden** istediğin modu seç:\n\n• **☕ Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül sohbeti ederiz.\n• **🔍 Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nHaydi, hangi modda buluşalım?"
     }]
+
+# Kaynak genişletme state'i
+if 'expanded_sources' not in st.session_state:
+    st.session_state.expanded_sources = {}
 
 # RATE LIMITING
 if 'request_count' not in st.session_state:
@@ -416,9 +412,41 @@ if prompt:
         # ARAŞTIRMA MODUNDA KAYNAK LİSTELE
         if "Araştırma" in secilen_mod and kaynaklar:
             st.markdown("\n---\n**📚 İlgili Kaynaklar:**")
-            for k in kaynaklar:
+            
+            # Mesaj ID'si oluştur (kaynak genişletme için)
+            msg_id = len(st.session_state.messages)
+            
+            # İlk 5 kaynağı göster
+            gosterilecek = kaynaklar[:5]
+            geri_kalan = kaynaklar[5:] if len(kaynaklar) > 5 else []
+            
+            # Ana kaynakları göster
+            for k in gosterilecek:
                 st.markdown(f"• [{k['baslik']}]({k['link']})")
                 full_text += f"\n[{k['baslik']}]({k['link']})"
+            
+            # Eğer daha fazla kaynak varsa "Devamı..." butonu
+            if geri_kalan:
+                # Genişletme durumunu kontrol et
+                expanded_key = f"expand_{msg_id}"
+                
+                if expanded_key not in st.session_state.expanded_sources:
+                    st.session_state.expanded_sources[expanded_key] = False
+                
+                if not st.session_state.expanded_sources[expanded_key]:
+                    if st.button(f"📖 Devamı... (+{len(geri_kalan)} kaynak daha)", key=f"btn_{msg_id}"):
+                        st.session_state.expanded_sources[expanded_key] = True
+                        st.rerun()
+                else:
+                    # Geri kalan kaynakları göster
+                    for k in geri_kalan:
+                        st.markdown(f"• [{k['baslik']}]({k['link']})")
+                        full_text += f"\n[{k['baslik']}]({k['link']})"
+                    
+                    # Daralt butonu
+                    if st.button("🔼 Daralt", key=f"collapse_{msg_id}"):
+                        st.session_state.expanded_sources[expanded_key] = False
+                        st.rerun()
         
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         scroll_to_bottom()
