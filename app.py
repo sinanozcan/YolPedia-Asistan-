@@ -159,7 +159,7 @@ st.markdown(f"""
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- ARAMA MOTORU (OPTIMIZE EDİLMİŞ) ---
+# --- ARAMA MOTORU (KALİTE ODAKLI) ---
 def alakali_icerik_bul(kelime, db):
     if not db or not kelime or not isinstance(kelime, str): 
         return [], ""
@@ -180,21 +180,21 @@ def alakali_icerik_bul(kelime, db):
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
         
-        # TAM EŞLEŞME - Yüksek puan
+        # TAM EŞLEŞME - Çok yüksek puan
         if norm_sorgu in d_baslik: 
-            puan += 150
+            puan += 200
         elif norm_sorgu in d_icerik: 
-            puan += 80
+            puan += 100
         
         # ANAHTAR KELİME EŞLEŞME
         for k in anahtarlar:
             if k in d_baslik: 
-                puan += 30
+                puan += 40
             elif k in d_icerik: 
-                puan += 8
+                puan += 10
         
-        # SADECE YÜKSEK PUANLI SONUÇLAR
-        if puan > 25:
+        # SADECE İLGİLİ SONUÇLAR (eşik yükseltildi)
+        if puan > 50:  # 25 -> 50 (daha seçici)
             sonuclar.append({
                 "veri": d, 
                 "puan": puan,
@@ -203,8 +203,18 @@ def alakali_icerik_bul(kelime, db):
                 "icerik": d.get('icerik', '')[:1500]
             })
     
+    # Puanlamaya göre sırala
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    return sonuclar[:5], norm_sorgu
+    
+    # KALİTE KONTROLÜ: İlk kaynağın puanının %40'ından düşük olanları eleme
+    if sonuclar:
+        en_yuksek_puan = sonuclar[0]['puan']
+        esik_puan = en_yuksek_puan * 0.4  # %40 eşiği
+        
+        kaliteli_sonuclar = [s for s in sonuclar if s['puan'] >= esik_puan]
+        return kaliteli_sonuclar, norm_sorgu
+    
+    return [], norm_sorgu
 
 # --- MODEL SEÇİCİ ---
 def uygun_modeli_bul_ve_getir():
