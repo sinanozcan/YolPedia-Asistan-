@@ -464,7 +464,7 @@ if prompt:
             <div style="
                 width: 12px; height: 12px; border-radius: 50%; background-color: #aaa;
                 animation: pulse 1s infinite alternate;"></div>
-            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede tefekkür ediyor... ({secilen_mod})</span>
+            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede dúşúnúyor... ({secilen_mod})</span>
         </div>
         <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
         """
