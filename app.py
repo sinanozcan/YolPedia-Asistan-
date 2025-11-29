@@ -18,7 +18,7 @@ API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
-MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
+MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
@@ -196,17 +196,16 @@ def alakali_icerik_bul(kelime, db):
             elif k in d_icerik: 
                 puan += 8
         
-        # SADECE YÜKSEK PUANLI SONUÇLAR (alakasız kaynakları elemek için)
-        if puan > 25:  # Eşik yükseltildi
+        # SADECE YÜKSEK PUANLI SONUÇLAR
+        if puan > 25:
             sonuclar.append({
                 "veri": d, 
                 "puan": puan,
                 "baslik": d.get('baslik', 'Başlıksız'),
                 "link": d.get('link', '#'),
-                "icerik": d.get('icerik', '')[:1500]  # Kısaltıldı
+                "icerik": d.get('icerik', '')[:1500]
             })
     
-    # En iyi 5 sonucu al (6->5)
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     return sonuclar[:5], norm_sorgu
 
@@ -217,7 +216,7 @@ def uygun_modeli_bul_ve_getir():
         if not mevcut_modeller: 
             return None, "Hiçbir model bulunamadı"
             
-        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash"]
         for t in tercihler:
             for m in mevcut_modeller:
                 if t in m: 
@@ -227,5 +226,180 @@ def uygun_modeli_bul_ve_getir():
         return None, str(e)
 
 # --- CAN DEDE CEVAP (OPTIMIZE EDİLMİŞ) ---
-def can_dede_cevapla(user_prompt, chat_history, kaynaklar, mod):
-    if not API
+def can_dede_cevapla(user_prompt, kaynaklar, mod):
+    if not API_KEYS:
+        yield "❌ API anahtarı eksik."
+        return
+
+    # SOHBET MODU
+    if "Sohbet" in mod:
+        system_prompt = """Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
+
+ÜSLUP:
+- Samimi, sıcak, felsefi
+- "Erenler", "Can dost" gibi hitaplar kullan
+- Kısa, öz, etkili cevaplar ver
+- Dogmatik değil, akılcı ol
+
+Kullanıcıyla sohbet et, yol göster."""
+
+    # ARAŞTIRMA MODU
+    else:
+        if not kaynaklar:
+            yield "📚 İlgili kaynak bulunamadı. Lütfen sorunuzu farklı kelimelerle tekrar deneyin."
+            return
+        
+        kaynak_bilgi = "\n\n".join([
+            f"KAYNAK {i+1}: {k['baslik']}\n{k['icerik'][:800]}"
+            for i, k in enumerate(kaynaklar)
+        ])
+        
+        system_prompt = f"""Sen bir YolPedia kütüphane memurusun. GÖREVİN:
+
+1. Aşağıdaki KAYNAKLARA dayanarak KISA bir özet ver (2-3 cümle)
+2. Kesinlikle sohbet etme, sadece kaynaklara odaklan
+3. Net, profesyonel, bilgilendirici ol
+
+KAYNAKLAR:
+{kaynak_bilgi}
+
+Kullanıcı sorusu: {user_prompt}
+
+SADECE kaynaklara dayanarak KISA özet yaz."""
+
+    # API ÇAĞRISI
+    random.shuffle(API_KEYS)
+    
+    for key in API_KEYS:
+        try:
+            genai.configure(api_key=key)
+            model_adi, _ = uygun_modeli_bul_ve_getir()
+            
+            if not model_adi:
+                continue
+
+            model = genai.GenerativeModel(
+                model_adi,
+                generation_config={
+                    "temperature": 0.7,
+                    "max_output_tokens": 500 if "Araştırma" in mod else 800
+                }
+            )
+            
+            response = model.generate_content(
+                system_prompt,
+                stream=True,
+                request_options={"timeout": 30}
+            )
+            
+            for chunk in response:
+                try:
+                    if hasattr(chunk, 'text') and chunk.text:
+                        yield chunk.text
+                except:
+                    continue
+            return
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            if "quota" in error_msg or "429" in error_msg:
+                continue
+            time.sleep(0.3)
+            continue
+
+    yield "❌ Tüm API kotaları doldu. Lütfen yeni API key ekleyin."
+
+# --- OTOMATİK KAYDIRMA ---
+def scroll_to_bottom():
+    js = """
+    <script>
+    function forceScroll() {
+        const main = window.parent.document.querySelector(".main");
+        if (main) { main.scrollTop = main.scrollHeight; }
+    }
+    setTimeout(forceScroll, 100);
+    setTimeout(forceScroll, 500);
+    </script>
+    """
+    components.html(js, height=0)
+
+# --- MESAJ GEÇMİŞİ ---
+for msg in st.session_state.messages:
+    icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
+    with st.chat_message(msg["role"], avatar=icon):
+        st.markdown(msg["content"])
+
+# --- KULLANICI GİRİŞİ ---
+prompt = st.chat_input("Can Dede'ye sor...")
+
+if prompt:
+    # RATE LIMIT
+    if st.session_state.request_count >= 50:
+        st.error("⏰ Saatlik limit (50 mesaj). Lütfen 1 saat sonra deneyin.")
+        st.stop()
+    
+    st.session_state.request_count += 1
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.chat_message("user", avatar=USER_ICON).markdown(prompt)
+    scroll_to_bottom()
+    
+    # ARAMA (Araştırma Modu)
+    kaynaklar = []
+    if "Araştırma" in secilen_mod:
+        status_container = st.empty()
+        status_container.markdown("""
+            <div style="
+                background: linear-gradient(90deg, #1e3a8a, #3b82f6);
+                color: white;
+                padding: 15px 20px;
+                border-radius: 10px;
+                text-align: center;
+                font-size: 16px;
+                margin: 20px 0;
+                animation: pulse 2s infinite;
+            ">
+                🔍 <strong>Lütfen bekleyin...</strong><br>
+                <span style="font-size: 14px;">YolPedia arşivi taranıyor</span>
+            </div>
+            <style>
+                @keyframes pulse {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.85; }
+                }
+            </style>
+        """, unsafe_allow_html=True)
+        
+        kaynaklar, _ = alakali_icerik_bul(prompt, st.session_state.db)
+        status_container.empty()
+    
+    # CAN DEDE CEVAP
+    with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
+        placeholder = st.empty()
+        
+        # Animasyon
+        animasyon = f"""
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 12px; height: 12px; border-radius: 50%; background: #aaa; animation: pulse 1s infinite;"></div>
+            <span style="font-style: italic; color: #666;">Can Dede düşünüyor...</span>
+        </div>
+        <style>@keyframes pulse {{ 0%, 100% {{ opacity: 0.3; }} 50% {{ opacity: 1; }} }}</style>
+        """
+        placeholder.markdown(animasyon, unsafe_allow_html=True)
+        
+        # Cevap al
+        full_text = ""
+        for chunk in can_dede_cevapla(prompt, kaynaklar, secilen_mod):
+            full_text += chunk
+            placeholder.markdown(full_text + "▌")
+        
+        placeholder.markdown(full_text)
+        
+        # ARAŞTIRMA MODUNDA KAYNAK LİSTELE
+        if "Araştırma" in secilen_mod and kaynaklar:
+            st.markdown("\n---\n**📚 İlgili Kaynaklar:**")
+            for k in kaynaklar:
+                st.markdown(f"• [{k['baslik']}]({k['link']}) `({k['puan']} puan)`")
+                full_text += f"\n[{k['baslik']}]({k['link']})"
+        
+        st.session_state.messages.append({"role": "assistant", "content": full_text})
+        scroll_to_bottom()
