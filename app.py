@@ -37,15 +37,20 @@ st.markdown("""
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
     .dede-img { width: 80px; height: 80px; border-radius: 50%; margin-right: 15px; object-fit: cover; border: 2px solid #eee; }
     .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
+    .subtitle-text { font-size: 18px; font-weight: 400; margin-top: 5px; color: #aaaaaa; text-align: center; }
     .top-logo-container { display: flex; justify-content: center; margin-bottom: 20px; padding-top: 10px; }
     .top-logo { width: 80px; opacity: 1.0; }
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
-    @media (prefers-color-scheme: light) { .title-text { color: #000000; } .motto-text { color: #555555; } }
+    @media (prefers-color-scheme: light) { 
+        .title-text { color: #000000; } 
+        .subtitle-text { color: #555555; }
+        .motto-text { color: #555555; } 
+    }
     .stChatMessage { margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- VERİ YÜKLEME (İYİLEŞTİRİLMİŞ) ---
+# --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
@@ -95,17 +100,16 @@ if 'db' not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "Merhaba Can Dost! Ben Can Dede. Sol menüden modunu seç, gönlünden geçeni sor."
+        "content": "Merhaba! Nasıl yardımcı olabilirim?"
     }]
 
-# RATE LIMITING: Kullanıcı başına sayaç
+# RATE LIMITING
 if 'request_count' not in st.session_state:
     st.session_state.request_count = 0
 if 'last_reset_time' not in st.session_state:
     st.session_state.last_reset_time = time.time()
 
-# Saatlik reset
-if time.time() - st.session_state.last_reset_time > 3600:  # 1 saat
+if time.time() - st.session_state.last_reset_time > 3600:
     st.session_state.request_count = 0
     st.session_state.last_reset_time = time.time()
 
@@ -114,60 +118,63 @@ with st.sidebar:
     st.image(CAN_DEDE_ICON, width=100)
     st.title("Mod Seçimi")
     
-    # Veritabanı durumu göster
     if st.session_state.db:
         st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
     else:
         st.error("⚠️ Veritabanı yüklenemedi!")
     
-    # Kullanım limiti göster
     kalan_limit = 50 - st.session_state.request_count
     if kalan_limit > 30:
-        st.info(f"💬 Kalan mesaj: **{kalan_limit}/50** (saatlik)")
+        st.info(f"💬 Kalan: **{kalan_limit}/50** (saatlik)")
     elif kalan_limit > 10:
-        st.warning(f"⚠️ Kalan mesaj: **{kalan_limit}/50** (saatlik)")
+        st.warning(f"⚠️ Kalan: **{kalan_limit}/50**")
     else:
-        st.error(f"🔴 Kalan mesaj: **{kalan_limit}/50** (saatlik)")
+        st.error(f"🔴 Kalan: **{kalan_limit}/50**")
     
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
         ["☕ Sohbet Modu", "🔍 Araştırma Modu"],
-        captions=["Sadece muhabbet eder, kaynak taramaz.", "YolPedia kütüphanesini tarar ve kaynak sunar."]
+        captions=[
+            "Samimi sohbet eder, felsefi konuşur.", 
+            "Kütüphane memuru gibi kaynak sunar."
+        ]
     )
     st.markdown("---")
-    st.info(f"Aktif Mod: **{secilen_mod}**")
+    st.info(f"Aktif: **{secilen_mod}**")
     
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{
             "role": "assistant", 
-            "content": "Sohbet sıfırlandı. Yeni bir konuşma başlayalım Can Dost!"
+            "content": "Sohbet sıfırlandı. Yeni konuşma başlayalım!"
         }]
         st.rerun()
 
 # --- HEADER ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
-    <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">Can Dede</h1></div>
+    <div class="main-header">
+        <img src="{CAN_DEDE_ICON}" class="dede-img">
+        <div>
+            <h1 class="title-text">Can Dede</h1>
+            <div class="subtitle-text">YolPedia Rehberiniz</div>
+        </div>
+    </div>
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
 
-# --- ARAMA MOTORU (HIZLANDIRILMIŞ VE DÜZELTİLMİŞ) ---
-def alakali_icerik_bul(kelime, db, mod):
-    if "Sohbet" in mod:
-        return "", []
-
+# --- ARAMA MOTORU (OPTIMIZE EDİLMİŞ) ---
+def alakali_icerik_bul(kelime, db):
     if not db or not kelime or not isinstance(kelime, str): 
-        return "", []
+        return [], ""
     
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     
     if len(norm_sorgu) < 3: 
-        return "", []
+        return [], ""
 
     sonuclar = []
     
-    # TÜM VERİTABANINI TARA (erken çıkış kaldırıldı)
     for d in db:
         if not isinstance(d, dict):
             continue
@@ -176,43 +183,34 @@ def alakali_icerik_bul(kelime, db, mod):
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
         
-        # Tam eşleşme varsa direkt yüksek puan ver
+        # TAM EŞLEŞME - Yüksek puan
         if norm_sorgu in d_baslik: 
-            puan += 100
+            puan += 150
         elif norm_sorgu in d_icerik: 
-            puan += 50
+            puan += 80
         
-        # Kısmi eşleşme kontrolü
+        # ANAHTAR KELİME EŞLEŞME
         for k in anahtarlar:
             if k in d_baslik: 
-                puan += 20
+                puan += 30
             elif k in d_icerik: 
-                puan += 5
+                puan += 8
         
-        # Eşik değeri düşürüldü: 15 -> 10 (daha fazla sonuç)
-        if puan > 10:
-            sonuclar.append({"veri": d, "puan": puan})
+        # SADECE YÜKSEK PUANLI SONUÇLAR (alakasız kaynakları elemek için)
+        if puan > 25:  # Eşik yükseltildi
+            sonuclar.append({
+                "veri": d, 
+                "puan": puan,
+                "baslik": d.get('baslik', 'Başlıksız'),
+                "link": d.get('link', '#'),
+                "icerik": d.get('icerik', '')[:1500]  # Kısaltıldı
+            })
     
-    # En iyi sonuçları sırala ve al
+    # En iyi 5 sonucu al (6->5)
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    en_iyiler = sonuclar[:8]  # 6 -> 8'e çıkarıldı
-    
-    context_text = ""
-    kaynaklar = []
-    
-    # İçerik limiti optimum seviyede
-    for item in en_iyiler:
-        v = item['veri']
-        v_baslik = v.get('baslik', 'Başlıksız')
-        v_icerik = v.get('icerik', '')
-        v_link = v.get('link', '#')
-        
-        context_text += f"\n--- KAYNAK: {v_baslik} ---\n{v_icerik[:3000]}\n"
-        kaynaklar.append({"baslik": v_baslik, "link": v_link, "puan": item['puan']})
-        
-    return context_text, kaynaklar
+    return sonuclar[:5], norm_sorgu
 
-# --- MODEL SEÇİCİ (İYİLEŞTİRİLMİŞ) ---
+# --- MODEL SEÇİCİ ---
 def uygun_modeli_bul_ve_getir():
     try:
         mevcut_modeller = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -228,297 +226,6 @@ def uygun_modeli_bul_ve_getir():
     except Exception as e:
         return None, str(e)
 
-# --- CAN DEDE CEVAP FONKSİYONU (TIMEOUT EKLENDİ) ---
-def can_dede_cevapla(user_prompt, chat_history, context_data, mod):
-    if not API_KEYS:
-        yield "HATA: API Anahtarı eksik."
-        return
-
-    # --- MODA GÖRE GÖREV ---
-    if "Araştırma" in mod:
-        gorev_tanimi = """
-        MOD: ARAŞTIRMA MODU.
-        GÖREVİN:
-        1. Kullanıcının sorusunu 'BİLGİ KAYNAKLARI' kısmındaki verileri temel alarak cevapla.
-        2. Önce kısa bir özet geç.
-        3. Sonra tam olarak '###DETAY###' yaz.
-        4. Sonra konuyu kaynaklara dayanarak detaylandır.
-        """
-        kaynak_metni = context_data if context_data else "İlgili kaynak bulunamadı, genel kültürünle cevapla."
-    else:
-        gorev_tanimi = """
-        MOD: SOHBET MODU.
-        GÖREVİN:
-        Sadece samimi, edebi ve felsefi bir dille sohbet et. 
-        ASLA '###DETAY###' ayırıcı kullanma.
-        ASLA kaynaklardan bahsetme.
-        """
-        kaynak_metni = "Sohbet modundasın, kaynak kullanma."
-
-    # --- SİSTEM PROMPT ---
-    system_prompt = f"""
-    Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
-    
-    ÜSLUP VE KURALLARIN:
-    1. DİL DESTEĞİ: Kullanıcı hangi dilde sorarsa MUTLAKA O DİLDE cevap ver.
-    2. Türkçe konuşuluyorsa: "Erenler", "Can dost", "Can", "Sevgili dost" gibi hitaplar kullan.
-    3. FELSEFE: Dogmatik değil; akılcı, hümanist ve felsefi bir derinlikle konuş.
-    4. TAVIR: Kaba veya cahilce sorulara tartışmaya girmeden, hikmetle kısa cevap verip geç.
-    
-    {gorev_tanimi}
-    
-    BİLGİ KAYNAKLARI:
-    {kaynak_metni}
-    """
-
-    contents = []
-    contents.append({"role": "user", "parts": [system_prompt]})
-    contents.append({"role": "model", "parts": ["Anlaşıldı."]}) 
-    
-    for msg in chat_history[-4:]:
-        role = "user" if msg["role"] == "user" else "model"
-        clean_content = msg["content"].replace("###DETAY###", "").split("📚 Yararlanılan Kaynaklar")[0]
-        contents.append({"role": role, "parts": [clean_content]})
-    
-    contents.append({"role": "user", "parts": [user_prompt]})
-    
-    guvenlik = [
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-    ]
-    
-    random.shuffle(API_KEYS)
-    api_deneme_sayisi = 0
-    max_deneme = len(API_KEYS)
-    
-    for idx, key in enumerate(API_KEYS):
-        api_deneme_sayisi += 1
-        try:
-            genai.configure(api_key=key)
-            model_adi, hata = uygun_modeli_bul_ve_getir()
-            
-            if not model_adi: 
-                if api_deneme_sayisi >= max_deneme:
-                    yield f"❌ Hiçbir model bulunamadı. Lütfen API anahtarlarınızı kontrol edin."
-                    return
-                continue
-
-            model = genai.GenerativeModel(model_adi)
-            
-            # TIMEOUT: 60 saniye
-            import signal
-            
-            def timeout_handler(signum, frame):
-                raise TimeoutError("API çağrısı zaman aşımına uğradı")
-            
-            # Not: signal sadece Unix'te çalışır, Windows için alternatif gerekebilir
-            cevap_alindi = False
-            
-            response = model.generate_content(
-                contents, 
-                stream=True, 
-                safety_settings=guvenlik,
-                request_options={"timeout": 60}  # 60 saniye timeout
-            )
-            
-            for chunk in response:
-                try:
-                    if hasattr(chunk, 'text') and chunk.text: 
-                        yield chunk.text
-                        cevap_alindi = True
-                except AttributeError:
-                    continue
-                except Exception:
-                    continue
-            
-            if cevap_alindi:
-                return
-            
-        except TimeoutError:
-            if api_deneme_sayisi >= max_deneme:
-                yield "⏱️ Bağlantı zaman aşımına uğradı. Lütfen daha sonra tekrar deneyin."
-                return
-            continue
-            
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "quota" in error_msg or "429" in error_msg:
-                if api_deneme_sayisi >= max_deneme:
-                    yield "📊 Tüm API kotaları doldu. Lütfen daha sonra tekrar deneyin."
-                    return
-                time.sleep(1)
-                continue
-            elif "invalid" in error_msg or "api key" in error_msg:
-                if api_deneme_sayisi >= max_deneme:
-                    yield "🔑 Geçersiz API anahtarı. Lütfen secrets.toml dosyasını kontrol edin."
-                    return
-                continue
-            else:
-                if api_deneme_sayisi >= max_deneme:
-                    yield f"❌ Beklenmeyen hata: {str(e)[:100]}"
-                    return
-                time.sleep(0.5)
-                continue
-
-    yield "❌ Şu anda tefekkürderim (Tüm API anahtarları kullanılamıyor)."
-
-# --- OTOMATİK KAYDIRMA (İYİLEŞTİRİLMİŞ) ---
-def scroll_to_bottom():
-    js = """
-    <script>
-    function forceScroll() {
-        const main = window.parent.document.querySelector(".main");
-        if (main) {
-            main.scrollTop = main.scrollHeight;
-        }
-    }
-    setTimeout(forceScroll, 100);
-    setTimeout(forceScroll, 300);
-    setTimeout(forceScroll, 600);
-    setTimeout(forceScroll, 1000);
-    </script>
-    """
-    components.html(js, height=0)
-
-# --- MESAJ GEÇMİŞİ ---
-for msg in st.session_state.messages:
-    icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
-    with st.chat_message(msg["role"], avatar=icon):
-        if "###DETAY###" in msg["content"]:
-            parts = msg["content"].split("###DETAY###")
-            st.markdown(parts[0])
-            with st.expander("📜 Daha Fazla Detay ve Kaynaklar"):
-                st.markdown(parts[1])
-        else:
-            st.markdown(msg["content"])
-
-# --- KULLANICI GİRİŞİ ---
-prompt = st.chat_input("Can Dede'ye sor...")
-
-if prompt:
-    # RATE LIMIT KONTROLÜ
-    if st.session_state.request_count >= 50:
-        st.error("⏰ Saatlik mesaj limitine ulaştınız (50 mesaj). Lütfen bir saat sonra tekrar deneyin.")
-        st.info("💡 İpucu: Daha fazla mesaj için birden fazla API key ekleyin veya Google Cloud ücretli planına geçin.")
-        st.stop()
-    
-    st.session_state.request_count += 1
-    
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.chat_message("user", avatar=USER_ICON).markdown(prompt)
-    scroll_to_bottom()
-    
-    # ARAMA (Mod'a göre) - GÖRÜNÜR STATUS MESAJI
-    if "Araştırma" in secilen_mod:
-        # Görünür status container oluştur
-        status_container = st.empty()
-        status_container.markdown("""
-            <div style="
-                background: linear-gradient(90deg, #1e3a8a, #3b82f6);
-                color: white;
-                padding: 15px 20px;
-                border-radius: 10px;
-                text-align: center;
-                font-size: 16px;
-                font-weight: 500;
-                margin: 20px 0;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-                animation: pulse 2s infinite;
-            ">
-                🔍 <strong>Lütfen bekleyin...</strong><br>
-                <span style="font-size: 14px; opacity: 0.9;">
-                YolPedia arşivinde ilgili kaynaklar taranıyor (2236 kayıt)
-                </span>
-            </div>
-            <style>
-                @keyframes pulse {
-                    0%, 100% { opacity: 1; transform: scale(1); }
-                    50% { opacity: 0.85; transform: scale(0.98); }
-                }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # Arama yap
-        baglam_metni, kaynaklar = alakali_icerik_bul(prompt, st.session_state.db, secilen_mod)
-        
-        # Status mesajını temizle
-        status_container.empty()
-        
-        # DEBUG: Kaç kaynak bulundu?
-        if kaynaklar:
-            st.sidebar.info(f"🎯 **{len(kaynaklar)} kaynak** bulundu")
-        else:
-            st.sidebar.warning("⚠️ İlgili kaynak bulunamadı")
-    else:
-        baglam_metni, kaynaklar = "", []
-    
-    with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
-        placeholder = st.empty()
-        detay_container = st.empty()
-        
-        # Animasyon
-        animasyon_html = f"""
-        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
-            <div style="
-                width: 12px; height: 12px; border-radius: 50%; background-color: #aaa;
-                animation: pulse 1s infinite alternate;"></div>
-            <span style="font-style: italic; color: #666; font-size: 14px;">Can Dede dúşúnúyor... ({secilen_mod})</span>
-        </div>
-        <style>@keyframes pulse {{ from {{ opacity: 0.3; transform: scale(0.8); }} to {{ opacity: 1; transform: scale(1.1); }} }}</style>
-        """
-        placeholder.markdown(animasyon_html, unsafe_allow_html=True)
-        
-        full_text = ""
-        ozet_text = ""
-        detay_text = ""
-        detay_modu_aktif = False
-        
-        stream = can_dede_cevapla(prompt, st.session_state.messages[:-1], baglam_metni, secilen_mod)
-        
-        for chunk in stream:
-            full_text += chunk
-            
-            # Sadece Araştırma Modunda Detay
-            if "Araştırma" in secilen_mod and ("###DETAY###" in chunk or "###DETAY###" in full_text):
-                if not detay_modu_aktif:
-                    parts = full_text.split("###DETAY###")
-                    ozet_text = parts[0]
-                    if len(parts) > 1: 
-                        detay_text = parts[1]
-                    detay_modu_aktif = True
-                else:
-                    if "###DETAY###" in chunk: 
-                        chunk = chunk.replace("###DETAY###", "")
-                    detay_text += chunk
-            else:
-                ozet_text += chunk
-            
-            if not detay_modu_aktif:
-                placeholder.markdown(ozet_text + "▌")
-            else:
-                placeholder.markdown(ozet_text)
-        
-        placeholder.markdown(ozet_text)
-        
-        final_history = full_text
-
-        # --- ARAŞTIRMA MODUNDA KAYNAK LİSTELE ---
-        if "Araştırma" in secilen_mod and kaynaklar and detay_modu_aktif:
-            with detay_container.container():
-                with st.expander("📜 Daha Fazla Detay ve Kaynaklar", expanded=True):
-                    if detay_text.strip():
-                        st.markdown(detay_text)
-                        st.markdown("\n---\n")
-                    
-                    st.markdown("**📚 İlgili YolPedia Kaynakları:**")
-                    seen = set()
-                    for k in kaynaklar:
-                        if k['link'] not in seen:
-                            st.markdown(f"- [{k['baslik']}]({k['link']})")
-                            seen.add(k['link'])
-                            final_history += f"\n\n[{k['baslik']}]({k['link']})"
-        
-        st.session_state.messages.append({"role": "assistant", "content": final_history})
-        scroll_to_bottom()
+# --- CAN DEDE CEVAP (OPTIMIZE EDİLMİŞ) ---
+def can_dede_cevapla(user_prompt, chat_history, kaynaklar, mod):
+    if not API
