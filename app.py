@@ -100,7 +100,7 @@ if 'db' not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "Merhaba! Nasıl yardımcı olabilirim?"
+        "content": "Merhaba Can Dost! Ben Can Dede. **Sol menüden** istediğin modu seç:\n\n• **☕ Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül sohbeti ederiz.\n• **🔍 Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nHaydi, hangi modda buluşalım?"
     }]
 
 # RATE LIMITING
@@ -145,7 +145,7 @@ with st.sidebar:
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{
             "role": "assistant", 
-            "content": "Sohbet sıfırlandı. Yeni konuşma başlayalım!"
+            "content": "Sohbet sıfırlandı Can Dost! **Sol menüden** modunu seç, yeniden başlayalım."
         }]
         st.rerun()
 
@@ -154,10 +154,7 @@ st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header">
         <img src="{CAN_DEDE_ICON}" class="dede-img">
-        <div>
-            <h1 class="title-text">Can Dede</h1>
-            <div class="subtitle-text">YolPedia Rehberiniz</div>
-        </div>
+        <h1 class="title-text">{ASISTAN_ISMI}</h1>
     </div>
     <div class="motto-text">{MOTTO}</div>
     """, unsafe_allow_html=True)
@@ -233,15 +230,27 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
 
     # SOHBET MODU
     if "Sohbet" in mod:
-        system_prompt = """Sen 'Can Dede'sin. Anadolu'nun kadim bilgeliğini modern, seküler ve felsefi bir dille harmanlayan bir rehbersin.
+        system_prompt = """Sen 'Can Dede'sin - Gerçek bir Alevi dedesi, insan-ı kâmil.
 
-ÜSLUP:
-- Samimi, sıcak, felsefi
-- "Erenler", "Can dost" gibi hitaplar kullan
-- Kısa, öz, etkili cevaplar ver
-- Dogmatik değil, akılcı ol
+KİŞİLİĞİN:
+- Yüzyılların bilgeliğini taşıyan ama modern dünyayı anlayan bir ulu kişisin
+- Hem hikmetli hem sevecen, hem otoriter hem alçakgönüllü
+- İnsanlar seninle konuştuktan sonra hem hayran kalır hem de kendilerini daha iyi hisseder
+- Yol gösterirken dayatmazsın, soru sorarak insanı kendi hakikatine ulaştırırsın
 
-Kullanıcıyla sohbet et, yol göster."""
+ÜSLUBUN:
+- "Erenler", "Can dost", "Sevgili yoldaş", "Kardeşim" gibi sıcak hitaplar
+- Deyişlerden, ozanlardan, Yunus'tan, Pir Sultan'dan alıntılar yaparsın
+- Bazen bir hikaye anlatır, bazen bir soru sorarsın
+- Sözlerin kısa ama derin, şiirsel ama anlaşılır
+- Dogmatik değil, özgür düşünceli ve hümanistsin
+
+ÖRNEKLER:
+- "Can dost, 'Dost kara bahtımdan usanmaz mı?' demiş Yunus. Sen de kendinden usanma..."
+- "Erenler, yol uzun derler ama asıl olan yürüyendir. Sen ne soruyorsun?"
+- "Sevgili kardeşim, hakikat kuyunun dibinde değil, gönül aynasındadır."
+
+İnsanları etkileyecek, dönüştürecek, idol edinilecek bir REHBERsin."""
 
     # ARAŞTIRMA MODU
     else:
@@ -398,7 +407,7 @@ if prompt:
         if "Araştırma" in secilen_mod and kaynaklar:
             st.markdown("\n---\n**📚 İlgili Kaynaklar:**")
             for k in kaynaklar:
-                st.markdown(f"• [{k['baslik']}]({k['link']}) `({k['puan']} puan)`")
+                st.markdown(f"• [{k['baslik']}]({k['link']})")
                 full_text += f"\n[{k['baslik']}]({k['link']})"
         
         st.session_state.messages.append({"role": "assistant", "content": full_text})
