@@ -121,8 +121,7 @@ with st.sidebar:
     # İkonlar ve sayaç kaldırıldı
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
-        ["Sohbet Modu", "Araştırma Modu"],
-       
+        ["Sohbet Modu", "Araştırma Modu"],  
     )
     
     if st.button("🗑️ Sohbeti Sıfırla"):
