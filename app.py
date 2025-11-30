@@ -113,11 +113,6 @@ if time.time() - st.session_state.last_reset_time > 3600:
 with st.sidebar:
     st.title("Mod Seçimi")
     
-    if st.session_state.db:
-        st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
-    else:
-        st.error("⚠️ Veritabanı yüklenemedi!")
-    
     # İkonlar ve sayaç kaldırıldı
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
@@ -130,6 +125,11 @@ with st.sidebar:
             "content": "Sohbet sıfırlandı Can Dost! **Sol menüden** modunu seç, yeniden başlayalım."
         }]
         st.rerun()
+
+    if st.session_state.db:
+        st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
+    else:
+        st.error("⚠️ Veritabanı yüklenemedi!")
 
 # --- HEADER ---
 st.markdown(f"""
