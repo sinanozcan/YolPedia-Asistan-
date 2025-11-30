@@ -92,7 +92,7 @@ if 'db' not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "Merhaba Can Dost! Ben Can Dede. **Sol menüden** istediğin modu seç:\n\n• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül sohbeti ederiz.\n• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nHaydi, hangi modda buluşalım?"
+        "content": "Merhaba Can Dost! Ben Can Dede. **Sol menüden** istediğin modu seç:\n\n• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nSöyle, hangi modda buluşalım?"
     }]
 
 # Kaynak genişletme state'i
@@ -122,10 +122,7 @@ with st.sidebar:
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
         ["Sohbet Modu", "Araştırma Modu"],
-        captions=[
-            "Samimi sohbet eder, felsefi konuşur.", 
-            "Kütüphane memuru gibi kaynak sunar."
-        ]
+       
     )
     st.markdown("---")
     st.info(f"Aktif: **{secilen_mod}**")
