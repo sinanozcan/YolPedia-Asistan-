@@ -6,15 +6,16 @@ import time
 import json
 import random
 
-# ================= AYARLAR =================
-# Tek anahtar değişkeni
+# ================= GÜVENLİ BAŞLANGIÇ =================
+# Değişkeni en başta boş olarak tanımlıyoruz (Hata almamak için)
 GOOGLE_API_KEY = None
 
 try:
+    # Senin secrets panelindeki "API_KEY" yazan yeri okur
     GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
 except Exception:
     GOOGLE_API_KEY = ""
-
+    
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
