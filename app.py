@@ -10,10 +10,7 @@ import random
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
     st.secrets.get("API_KEY_1", ""),
-    st.secrets.get("API_KEY_2", ""),
-    st.secrets.get("API_KEY_3", ""),
-    st.secrets.get("API_KEY_4", ""),
-    st.secrets.get("API_KEY_5", "")
+    st.secrets.get("API_KEY_2", "")
 ]
 API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
 
