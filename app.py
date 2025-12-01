@@ -6,8 +6,16 @@ import time
 import json
 import random
 
-# ================= AYARLAR =================
-SINGLE_API_KEY = st.secrets.get("API_KEY", "").strip()
+# ================= GÜVENLİ BAŞLANGIÇ =================
+# Değişkeni en başta tanımlıyoruz ki NameError hatası oluşmasın
+GOOGLE_API_KEY = None
+
+try:
+    # Streamlit secrets'tan anahtarı okumaya çalış
+    GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
+except Exception:
+    # Okuyamazsa boş bırak, aşağıda uyarı vereceğiz
+    GOOGLE_API_KEY = ""
 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
