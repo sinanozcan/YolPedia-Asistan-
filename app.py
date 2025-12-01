@@ -44,6 +44,11 @@ st.markdown("""
         .motto-text { color: #555555; } 
     }
     .stChatMessage { margin-bottom: 10px; }
+    
+    /* Spinner Rengi */
+    .stSpinner > div {
+        border-top-color: #ff4b4b !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -132,36 +137,23 @@ def alakali_icerik_bul(kelime, db):
         return [s for s in sonuclar if s['puan'] >= esik], norm_sorgu
     return [], norm_sorgu
 
-# --- AKILLI MODEL BULUCU (404 HATASINI ÇÖZER) ---
+# --- AKILLI MODEL BULUCU ---
 def get_best_available_model():
-    """
-    Sisteme 'bana şu modeli ver' diye diretmek yerine,
-    'Elinde ne var?' diye sorup en uygununu seçer.
-    Böylece 404 hatası imkansız olur.
-    """
     try:
-        # Mevcut modelleri listele
         model_list = genai.list_models()
         available_models = []
         for m in model_list:
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        if not available_models:
-            return None
+        if not available_models: return None
 
-        # Tercih sıramız (En hızlıdan yavaşa)
         preferences = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
-        
         for p in preferences:
             for m in available_models:
-                if p in m:
-                    return m # Bulduğumuz ilk uygun modeli döndür
-        
-        # Hiçbiri yoksa listenin ilkini ver
+                if p in m: return m
         return available_models[0]
     except Exception:
-        # Listeleme başarısızsa varsayılanı dene
         return "gemini-1.5-flash"
 
 # --- CEVAP FONKSİYONU ---
@@ -198,11 +190,9 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
 
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
-        
-        # --- Modeli dinamik seçiyoruz ---
         model_name = get_best_available_model()
         if not model_name:
-            yield "❌ Google API modellerine erişilemiyor. Lütfen anahtarınızı kontrol edin."
+            yield "❌ Google API modellerine erişilemiyor."
             return
 
         model = genai.GenerativeModel(model_name)
@@ -214,10 +204,18 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     except Exception as e:
         yield f"⚠️ Bağlantı hatası: {str(e)}"
 
-# --- UI AKIŞI ---
+# --- SCROLL FONKSİYONU ---
 def scroll_to_bottom():
-    components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
+    # JavaScript ile sayfanın en altına yumuşak geçişle in
+    js = """
+    <script>
+        var body = window.parent.document.querySelector(".main");
+        body.scrollTop = body.scrollHeight;
+    </script>
+    """
+    components.html(js, height=0)
 
+# --- UI AKIŞI ---
 for msg in st.session_state.messages:
     icon = CAN_DEDE_ICON if msg["role"] == "assistant" else USER_ICON
     with st.chat_message(msg["role"], avatar=icon):
@@ -233,6 +231,8 @@ if prompt:
     st.session_state.request_count += 1
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
+    
+    # Mesaj gönderildiğinde hemen aşağı kaydır
     scroll_to_bottom()
     
     kaynaklar = []
@@ -243,7 +243,25 @@ if prompt:
         placeholder = st.empty()
         full_text = ""
         
-        for chunk in can_dede_cevapla(prompt, kaynaklar, secilen_mod):
+        # --- DÜŞÜNÜYOR ANİMASYONU ---
+        # Cevap gelene kadar dönecek olan spinner
+        with st.spinner("Can Dede tefekküre daldı, cevap hazırlıyor..."):
+            # Generator'ı oluşturuyoruz (API çağrısı burada başlar)
+            response_generator = can_dede_cevapla(prompt, kaynaklar, secilen_mod)
+            
+            # İlk veriyi almayı deneyerek spinner'ın beklemesini sağlıyoruz
+            # Bu sayede 'düşünüyor' kısmı API cevap verene kadar ekranda kalır
+            try:
+                first_chunk = next(response_generator)
+                full_text += first_chunk
+                placeholder.markdown(full_text + "▌")
+            except StopIteration:
+                pass
+            except Exception as e:
+                full_text = f"Hata: {e}"
+
+        # --- STREAMING ---
+        for chunk in response_generator:
             full_text += chunk
             placeholder.markdown(full_text + "▌")
         
@@ -256,4 +274,7 @@ if prompt:
                 st.markdown(f"• [{k['baslik']}]({k['link']})")
         
         st.session_state.messages.append({"role": "assistant", "content": full_text})
+        
+        # --- OTOMATİK SCROLL UP (ASLINDA DOWN) ---
+        # Cevap bittiğinde sayfanın en altına kaydır
         scroll_to_bottom()
