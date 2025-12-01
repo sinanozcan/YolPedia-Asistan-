@@ -1,5 +1,3 @@
---- START OF FILE app (12).py ---
-
 import streamlit as st
 import streamlit.components.v1 as components 
 import requests
@@ -172,7 +170,7 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         yield "❌ HATA: API Anahtarı eksik."
         return
 
-    # --- SİSTEM YÖNERGESİ (Burada dil ve üslup ayarları yapıldı) ---
+    # --- SİSTEM YÖNERGESİ (DİL ve ÜSLUP AYARLARI) ---
     if "Sohbet" in mod:
         system_prompt = """Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, gönül gözü açık bir rehbersin.
 
@@ -201,7 +199,7 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
         
-        # --- KRİTİK DÜZELTME: Modeli dinamik seçiyoruz ---
+        # --- Modeli dinamik seçiyoruz ---
         model_name = get_best_available_model()
         if not model_name:
             yield "❌ Google API modellerine erişilemiyor. Lütfen anahtarınızı kontrol edin."
