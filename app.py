@@ -6,15 +6,13 @@ import time
 import json
 import random
 
-# ================= GÜVENLİ BAŞLANGIÇ =================
-# Değişkeni en başta tanımlıyoruz ki NameError hatası oluşmasın
+# ================= AYARLAR =================
+# Tek anahtar değişkeni
 GOOGLE_API_KEY = None
 
 try:
-    # Streamlit secrets'tan anahtarı okumaya çalış
     GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
 except Exception:
-    # Okuyamazsa boş bırak, aşağıda uyarı vereceğiz
     GOOGLE_API_KEY = ""
 
 DATA_FILE = "yolpedia_data.json"
@@ -23,6 +21,7 @@ MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
+
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="wide")
