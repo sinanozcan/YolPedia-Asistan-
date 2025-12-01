@@ -9,6 +9,7 @@ import random
 # ================= AYARLAR =================
 API_KEYS = [
     st.secrets.get("API_KEY", ""),
+    st.secrets.get("API_KEY_1", ""),
     st.secrets.get("API_KEY_2", ""),
     st.secrets.get("API_KEY_3", ""),
     st.secrets.get("API_KEY_4", ""),
