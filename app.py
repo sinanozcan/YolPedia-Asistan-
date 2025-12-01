@@ -7,15 +7,15 @@ import json
 import random
 
 # ================= GÜVENLİ BAŞLANGIÇ =================
-# Değişkeni en başta boş olarak tanımlıyoruz (Hata almamak için)
+# Tek anahtar değişkeni
 GOOGLE_API_KEY = None
 
 try:
-    # Senin secrets panelindeki "API_KEY" yazan yeri okur
+    # Secrets panelinden "API_KEY" değerini okur
     GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
 except Exception:
     GOOGLE_API_KEY = ""
-    
+
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
 MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
@@ -23,15 +23,14 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-
 # --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="wide")
 
 # --- API KEY KONTROLÜ ---
-if not GOOGLE_API_KEY:
-    st.error("❌ API Anahtarı bulunamadı. Lütfen Streamlit Secrets ayarlarında 'API_KEY' değişkenini tanımlayın.")
+if not GOOGLE_API_KEY or len(GOOGLE_API_KEY) < 10:
+    st.error("❌ API Anahtarı bulunamadı! Lütfen Streamlit panelinde 'Secrets' kısmına 'API_KEY' adıyla geçerli anahtarınızı ekleyin.")
     st.stop()
-    
+
 # --- CSS ---
 st.markdown("""
 <style>
@@ -100,7 +99,7 @@ if "messages" not in st.session_state:
 if 'expanded_sources' not in st.session_state:
     st.session_state.expanded_sources = {}
 
-# RATE LIMITING (Sayaç çalışır ama gösterilmez)
+# RATE LIMITING
 if 'request_count' not in st.session_state:
     st.session_state.request_count = 0
 if 'last_reset_time' not in st.session_state:
@@ -110,11 +109,10 @@ if time.time() - st.session_state.last_reset_time > 3600:
     st.session_state.request_count = 0
     st.session_state.last_reset_time = time.time()
 
-# --- MOD SEÇİMİ (SIDEBAR - SADELEŞTİRİLMİŞ) ---
+# --- MOD SEÇİMİ (SIDEBAR) ---
 with st.sidebar:
     st.title("Mod Seçimi")
     
-    # İkonlar ve sayaç kaldırıldı
     secilen_mod = st.radio(
         "Can Dede nasıl yardımcı olsun?",
         ["Sohbet Modu", "Araştırma Modu"],  
@@ -195,26 +193,11 @@ def alakali_icerik_bul(kelime, db):
     
     return [], norm_sorgu
 
-# --- MODEL SEÇİCİ ---
-def uygun_modeli_bul_ve_getir():
-    try:
-        mevcut_modeller = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-        if not mevcut_modeller: 
-            return None, "Hiçbir model bulunamadı"
-            
-        tercihler = ["gemini-1.5-flash", "models/gemini-1.5-flash"]
-        for t in tercihler:
-            for m in mevcut_modeller:
-                if t in m: 
-                    return m, None
-        return mevcut_modeller[0], None
-    except Exception as e:
-        return None, str(e)
-
-# --- CAN DEDE CEVAP ---
+# --- CAN DEDE CEVAP (DÜZELTİLDİ: Tek Anahtar) ---
 def can_dede_cevapla(user_prompt, kaynaklar, mod):
-    if not API_KEYS:
-        yield "❌ API anahtarı eksik."
+    # BURASI DÜZELTİLDİ: Artık API_KEYS listesini değil, GOOGLE_API_KEY'i kontrol ediyor
+    if not GOOGLE_API_KEY:
+        yield "❌ API anahtarı sisteme tanımlanmamış."
         return
 
     # SOHBET MODU
@@ -265,46 +248,42 @@ Kullanıcı sorusu: {user_prompt}
 
 SADECE kaynaklara dayanarak KISA özet yaz."""
 
-    random.shuffle(API_KEYS)
-    
-    for key in API_KEYS:
-        try:
-            genai.configure(api_key=key)
-            model_adi, _ = uygun_modeli_bul_ve_getir()
-            
-            if not model_adi:
+    # API ÇAĞRISI (DÜZELTİLDİ: Tek Anahtar, Döngü Yok)
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        
+        model = genai.GenerativeModel(
+            "gemini-1.5-flash",
+            generation_config={
+                "temperature": 0.7,
+                "max_output_tokens": 500 if "Araştırma" in mod else 800
+            }
+        )
+        
+        # İçeriği birleştir
+        full_content = system_prompt + "\n\n" + user_prompt
+        
+        response = model.generate_content(
+            full_content,
+            stream=True,
+            request_options={"timeout": 30}
+        )
+        
+        for chunk in response:
+            try:
+                if hasattr(chunk, 'text') and chunk.text:
+                    yield chunk.text
+            except:
                 continue
-
-            model = genai.GenerativeModel(
-                model_adi,
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 500 if "Araştırma" in mod else 800
-                }
-            )
+        return
             
-            response = model.generate_content(
-                system_prompt,
-                stream=True,
-                request_options={"timeout": 30}
-            )
-            
-            for chunk in response:
-                try:
-                    if hasattr(chunk, 'text') and chunk.text:
-                        yield chunk.text
-                except:
-                    continue
-            return
-            
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "quota" in error_msg or "429" in error_msg:
-                continue
-            time.sleep(0.3)
-            continue
-
-    yield "❌ Tüm API kotaları doldu. Lütfen yeni API key ekleyin."
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "quota" in error_msg or "429" in error_msg:
+            yield "❌ Google API kotası doldu (Hata 429). Lütfen Billing (Ödeme) hesabınızı kontrol edin."
+        else:
+            yield f"❌ Bir hata oluştu: {str(e)}"
+        return
 
 # --- OTOMATİK KAYDIRMA ---
 def scroll_to_bottom():
@@ -330,9 +309,9 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
-    # RATE LIMIT
-    if st.session_state.request_count >= 50:
-        st.error("⏰ Saatlik limit (50 mesaj). Lütfen 1 saat sonra deneyin.")
+    # RATE LIMIT (Sunucu koruması)
+    if st.session_state.request_count >= 1000:
+        st.error("⏰ Saatlik limit doldu.")
         st.stop()
     
     st.session_state.request_count += 1
