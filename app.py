@@ -20,10 +20,10 @@ USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="wide")
 
 # --- API KEY KONTROLÜ ---
-if not API_KEYS:
-    st.error("❌ Geçerli API anahtarı bulunamadı. Lütfen secrets.toml dosyasını kontrol edin.")
+if not GOOGLE_API_KEY:
+    st.error("❌ API Anahtarı bulunamadı. Lütfen Streamlit Secrets ayarlarında 'API_KEY' değişkenini tanımlayın.")
     st.stop()
-
+    
 # --- CSS ---
 st.markdown("""
 <style>
