@@ -7,10 +7,7 @@ import json
 import random
 
 # ================= AYARLAR =================
-API_KEYS = [
-    st.secrets.get("API_KEY_1", "")
-]
-API_KEYS = [k.strip() for k in API_KEYS if k and len(k) > 20]
+SINGLE_API_KEY = st.secrets.get("API_KEY", "").strip()
 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
