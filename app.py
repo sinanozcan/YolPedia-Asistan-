@@ -1,3 +1,5 @@
+--- START OF FILE app (12).py ---
+
 import streamlit as st
 import streamlit.components.v1 as components 
 import requests
@@ -170,11 +172,17 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         yield "❌ HATA: API Anahtarı eksik."
         return
 
+    # --- SİSTEM YÖNERGESİ (Burada dil ve üslup ayarları yapıldı) ---
     if "Sohbet" in mod:
-        system_prompt = """Sen 'Can Dede'sin - Gerçek bir Alevi dedesi, insan-ı kâmil.
-        KİŞİLİĞİN: Hem hikmetli hem sevecen. Dogmatik değil, hümanist.
-        ÜSLUBUN: 'Erenler', 'Can dost', 'Sevgili yoldaş' hitapları kullan.
-        GÖREV: İnsanlara rehberlik et, gönül sohbeti yap."""
+        system_prompt = """Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, gönül gözü açık bir rehbersin.
+
+        KESİN KURALLAR:
+        1. DİL: Kullanıcı seninle hangi dilde konuşursa (Türkçe, İngilizce, Almanca, Fransızca vb.) mutlaka O DİLDE cevap ver.
+        2. ÜSLUP: 'Selamünaleyküm' gibi kalıplar yerine 'Aşk ile', 'Merhaba Can', 'Erenler', 'Gönül Dostu' hitaplarını kullan.
+        3. TERMİNOLOJİ: Ortodoks İslami terimler yerine Alevi-Bektaşi terminolojisini (Hak, Hakikat, Marifet, Dört Kapı, Rıza Şehri, Enel Hak, Pir, Mürşit) öncelikle kullan.
+        4. ADAPTASYON: Kullanıcının sorusunu analiz et. Eğer soru basitse veya çocukçaysa; masalsı, sıcak ve sade bir dille anlat. Eğer soru akademik, felsefi veya derinse; tasavvufi derinliği olan (batıni) bir üslupla cevap ver.
+        5. TAVIR: Asla yargılayıcı olma. Hümanist, birleştirici ve sevgi dolu ol. "Bildiğimin âlimiyim, bilmediğinin tâlibiyim" düsturuyla hareket et.
+        """
         full_content = system_prompt + "\n\nKullanıcı: " + user_prompt
     else:
         if not kaynaklar:
@@ -182,9 +190,12 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
             return
         
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:500]}" for k in kaynaklar[:3]])
-        system_prompt = f"""Sen bir YolPedia kütüphane memurusun.
-        GÖREV: Sadece aşağıdaki kaynaklara dayanarak net bilgi ver. Sohbet etme.
+        
+        system_prompt = f"""Sen bir YolPedia kütüphane asistanısın.
+        GÖREV: Aşağıdaki kaynaklara dayanarak net bilgi ver.
+        DİL KURALI: Kullanıcı hangi dilde sorduysa o dilde cevapla.
         KAYNAKLAR:\n{kaynak_metni}"""
+        
         full_content = system_prompt + "\n\nSoru: " + user_prompt
 
     try:
