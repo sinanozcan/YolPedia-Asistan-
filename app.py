@@ -159,33 +159,62 @@ with st.sidebar:
                 import shutil
                 
                 # Orijinali yedekle
-                shutil.copy(DATA_FILE, f"{DATA_FILE}.backup")
+                backup_file = f"{DATA_FILE}.backup"
+                shutil.copy(DATA_FILE, backup_file)
+                st.info(f"📦 Yedek oluşturuldu: {backup_file}")
                 
-                # Oku ve temizle
-                with open(DATA_FILE, "rb") as f:
-                    content = f.read().decode("utf-8", errors="ignore")
+                # Dosyayı satır satır oku ve temizle (daha güvenli)
+                with open(DATA_FILE, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
                 
-                # Kontrol karakterlerini temizle
-                clean_content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', content)
-                clean_content = clean_content.replace('\r\n', '\n').replace('\r', '\n')
+                st.info(f"📖 {len(lines)} satır okundu")
                 
-                # Parse et
-                data = json.loads(clean_content)
+                # Her satırı temizle
+                cleaned_lines = []
+                for i, line in enumerate(lines, 1):
+                    # Tüm kontrol karakterlerini temizle
+                    clean_line = re.sub(r'[\x00-\x1f\x7f]', '', line)
+                    # Tab ve newline'ı geri ekle
+                    if i < len(lines):  # Son satır hariç
+                        clean_line = clean_line.rstrip() + '\n'
+                    cleaned_lines.append(clean_line)
+                
+                full_content = ''.join(cleaned_lines)
+                
+                # JSON parse et
+                try:
+                    data = json.loads(full_content)
+                    st.success(f"✅ JSON parse başarılı: {len(data)} kayıt")
+                except json.JSONDecodeError as e:
+                    st.error(f"❌ Hala hata var. Satır {e.lineno}, Kolon {e.colno}")
+                    st.code(f"Hatalı bölüm: {full_content[max(0, e.pos-50):e.pos+50]}")
+                    
+                    # Daha agresif temizlik: sadece yazdırılabilir karakterleri tut
+                    st.warning("🔧 Agresif temizlik uygulanıyor...")
+                    full_content = ''.join(char for char in full_content 
+                                          if char.isprintable() or char in '\n\r\t ')
+                    data = json.loads(full_content)
                 
                 # Temiz dosyayı kaydet
                 with open(DATA_FILE, 'w', encoding='utf-8') as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
                 
-                st.success(f"✅ Dosya temizlendi! {len(data)} kayıt")
-                st.info(f"📦 Yedek: {DATA_FILE}.backup")
+                st.success(f"✅ Dosya temizlendi ve kaydedildi!")
                 
                 # Cache'i temizle ve yeniden yükle
                 st.cache_data.clear()
                 st.session_state.db = veri_yukle()
+                time.sleep(1)
                 st.rerun()
                 
+            except FileNotFoundError:
+                st.error(f"❌ Dosya bulunamadı: {DATA_FILE}")
             except Exception as e:
-                st.error(f"❌ Temizleme hatası: {e}")
+                st.error(f"❌ Beklenmeyen hata: {type(e).__name__}")
+                st.code(str(e))
+                import traceback
+                with st.expander("Detaylı Hata"):
+                    st.code(traceback.format_exc())
     
     st.markdown("---")
     
