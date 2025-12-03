@@ -63,17 +63,34 @@ st.markdown("""
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
-            data = json.load(f)
+            # JSON'daki kontrol karakterlerini temizle
+            content = f.read()
+            # Geçersiz kontrol karakterlerini temizle (ASCII 0-31 arası, tab/newline/return hariç)
+            import re
+            content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', content)
+            
+            data = json.loads(content)
             processed_data = []
             for d in data:
                 if not isinstance(d, dict): 
                     continue
                 ham_baslik = d.get('baslik', '')
                 ham_icerik = d.get('icerik', '')
+                
+                # İçerikteki kontrol karakterlerini de temizle
+                if isinstance(ham_baslik, str):
+                    ham_baslik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', ham_baslik)
+                if isinstance(ham_icerik, str):
+                    ham_icerik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', ham_icerik)
+                
                 d['norm_baslik'] = tr_normalize(ham_baslik)
                 d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
             return processed_data
+    except json.JSONDecodeError as e:
+        st.error(f"JSON formatı hatalı: {e}")
+        st.info("💡 JSON dosyasını https://jsonlint.com/ sitesinde kontrol edin.")
+        return []
     except Exception as e:
         st.warning(f"Veri yükleme hatası: {e}")
         return []
