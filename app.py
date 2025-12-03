@@ -136,7 +136,12 @@ def alakali_icerik_bul(kelime, db):
         puan = 0
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
-        if norm_sorgu in d_baslik: puan += 200
+        if norm_sorgu in d['norm_baslik']: 
+            # Eğer başlıkta 'gülbank', 'tercüman' veya 'dua' geçiyorsa puana ekstra 500 ekle!
+            if any(x in d['norm_baslik'] for x in ["gulbank", "tercuman", "dua", "siir"]):
+                puan += 500  
+            else:
+                puan += 200        
         elif norm_sorgu in d_icerik: puan += 100
         for k in anahtarlar:
             if k in d_baslik: puan += 40
