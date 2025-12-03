@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import streamlit.components.v1 as components 
 import requests
@@ -7,7 +8,7 @@ import json
 import random
 
 # ================= GÜVENLİ BAŞLANGIÇ & AYARLAR =================
-# --- OPTİMİZAYON AYARLARI ---
+# --- OPTİMİZASYON AYARLARI ---
 MAX_MESSAGE_LIMIT = 15     # Bir kullanıcının oturum başına sorabileceği maksimum soru
 MIN_TIME_DELAY = 3         # İki soru arasında geçmesi gereken minimum süre (saniye)
 # ----------------------------
@@ -20,7 +21,7 @@ except Exception:
 
 DATA_FILE = "yolpedia_data.json"
 ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
-MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
+MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
 YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
@@ -65,20 +66,26 @@ def veri_yukle():
             data = json.load(f)
             processed_data = []
             for d in data:
-                if not isinstance(d, dict): continue
+                if not isinstance(d, dict): 
+                    continue
                 ham_baslik = d.get('baslik', '')
                 ham_icerik = d.get('icerik', '')
                 d['norm_baslik'] = tr_normalize(ham_baslik)
                 d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
             return processed_data
-    except: return []
+    except Exception as e:
+        st.warning(f"Veri yükleme hatası: {e}")
+        return []
 
 def tr_normalize(text):
-    if not isinstance(text, str): return ""
+    if not isinstance(text, str): 
+        return ""
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
-if 'db' not in st.session_state: st.session_state.db = veri_yukle()
+# Session state başlatma
+if 'db' not in st.session_state: 
+    st.session_state.db = veri_yukle()
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{
@@ -86,21 +93,27 @@ if "messages" not in st.session_state:
         "content": "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nBuyur Erenler, hangi modda buluşalım?"
     }]
 
-if 'expanded_sources' not in st.session_state: st.session_state.expanded_sources = {}
-if 'request_count' not in st.session_state: st.session_state.request_count = 0
-if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
-if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0 # Hız limiti için
+if 'expanded_sources' not in st.session_state: 
+    st.session_state.expanded_sources = {}
+if 'request_count' not in st.session_state: 
+    st.session_state.request_count = 0
+if 'last_reset_time' not in st.session_state: 
+    st.session_state.last_reset_time = time.time()
+if 'last_request_time' not in st.session_state: 
+    st.session_state.last_request_time = 0
 
-# Bir saat geçtiyse sayacı sıfırla ama session limiti ayrıdır
+# Bir saat geçtiyse sayacı sıfırla
 if time.time() - st.session_state.last_reset_time > 3600:
-    # Burası global sıfırlama değil, time check için
+    st.session_state.request_count = 0
     st.session_state.last_reset_time = time.time()
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Mod Seçimi")
-    if st.session_state.db: st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
-    else: st.error("⚠️ Veritabanı yüklenemedi!")
+    if st.session_state.db: 
+        st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
+    else: 
+        st.error("⚠️ Veritabanı yüklenemedi!")
     
     secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
     
@@ -114,8 +127,7 @@ with st.sidebar:
 
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
-        # Sohbeti sıfırlayınca hakkı geri vermek istemiyorsan alt satırı sil
-        # st.session_state.request_count = 0 
+        st.session_state.expanded_sources = {}
         st.rerun()
 
 # --- HEADER ---
@@ -127,7 +139,9 @@ st.markdown(f"""
 
 # --- ARAMA ---
 def alakali_icerik_bul(kelime, db):
-    if not db or not kelime or len(kelime) < 3: return [], ""
+    if not db or not kelime or len(kelime) < 3: 
+        return [], ""
+    
     norm_sorgu = tr_normalize(kelime)
     anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     sonuclar = []
@@ -136,16 +150,22 @@ def alakali_icerik_bul(kelime, db):
         puan = 0
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
-        if norm_sorgu in d['norm_baslik']: 
-            # Eğer başlıkta 'gülbank', 'tercüman' veya 'dua' geçiyorsa puana ekstra 500 ekle!
-            if any(x in d['norm_baslik'] for x in ["gulbank", "tercuman", "dua", "siir"]):
+        
+        if norm_sorgu in d_baslik: 
+            # Eğer başlıkta önemli kelimeler geçiyorsa ekstra puan
+            if any(x in d_baslik for x in ["gulbank", "tercuman", "dua", "siir"]):
                 puan += 500  
             else:
                 puan += 200        
-        elif norm_sorgu in d_icerik: puan += 100
+        elif norm_sorgu in d_icerik: 
+            puan += 100
+            
         for k in anahtarlar:
-            if k in d_baslik: puan += 40
-            elif k in d_icerik: puan += 10
+            if k in d_baslik: 
+                puan += 40
+            elif k in d_icerik: 
+                puan += 10
+                
         if puan > 50:
             sonuclar.append({
                 "baslik": d.get('baslik', 'Başlıksız'),
@@ -155,6 +175,7 @@ def alakali_icerik_bul(kelime, db):
             })
             
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
+    
     if sonuclar:
         esik = sonuclar[0]['puan'] * 0.4
         return [s for s in sonuclar if s['puan'] >= esik], norm_sorgu
@@ -169,30 +190,44 @@ def get_best_available_model():
             if 'generateContent' in m.supported_generation_methods:
                 available_models.append(m.name)
         
-        if not available_models: return None
+        if not available_models: 
+            return None
 
         preferences = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
         for p in preferences:
             for m in available_models:
-                if p in m: return m
+                if p in m: 
+                    return m
         return available_models[0]
     except Exception:
         return "gemini-1.5-flash"
 
 # --- OPTİMİZASYON: YEREL CEVAP KONTROLÜ (API KULLANMAZ) ---
 def yerel_cevap_kontrol(text):
-    text = tr_normalize(text)
+    text_norm = tr_normalize(text)
+    
     # Basit selamlaşmalar için kotayı harcama
     selamlar = ["merhaba", "selam", "selamun aleykum", "iyi gunler", "gunaydin", "iyi aksamlar"]
-    hal_hatir = ["nasilsin", "naber", "ne var ne yok", "nasıl gidiyor"]
-    kimlik = ["sen kimsin", "adın ne", "necisin", "kimsin"]
+    hal_hatir = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
+    kimlik = ["sen kimsin", "adin ne", "necisin", "kimsin"]
     
-    if any(s == text for s in selamlar):
-        return random.choice(["Aşk ile merhaba can.", "Selam olsun gönlü güzel olana.", "Merhaba erenler, hoş geldin."])
-    if any(h in text for h in hal_hatir):
-        return random.choice(["Şükür Hak'ka, hizmetteyiz.", "Gönüller bir olsun, biz iyiyiz can.", "Erenlerin himmetiyle yoldayız."])
-    if any(k in text for k in kimlik):
+    if any(s == text_norm for s in selamlar):
+        return random.choice([
+            "Aşk ile merhaba can.", 
+            "Selam olsun gönlü güzel olana.", 
+            "Merhaba erenler, hoş geldin."
+        ])
+        
+    if any(h in text_norm for h in hal_hatir):
+        return random.choice([
+            "Şükür Hak'ka, hizmetteyiz.", 
+            "Gönüller bir olsun, biz iyiyiz can.", 
+            "Erenlerin himmetiyle yoldayız."
+        ])
+        
+    if any(k in text_norm for k in kimlik):
         return "Ben Can Dede. YolPedia'nın hizmetkârıyım. Gönül kırmaz, yol sorana yoldaş olurum."
+        
     return None
 
 # --- CEVAP FONKSİYONU ---
@@ -204,7 +239,6 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     # --- OPTİMİZASYON: Önce yerel veriye bak (Bedava) ---
     yerel_cevap = yerel_cevap_kontrol(user_prompt)
     if yerel_cevap:
-        # Yapay bir gecikme ekle ki çok robotik durmasın, stream efekti ver
         time.sleep(0.5) 
         yield yerel_cevap
         return
@@ -227,7 +261,6 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
             return
         
         # --- OPTİMİZASYON: Kaynakları Kısalt (Token Tasarrufu) ---
-        # İçeriğin tamamını değil, ilk 400 karakterini gönderiyoruz.
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:400]}" for k in kaynaklar[:3]])
         
         system_prompt = f"""Sen YolPedia asistanısın.
@@ -248,18 +281,20 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         response = model.generate_content(full_content, stream=True)
         
         for chunk in response:
-            if chunk.text: yield chunk.text
+            if chunk.text: 
+                yield chunk.text
             
     except Exception as e:
         yield f"⚠️ Bağlantı hatası: {str(e)}"
 
 # --- SCROLL FONKSİYONU ---
 def scroll_to_bottom():
-    # JavaScript ile sayfanın en altına yumuşak geçişle in
     js = """
     <script>
         var body = window.parent.document.querySelector(".main");
-        body.scrollTop = body.scrollHeight;
+        if (body) {
+            body.scrollTop = body.scrollHeight;
+        }
     </script>
     """
     components.html(js, height=0)
@@ -290,7 +325,7 @@ if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     
-    # Mesaj gönderildiğinde hemen aşağı kaydır
+    # Mesaj gönderildiğinde scroll
     scroll_to_bottom()
     
     kaynaklar = []
@@ -302,12 +337,9 @@ if prompt:
         full_text = ""
         
         # --- DÜŞÜNÜYOR ANİMASYONU ---
-        # Cevap gelene kadar dönecek olan spinner
-        with st.spinner("Can Dede tefekküre daldı, cevap hazırlıyor..."):
-            # Generator'ı oluşturuyoruz (API çağrısı burada başlar)
+        with st.spinner("Can Dede tefekkürde daldı, cevap hazırlıyor..."):
             response_generator = can_dede_cevapla(prompt, kaynaklar, secilen_mod)
             
-            # İlk veriyi almayı deneyerek spinner'ın beklemesini sağlıyoruz
             try:
                 first_chunk = next(response_generator)
                 full_text += first_chunk
@@ -332,6 +364,5 @@ if prompt:
         
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         
-        # --- OTOMATİK SCROLL UP (ASLINDA DOWN) ---
-        # Cevap bittiğinde sayfanın en altına kaydır
+        # Cevap bittiğinde scroll
         scroll_to_bottom()
