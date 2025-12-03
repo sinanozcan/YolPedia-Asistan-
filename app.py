@@ -8,8 +8,8 @@ import random
 
 # ================= GÜVENLİ BAŞLANGIÇ & AYARLAR =================
 # --- OPTİMİZAYON AYARLARI ---
-MAX_MESSAGE_LIMIT = 15     # Bir kullanıcının oturum başına sorabileceği maksimum soru
-MIN_TIME_DELAY = 3         # İki soru arasında geçmesi gereken minimum süre (saniye)
+MAX_MESSAGE_LIMIT = 20     # Günlük soru hakkı
+MIN_TIME_DELAY = 2         # Seri tıklama engeli (saniye)
 # ----------------------------
 
 GOOGLE_API_KEY = None
@@ -57,17 +57,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- HATA GÖSTEREN VERİ YÜKLEME FONKSİYONU ---
+# --- VERİ YÜKLEME (SAĞLAM VERSİYON) ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f: 
             content = f.read()
-            if not content:
-                st.error("🚨 JSON Dosyası Boş!")
-                return []
-            
-            # JSON'u yüklemeyi dene
+            if not content: return []
             data = json.loads(content)
             
             processed_data = []
@@ -79,18 +75,8 @@ def veri_yukle():
                 d['norm_icerik'] = tr_normalize(ham_icerik)
                 processed_data.append(d)
             return processed_data
-
-    except json.JSONDecodeError as e:
-        # İŞTE BURASI HATAYI SÖYLEYECEK
-        st.error(f"🚨 JSON GRAMER HATASI VAR!")
-        st.error(f"Hata Mesajı: {e.msg}")
-        st.error(f"Hatalı Satır: {e.lineno}")
-        st.stop() # Uygulamayı durdur ki hatayı gör
-        return []
-        
     except Exception as e:
-        st.error(f"🚨 GENEL BİR HATA OLUŞTU: {e}")
-        st.stop()
+        # Hata varsa kullanıcıya yansıtma, boş liste dön (Uygulama çökmesin)
         return []
 
 def tr_normalize(text):
@@ -108,11 +94,11 @@ if "messages" not in st.session_state:
 if 'expanded_sources' not in st.session_state: st.session_state.expanded_sources = {}
 if 'request_count' not in st.session_state: st.session_state.request_count = 0
 if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
-if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0 # Hız limiti için
+if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0
 
-# Bir saat geçtiyse sayacı sıfırla ama session limiti ayrıdır
+# Bir saat geçtiyse sayacı sıfırla
 if time.time() - st.session_state.last_reset_time > 3600:
-    # Burası global sıfırlama değil, time check için
+    st.session_state.request_count = 0
     st.session_state.last_reset_time = time.time()
 
 # --- SIDEBAR ---
@@ -123,18 +109,14 @@ with st.sidebar:
     
     secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
     
-    # --- OPTİMİZASYON: Kota Göstergesi ---
     kalan_hak = MAX_MESSAGE_LIMIT - st.session_state.request_count
     if kalan_hak > 0:
         st.info(f"⏳ Kalan Soru Hakkı: **{kalan_hak}**")
     else:
         st.error("🛑 Günlük limit doldu can.")
-    # -------------------------------------
 
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
-        # Sohbeti sıfırlayınca hakkı geri vermek istemiyorsan alt satırı sil
-        # st.session_state.request_count = 0 
         st.rerun()
 
 # --- HEADER ---
@@ -155,11 +137,21 @@ def alakali_icerik_bul(kelime, db):
         puan = 0
         d_baslik = d.get('norm_baslik', '')
         d_icerik = d.get('norm_icerik', '')
+        
+        # Tam eşleşme
         if norm_sorgu in d_baslik: puan += 200
         elif norm_sorgu in d_icerik: puan += 100
+        
+        # Kelime bazlı eşleşme
         for k in anahtarlar:
             if k in d_baslik: puan += 40
             elif k in d_icerik: puan += 10
+            
+        # ÖZEL İÇERİK BOOST (Gülbank ve Deyişler öne çıksın)
+        ozel_terimler = ["gulbank", "deyis", "nefes", "duvaz", "siir", "tercuman"]
+        if any(t in d_baslik for t in ozel_terimler):
+            if puan > 0: puan += 300 # Eğer alakalıysa onu en tepeye taşı
+            
         if puan > 50:
             sonuclar.append({
                 "baslik": d.get('baslik', 'Başlıksız'),
@@ -184,7 +176,6 @@ def get_best_available_model():
                 available_models.append(m.name)
         
         if not available_models: return None
-
         preferences = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
         for p in preferences:
             for m in available_models:
@@ -193,18 +184,17 @@ def get_best_available_model():
     except Exception:
         return "gemini-1.5-flash"
 
-# --- OPTİMİZASYON: YEREL CEVAP KONTROLÜ (API KULLANMAZ) ---
+# --- YEREL CEVAP KONTROLÜ (KOTA DOSTU) ---
 def yerel_cevap_kontrol(text):
     text = tr_normalize(text)
-    # Basit selamlaşmalar için kotayı harcama
-    selamlar = ["merhaba", "selam", "selamun aleykum", "iyi gunler", "gunaydin", "iyi aksamlar"]
-    hal_hatir = ["nasilsin", "naber", "ne var ne yok", "nasıl gidiyor"]
-    kimlik = ["sen kimsin", "adın ne", "necisin", "kimsin"]
+    selamlar = ["merhaba", "selam", "selamun aleykum", "gunaydin", "iyi aksamlar"]
+    hal_hatir = ["nasilsin", "naber", "ne var ne yok"]
+    kimlik = ["sen kimsin", "adın ne", "necisin"]
     
     if any(s == text for s in selamlar):
         return random.choice(["Aşk ile merhaba can.", "Selam olsun gönlü güzel olana.", "Merhaba erenler, hoş geldin."])
     if any(h in text for h in hal_hatir):
-        return random.choice(["Şükür Hak'ka, hizmetteyiz.", "Gönüller bir olsun, biz iyiyiz can.", "Erenlerin himmetiyle yoldayız."])
+        return random.choice(["Şükür Hak'ka, hizmetteyiz.", "Gönüller bir olsun, biz iyiyiz can."])
     if any(k in text for k in kimlik):
         return "Ben Can Dede. YolPedia'nın hizmetkârıyım. Gönül kırmaz, yol sorana yoldaş olurum."
     return None
@@ -215,47 +205,45 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         yield "❌ HATA: API Anahtarı eksik."
         return
 
-    # --- OPTİMİZASYON: Önce yerel veriye bak (Bedava) ---
+    # Yerel cevap (Bedava)
     yerel_cevap = yerel_cevap_kontrol(user_prompt)
     if yerel_cevap:
-        # Yapay bir gecikme ekle ki çok robotik durmasın, stream efekti ver
         time.sleep(0.5) 
         yield yerel_cevap
         return
-    # ----------------------------------------------------
 
-    # --- SİSTEM YÖNERGESİ (DİL ve ÜSLUP AYARLARI) ---
+    # Sistem Promptu
     if "Sohbet" in mod:
-        system_prompt = """Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, gönül gözü açık bir rehbersin.
-
-        KESİN KURALLAR:
-        1. DİL: Kullanıcı seninle hangi dilde konuşursa mutlaka O DİLDE cevap ver.
-        2. ÜSLUP: 'Selamünaleyküm' yerine 'Aşk ile', 'Merhaba Can', 'Erenler' kullan.
-        3. ADAPTASYON: Soru basitse masalsı, derinse tasavvufi cevap ver.
-        4. TAVIR: Yargılama, sevgi dolu ol.
+        system_prompt = """Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş bir rehbersin.
+        KURALLAR:
+        1. DİL: Kullanıcı hangi dilde sorarsa o dilde cevapla.
+        2. ÜSLUP: 'Aşk ile', 'Can', 'Erenler' hitaplarını kullan.
+        3. İÇERİK: Sorulan soru bir dua, gülbank veya deyiş ise; KAYNAKLAR kısmındaki metni birebir, değiştirmeden oku.
+        4. TAVIR: Sevgi dolu, birleştirici ol.
         """
-        full_content = system_prompt + "\n\nKullanıcı: " + user_prompt
+        # Gülbank soruluyorsa kaynakları da prompta ekle ki ezberden okumasın
+        if kaynaklar:
+             kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik']}" for k in kaynaklar[:2]])
+             full_content = system_prompt + f"\n\nREFERANS KAYNAKLAR (Bunları kullan):\n{kaynak_metni}\n\nKullanıcı: " + user_prompt
+        else:
+             full_content = system_prompt + "\n\nKullanıcı: " + user_prompt
     else:
         if not kaynaklar:
             yield "📚 Aradığın konuyla ilgili YolPedia'da kaynak bulamadım can."
             return
         
-        # --- OPTİMİZASYON: Kaynakları Kısalt (Token Tasarrufu) ---
-        # İçeriğin tamamını değil, ilk 400 karakterini gönderiyoruz.
-        kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:400]}" for k in kaynaklar[:3]])
-        
+        kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
         system_prompt = f"""Sen YolPedia asistanısın.
         GÖREV: Aşağıdaki kaynaklara dayanarak net bilgi ver.
         DİL KURALI: Kullanıcı hangi dilde sorduysa o dilde cevapla.
         KAYNAKLAR:\n{kaynak_metni}"""
-        
         full_content = system_prompt + "\n\nSoru: " + user_prompt
 
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
         model_name = get_best_available_model()
         if not model_name:
-            yield "❌ Google API modellerine erişilemiyor."
+            yield "❌ Google API erişimi yok."
             return
 
         model = genai.GenerativeModel(model_name)
@@ -267,15 +255,9 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     except Exception as e:
         yield f"⚠️ Bağlantı hatası: {str(e)}"
 
-# --- SCROLL FONKSİYONU ---
+# --- SCROLL ---
 def scroll_to_bottom():
-    # JavaScript ile sayfanın en altına yumuşak geçişle in
-    js = """
-    <script>
-        var body = window.parent.document.querySelector(".main");
-        body.scrollTop = body.scrollHeight;
-    </script>
-    """
+    js = """<script>var body = window.parent.document.querySelector(".main"); body.scrollTop = body.scrollHeight;</script>"""
     components.html(js, height=0)
 
 # --- UI AKIŞI ---
@@ -287,65 +269,51 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
-    # --- OPTİMİZASYON: KOTA VE HIZ KONTROLÜ ---
+    # Limit Kontrolleri
     if st.session_state.request_count >= MAX_MESSAGE_LIMIT:
-        st.error(f"🛑 Erenler, bugünlük muhabbet kotamız doldu ({MAX_MESSAGE_LIMIT} soru). Yarın yine bekleriz.")
+        st.error("🛑 Günlük soru limiti doldu.")
         st.stop()
         
     current_time = time.time()
     if current_time - st.session_state.last_request_time < MIN_TIME_DELAY:
-        st.warning("⏳ Biraz nefeslen can, çok hızlı soruyorsun...")
+        st.warning("⏳ Biraz yavaş can...")
         st.stop()
     
     st.session_state.last_request_time = current_time
     st.session_state.request_count += 1
-    # ------------------------------------------
 
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
-    
-    # Mesaj gönderildiğinde hemen aşağı kaydır
     scroll_to_bottom()
     
     kaynaklar = []
-    if "Araştırma" in secilen_mod:
-        kaynaklar, _ = alakali_icerik_bul(prompt, st.session_state.db)
+    # Hem sohbet hem araştırma modunda veritabanına bak ki gülbankları bulsun
+    kaynaklar, _ = alakali_icerik_bul(prompt, st.session_state.db)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
         full_text = ""
         
-        # --- DÜŞÜNÜYOR ANİMASYONU ---
-        # Cevap gelene kadar dönecek olan spinner
-        with st.spinner("Can Dede tefekküre daldı, cevap hazırlıyor..."):
-            # Generator'ı oluşturuyoruz (API çağrısı burada başlar)
+        with st.spinner("Can Dede tefekküre daldı..."):
             response_generator = can_dede_cevapla(prompt, kaynaklar, secilen_mod)
-            
-            # İlk veriyi almayı deneyerek spinner'ın beklemesini sağlıyoruz
             try:
                 first_chunk = next(response_generator)
                 full_text += first_chunk
                 placeholder.markdown(full_text + "▌")
-            except StopIteration:
-                pass
-            except Exception as e:
-                full_text = f"Hata: {e}"
+            except StopIteration: pass
+            except Exception as e: full_text = f"Hata: {e}"
 
-        # --- STREAMING ---
         for chunk in response_generator:
             full_text += chunk
             placeholder.markdown(full_text + "▌")
         
         placeholder.markdown(full_text)
         
-        if "Araştırma" in secilen_mod and kaynaklar:
+        if kaynaklar and "Araştırma" in secilen_mod:
             st.markdown("---")
             st.markdown("**📚 Kaynaklar:**")
             for k in kaynaklar[:5]:
                 st.markdown(f"• [{k['baslik']}]({k['link']})")
         
         st.session_state.messages.append({"role": "assistant", "content": full_text})
-        
-        # --- OTOMATİK SCROLL UP (ASLINDA DOWN) ---
-        # Cevap bittiğinde sayfanın en altına kaydır
         scroll_to_bottom()
