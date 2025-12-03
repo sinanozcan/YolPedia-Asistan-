@@ -62,37 +62,60 @@ st.markdown("""
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f: 
-            # JSON'daki kontrol karakterlerini temizle
-            content = f.read()
-            # Geçersiz kontrol karakterlerini temizle (ASCII 0-31 arası, tab/newline/return hariç)
-            import re
-            content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', content)
-            
+        # Dosyayı binary modda oku ve decode et (daha toleranslı)
+        with open(DATA_FILE, "rb") as f: 
+            content = f.read().decode("utf-8", errors="ignore")
+        
+        # Tüm kontrol karakterlerini temizle (tab, newline, return hariç)
+        import re
+        content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', content)
+        
+        # Satır sonlarını normalize et
+        content = content.replace('\r\n', '\n').replace('\r', '\n')
+        
+        try:
             data = json.loads(content)
-            processed_data = []
-            for d in data:
-                if not isinstance(d, dict): 
-                    continue
-                ham_baslik = d.get('baslik', '')
-                ham_icerik = d.get('icerik', '')
-                
-                # İçerikteki kontrol karakterlerini de temizle
-                if isinstance(ham_baslik, str):
-                    ham_baslik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', ham_baslik)
-                if isinstance(ham_icerik, str):
-                    ham_icerik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', ham_icerik)
-                
-                d['norm_baslik'] = tr_normalize(ham_baslik)
-                d['norm_icerik'] = tr_normalize(ham_icerik)
-                processed_data.append(d)
-            return processed_data
+        except json.JSONDecodeError as e:
+            # Eğer hala hata varsa, daha agresif temizlik yap
+            st.warning(f"İlk deneme başarısız, agresif temizlik yapılıyor...")
+            
+            # Tüm non-ASCII ve kontrol karakterlerini kaldır
+            content = ''.join(char for char in content if ord(char) >= 32 or char in '\n\r\t')
+            data = json.loads(content)
+        
+        processed_data = []
+        for d in data:
+            if not isinstance(d, dict): 
+                continue
+            
+            ham_baslik = str(d.get('baslik', '')).strip()
+            ham_icerik = str(d.get('icerik', '')).strip()
+            
+            # İçerikteki kontrol karakterlerini de temizle
+            ham_baslik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', ham_baslik)
+            ham_icerik = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', ham_icerik)
+            
+            d['baslik'] = ham_baslik
+            d['icerik'] = ham_icerik
+            d['norm_baslik'] = tr_normalize(ham_baslik)
+            d['norm_icerik'] = tr_normalize(ham_icerik)
+            processed_data.append(d)
+        
+        st.success(f"✅ {len(processed_data)} kayıt başarıyla yüklendi!")
+        return processed_data
+        
     except json.JSONDecodeError as e:
-        st.error(f"JSON formatı hatalı: {e}")
+        st.error(f"❌ JSON formatı hatalı: Satır {e.lineno}, Sütun {e.colno}")
         st.info("💡 JSON dosyasını https://jsonlint.com/ sitesinde kontrol edin.")
+        st.code(f"Hata detayı: {str(e)}", language="text")
+        return []
+    except FileNotFoundError:
+        st.error(f"❌ Dosya bulunamadı: {DATA_FILE}")
         return []
     except Exception as e:
-        st.warning(f"Veri yükleme hatası: {e}")
+        st.error(f"❌ Beklenmeyen hata: {e}")
+        import traceback
+        st.code(traceback.format_exc(), language="text")
         return []
 
 def tr_normalize(text):
@@ -127,6 +150,45 @@ if time.time() - st.session_state.last_reset_time > 3600:
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Mod Seçimi")
+    
+    # JSON TEMİZLEME BUTONU
+    if st.button("🧹 JSON Dosyasını Temizle", help="Geçersiz karakterleri temizler"):
+        with st.spinner("Dosya temizleniyor..."):
+            try:
+                import re
+                import shutil
+                
+                # Orijinali yedekle
+                shutil.copy(DATA_FILE, f"{DATA_FILE}.backup")
+                
+                # Oku ve temizle
+                with open(DATA_FILE, "rb") as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+                
+                # Kontrol karakterlerini temizle
+                clean_content = re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]', '', content)
+                clean_content = clean_content.replace('\r\n', '\n').replace('\r', '\n')
+                
+                # Parse et
+                data = json.loads(clean_content)
+                
+                # Temiz dosyayı kaydet
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                
+                st.success(f"✅ Dosya temizlendi! {len(data)} kayıt")
+                st.info(f"📦 Yedek: {DATA_FILE}.backup")
+                
+                # Cache'i temizle ve yeniden yükle
+                st.cache_data.clear()
+                st.session_state.db = veri_yukle()
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Temizleme hatası: {e}")
+    
+    st.markdown("---")
+    
     if st.session_state.db: 
         st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
     else: 
