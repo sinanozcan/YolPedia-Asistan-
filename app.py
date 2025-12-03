@@ -57,6 +57,42 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- HATA GÖSTEREN VERİ YÜKLEME FONKSİYONU ---
+@st.cache_data(persist="disk", show_spinner=False)
+def veri_yukle():
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f: 
+            content = f.read()
+            if not content:
+                st.error("🚨 JSON Dosyası Boş!")
+                return []
+            
+            # JSON'u yüklemeyi dene
+            data = json.loads(content)
+            
+            processed_data = []
+            for d in data:
+                if not isinstance(d, dict): continue
+                ham_baslik = d.get('baslik', '')
+                ham_icerik = d.get('icerik', '')
+                d['norm_baslik'] = tr_normalize(ham_baslik)
+                d['norm_icerik'] = tr_normalize(ham_icerik)
+                processed_data.append(d)
+            return processed_data
+
+    except json.JSONDecodeError as e:
+        # İŞTE BURASI HATAYI SÖYLEYECEK
+        st.error(f"🚨 JSON GRAMER HATASI VAR!")
+        st.error(f"Hata Mesajı: {e.msg}")
+        st.error(f"Hatalı Satır: {e.lineno}")
+        st.stop() # Uygulamayı durdur ki hatayı gör
+        return []
+        
+    except Exception as e:
+        st.error(f"🚨 GENEL BİR HATA OLUŞTU: {e}")
+        st.stop()
+        return []
+
 # --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
