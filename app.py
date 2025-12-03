@@ -93,23 +93,6 @@ def veri_yukle():
         st.stop()
         return []
 
-# --- VERİ YÜKLEME ---
-@st.cache_data(persist="disk", show_spinner=False)
-def veri_yukle():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f: 
-            data = json.load(f)
-            processed_data = []
-            for d in data:
-                if not isinstance(d, dict): continue
-                ham_baslik = d.get('baslik', '')
-                ham_icerik = d.get('icerik', '')
-                d['norm_baslik'] = tr_normalize(ham_baslik)
-                d['norm_icerik'] = tr_normalize(ham_icerik)
-                processed_data.append(d)
-            return processed_data
-    except: return []
-
 def tr_normalize(text):
     if not isinstance(text, str): return ""
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
