@@ -6,7 +6,12 @@ import time
 import json
 import random
 
-# ================= GÜVENLİ BAŞLANGIÇ =================
+# ================= GÜVENLİ BAŞLANGIÇ & AYARLAR =================
+# --- OPTİMİZAYON AYARLARI ---
+MAX_MESSAGE_LIMIT = 15     # Bir kullanıcının oturum başına sorabileceği maksimum soru
+MIN_TIME_DELAY = 3         # İki soru arasında geçmesi gereken minimum süre (saniye)
+# ----------------------------
+
 GOOGLE_API_KEY = None
 try:
     GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
@@ -84,9 +89,11 @@ if "messages" not in st.session_state:
 if 'expanded_sources' not in st.session_state: st.session_state.expanded_sources = {}
 if 'request_count' not in st.session_state: st.session_state.request_count = 0
 if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
+if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0 # Hız limiti için
 
+# Bir saat geçtiyse sayacı sıfırla ama session limiti ayrıdır
 if time.time() - st.session_state.last_reset_time > 3600:
-    st.session_state.request_count = 0
+    # Burası global sıfırlama değil, time check için
     st.session_state.last_reset_time = time.time()
 
 # --- SIDEBAR ---
@@ -96,8 +103,19 @@ with st.sidebar:
     else: st.error("⚠️ Veritabanı yüklenemedi!")
     
     secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
+    
+    # --- OPTİMİZASYON: Kota Göstergesi ---
+    kalan_hak = MAX_MESSAGE_LIMIT - st.session_state.request_count
+    if kalan_hak > 0:
+        st.info(f"⏳ Kalan Soru Hakkı: **{kalan_hak}**")
+    else:
+        st.error("🛑 Günlük limit doldu can.")
+    # -------------------------------------
+
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
+        # Sohbeti sıfırlayınca hakkı geri vermek istemiyorsan alt satırı sil
+        # st.session_state.request_count = 0 
         st.rerun()
 
 # --- HEADER ---
@@ -156,22 +174,46 @@ def get_best_available_model():
     except Exception:
         return "gemini-1.5-flash"
 
+# --- OPTİMİZASYON: YEREL CEVAP KONTROLÜ (API KULLANMAZ) ---
+def yerel_cevap_kontrol(text):
+    text = tr_normalize(text)
+    # Basit selamlaşmalar için kotayı harcama
+    selamlar = ["merhaba", "selam", "selamun aleykum", "iyi gunler", "gunaydin", "iyi aksamlar"]
+    hal_hatir = ["nasilsin", "naber", "ne var ne yok", "nasıl gidiyor"]
+    kimlik = ["sen kimsin", "adın ne", "necisin", "kimsin"]
+    
+    if any(s == text for s in selamlar):
+        return random.choice(["Aşk ile merhaba can.", "Selam olsun gönlü güzel olana.", "Merhaba erenler, hoş geldin."])
+    if any(h in text for h in hal_hatir):
+        return random.choice(["Şükür Hak'ka, hizmetteyiz.", "Gönüller bir olsun, biz iyiyiz can.", "Erenlerin himmetiyle yoldayız."])
+    if any(k in text for k in kimlik):
+        return "Ben Can Dede. YolPedia'nın hizmetkârıyım. Gönül kırmaz, yol sorana yoldaş olurum."
+    return None
+
 # --- CEVAP FONKSİYONU ---
 def can_dede_cevapla(user_prompt, kaynaklar, mod):
     if not GOOGLE_API_KEY:
         yield "❌ HATA: API Anahtarı eksik."
         return
 
+    # --- OPTİMİZASYON: Önce yerel veriye bak (Bedava) ---
+    yerel_cevap = yerel_cevap_kontrol(user_prompt)
+    if yerel_cevap:
+        # Yapay bir gecikme ekle ki çok robotik durmasın, stream efekti ver
+        time.sleep(0.5) 
+        yield yerel_cevap
+        return
+    # ----------------------------------------------------
+
     # --- SİSTEM YÖNERGESİ (DİL ve ÜSLUP AYARLARI) ---
     if "Sohbet" in mod:
         system_prompt = """Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, gönül gözü açık bir rehbersin.
 
         KESİN KURALLAR:
-        1. DİL: Kullanıcı seninle hangi dilde konuşursa (Türkçe, İngilizce, Almanca, Fransızca vb.) mutlaka O DİLDE cevap ver.
-        2. ÜSLUP: 'Selamünaleyküm' gibi kalıplar yerine 'Aşk ile', 'Merhaba Can', 'Erenler', 'Gönül Dostu' hitaplarını kullan.
-        3. TERMİNOLOJİ: Ortodoks İslami terimler yerine Alevi-Bektaşi terminolojisini (Hak, Hakikat, Marifet, Dört Kapı, Rıza Şehri, Enel Hak, Pir, Mürşit) öncelikle kullan.
-        4. ADAPTASYON: Kullanıcının sorusunu analiz et. Eğer soru basitse veya çocukçaysa; masalsı, sıcak ve sade bir dille anlat. Eğer soru akademik, felsefi veya derinse; tasavvufi derinliği olan (batıni) bir üslupla cevap ver.
-        5. TAVIR: Asla yargılayıcı olma. Hümanist, birleştirici ve sevgi dolu ol. "Bildiğimin âlimiyim, bilmediğinin tâlibiyim" düsturuyla hareket et.
+        1. DİL: Kullanıcı seninle hangi dilde konuşursa mutlaka O DİLDE cevap ver.
+        2. ÜSLUP: 'Selamünaleyküm' yerine 'Aşk ile', 'Merhaba Can', 'Erenler' kullan.
+        3. ADAPTASYON: Soru basitse masalsı, derinse tasavvufi cevap ver.
+        4. TAVIR: Yargılama, sevgi dolu ol.
         """
         full_content = system_prompt + "\n\nKullanıcı: " + user_prompt
     else:
@@ -179,9 +221,11 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
             yield "📚 Aradığın konuyla ilgili YolPedia'da kaynak bulamadım can."
             return
         
-        kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:500]}" for k in kaynaklar[:3]])
+        # --- OPTİMİZASYON: Kaynakları Kısalt (Token Tasarrufu) ---
+        # İçeriğin tamamını değil, ilk 400 karakterini gönderiyoruz.
+        kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:400]}" for k in kaynaklar[:3]])
         
-        system_prompt = f"""Sen bir YolPedia kütüphane asistanısın.
+        system_prompt = f"""Sen YolPedia asistanısın.
         GÖREV: Aşağıdaki kaynaklara dayanarak net bilgi ver.
         DİL KURALI: Kullanıcı hangi dilde sorduysa o dilde cevapla.
         KAYNAKLAR:\n{kaynak_metni}"""
@@ -224,11 +268,20 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
-    if st.session_state.request_count >= 100:
-        st.error("Limit doldu.")
+    # --- OPTİMİZASYON: KOTA VE HIZ KONTROLÜ ---
+    if st.session_state.request_count >= MAX_MESSAGE_LIMIT:
+        st.error(f"🛑 Erenler, bugünlük muhabbet kotamız doldu ({MAX_MESSAGE_LIMIT} soru). Yarın yine bekleriz.")
         st.stop()
         
+    current_time = time.time()
+    if current_time - st.session_state.last_request_time < MIN_TIME_DELAY:
+        st.warning("⏳ Biraz nefeslen can, çok hızlı soruyorsun...")
+        st.stop()
+    
+    st.session_state.last_request_time = current_time
     st.session_state.request_count += 1
+    # ------------------------------------------
+
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     
@@ -250,7 +303,6 @@ if prompt:
             response_generator = can_dede_cevapla(prompt, kaynaklar, secilen_mod)
             
             # İlk veriyi almayı deneyerek spinner'ın beklemesini sağlıyoruz
-            # Bu sayede 'düşünüyor' kısmı API cevap verene kadar ekranda kalır
             try:
                 first_chunk = next(response_generator)
                 full_text += first_chunk
