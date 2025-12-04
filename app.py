@@ -8,7 +8,7 @@ import random
 
 # ================= GÜVENLİ BAŞLANGIÇ & AYARLAR =================
 # --- OPTİMİZAYON AYARLARI ---
-MAX_MESSAGE_LIMIT = 20     # Günlük soru hakkı
+MAX_MESSAGE_LIMIT = 10     # Günlük soru hakkı
 MIN_TIME_DELAY = 2         # Seri tıklama engeli (saniye)
 # ----------------------------
 
