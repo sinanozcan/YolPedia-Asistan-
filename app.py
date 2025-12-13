@@ -8,7 +8,7 @@ import random
 
 # ================= GÜVENLİ BAŞLANGIÇ & AYARLAR =================
 # --- OPTİMİZAYON AYARLARI ---
-MAX_MESSAGE_LIMIT = 10     # Günlük soru hakkı
+MAX_MESSAGE_LIMIT = 20     # Günlük soru hakkı (Hata almamak için 20 ideal)
 MIN_TIME_DELAY = 2         # Seri tıklama engeli (saniye)
 # ----------------------------
 
@@ -166,23 +166,11 @@ def alakali_icerik_bul(kelime, db):
         return [s for s in sonuclar if s['puan'] >= esik], norm_sorgu
     return [], norm_sorgu
 
-# --- AKILLI MODEL BULUCU ---
+# --- AKILLI MODEL BULUCU (DÜZELTİLDİ) ---
 def get_best_available_model():
-    try:
-        model_list = genai.list_models()
-        available_models = []
-        for m in model_list:
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        if not available_models: return None
-        preferences = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro", "gemini-pro"]
-        for p in preferences:
-            for m in available_models:
-                if p in m: return m
-        return available_models[0]
-    except Exception:
-        return "gemini-1.5-flash"
+    # Hata riskini sıfırlamak için en hızlı ve ücretsiz modeli sabitliyoruz.
+    # Macera aramaya gerek yok, 'flash' modeli en sağlamıdır.
+    return "gemini-1.5-flash"
 
 # --- YEREL CEVAP KONTROLÜ (KOTA DOSTU) ---
 def yerel_cevap_kontrol(text):
@@ -242,10 +230,7 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
         model_name = get_best_available_model()
-        if not model_name:
-            yield "❌ Google API erişimi yok."
-            return
-
+        
         model = genai.GenerativeModel(model_name)
         response = model.generate_content(full_content, stream=True)
         
