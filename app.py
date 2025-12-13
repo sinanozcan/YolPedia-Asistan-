@@ -33,7 +33,7 @@ if not GOOGLE_API_KEY or len(GOOGLE_API_KEY) < 10:
     st.error("❌ API Anahtarı bulunamadı! Lütfen Streamlit panelinde 'Secrets' kısmına 'API_KEY' adıyla geçerli anahtarınızı ekleyin.")
     st.stop()
 
-# --- CSS (ESKİ HALİNE GETİRİLDİ) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
@@ -95,6 +95,7 @@ if 'request_count' not in st.session_state: st.session_state.request_count = 0
 if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0
 
+# Bir saat geçtiyse sayacı sıfırla
 if time.time() - st.session_state.last_reset_time > 3600:
     st.session_state.request_count = 0
     st.session_state.last_reset_time = time.time()
@@ -117,7 +118,7 @@ with st.sidebar:
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER (ESKİ HALİNE GETİRİLDİ) ---
+# --- HEADER ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
@@ -174,7 +175,7 @@ def yerel_cevap_kontrol(text):
         return "Ben Can Dede. YolPedia'nın hizmetkârıyım. Gönül kırmaz, yol sorana yoldaş olurum."
     return None
 
-# --- CEVAP FONKSİYONU (DÜZELTİLMİŞ MODEL SEÇİMİ) ---
+# --- CEVAP FONKSİYONU ---
 def can_dede_cevapla(user_prompt, kaynaklar, mod):
     if not GOOGLE_API_KEY:
         yield "❌ HATA: API Anahtarı eksik."
@@ -198,27 +199,19 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
         full_content = f"Sen YolPedia asistanısın. Sadece bu kaynaklara göre cevapla:\n{kaynak_metni}\n\nSoru: {user_prompt}"
 
-    # --- MODEL SEÇİM MEKANİZMASI ---
-    genai.configure(api_key=GOOGLE_API_KEY)
-    
-    # 404 Hatasını önlemek için sırayla modelleri dener
-    model_listesi = ["gemini-1.5-flash", "gemini-1.0-pro", "gemini-pro"]
-    
-    basarili = False
-    for model_adi in model_listesi:
-        try:
-            model = genai.GenerativeModel(model_adi)
-            response = model.generate_content(full_content, stream=True)
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-                    basarili = True
-            if basarili: break # Eğer cevap geldiyse döngüden çık
-        except Exception:
-            continue # Bu model çalışmadıysa sıradakine geç
-
-    if not basarili:
-        yield "⚠️ Can Dost, şu an Google sistemlerinde yoğunluk var veya model bulunamadı. Lütfen sayfayı yenileyip tekrar dene."
+    # --- GOOGLE BAĞLANTISI ---
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        # EN GÜNCEL VE HIZLI MODEL
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(full_content, stream=True)
+        
+        for chunk in response:
+            if chunk.text: yield chunk.text
+            
+    except Exception as e:
+        # HATA VARSA GİZLEME, DİREKT GÖSTER (DEBUG İÇİN)
+        yield f"⚠️ Hata Oluştu (Kod: {str(e)})"
 
 # --- SCROLL ---
 def scroll_to_bottom():
