@@ -40,9 +40,12 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # Only use gemini-1.5-flash (most reliable and fast)
-            # gemini-1.5-pro is not consistently available
-            self.GEMINI_MODELS = ["gemini-1.5-flash"]
+            # Use the latest stable Gemini 2.0 models (December 2024+)
+            # gemini-1.5-flash is deprecated and returns 404
+            self.GEMINI_MODELS = [
+                "gemini-2.0-flash-exp",  # Latest experimental (fastest)
+                "gemini-2.0-flash",      # Stable 2.0
+            ]
 
 config = AppConfig()
 
