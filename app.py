@@ -19,7 +19,7 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 40
+    MAX_MESSAGE_LIMIT: int = 10
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
@@ -380,7 +380,7 @@ def render_header():
         </div>
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
             <img src="{config.CAN_DEDE_ICON}" 
-                 style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                 style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
             <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
                 {config.ASSISTANT_NAME}
             </h1>
