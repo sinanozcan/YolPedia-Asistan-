@@ -285,13 +285,13 @@ def get_local_response(text: str) -> Optional[str]:
     
     if any(greeting == normalized for greeting in greetings):
         return random.choice([
-            "Aşk ile merhaba can.",
-            "Selam olsun, hoş geldin.",
-            "Hoş geldin Can Dost."
+            "Aşk ile, merhaba güzel can.",
+            "Selam olsun. Hoş geldin, sevgili dost.",
+            "Hoş geldin, can dost."
         ])
     
     if any(query in normalized for query in status_queries):
-        return "Şükür Hak'ka, hizmetteyiz can."
+        return "Şükür Hak'ka, yolun hizmetindeyiz erenler."
     
     return None
 
@@ -300,7 +300,7 @@ def get_local_response(text: str) -> Optional[str]:
 def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
     """Build the prompt for the AI model"""
     system_instruction = (
-        "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş bir rehbersin. "
+        "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin. "
         "Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde samimi ve sıcak olsun."
     )
     
@@ -429,11 +429,11 @@ def render_header():
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="{config.YOLPEDIA_ICON}" style="width: 80px; height: auto;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
         </div>
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
             <img src="{config.CAN_DEDE_ICON}" 
-                 style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                 style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
             <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
                 {config.ASSISTANT_NAME}
             </h1>
@@ -456,7 +456,7 @@ def render_sidebar() -> str:
         if st.button("🗑️ Sohbeti Sıfırla"):
             st.session_state.messages = [{
                 "role": "assistant",
-                "content": "Sohbet sıfırlandı. Buyur can."
+                "content": "Sohbet sıfırlandı. Buyur can. Sendeyim yine."
             }]
             st.session_state.request_count = 0
             logger.info("Chat history reset by user")
