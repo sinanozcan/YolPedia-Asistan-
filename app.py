@@ -36,6 +36,7 @@ st.markdown("""
     .stChatMessage { margin-bottom: 10px; }
     .stSpinner > div { border-top-color: #ff4b4b !important; }
     .block-container { padding-top: 2rem; }
+    h1 { line-height: 1.2 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -75,27 +76,21 @@ with st.sidebar:
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER (HTML - LOGO GERİ EKLENDİ) ---
+# --- HEADER (TEMİZ HTML) ---
 st.markdown(f"""
-    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 20px;">
-        
-        <!-- ÜST LOGO (Bunu unutmuştum, geri koydum) -->
-        <div style="margin-bottom: 15px;">
-            <img src="{YOLPEDIA_ICON}" style="width: 80px; opacity: 1.0;">
-        </div>
-
-        <!-- ORTA KISIM: RESİM VE BAŞLIK -->
-        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-            <img src="{CAN_DEDE_ICON}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
-            <h1 style="font-size: 34px; font-weight: 700; margin: 0; padding: 0; color: #ffffff; line-height: 1;">{ASISTAN_ISMI}</h1>
-        </div>
-
-        <!-- ALT KISIM: MOTTO -->
-        <div style="margin-top: 5px; font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
-            {MOTTO}
-        </div>
+<div style="text-align: center; margin-bottom: 30px;">
+    <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+        <img src="{YOLPEDIA_ICON}" style="width: 80px; height: auto;">
     </div>
-    """, unsafe_allow_html=True)
+    <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+        <img src="{CAN_DEDE_ICON}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+        <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">{ASISTAN_ISMI}</h1>
+    </div>
+    <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+        {MOTTO}
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 # --- ARAMA ---
 def alakali_icerik_bul(kelime, db):
