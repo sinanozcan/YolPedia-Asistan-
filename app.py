@@ -23,26 +23,67 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-# --- SAYFA AYARLARI (Kutu Görünüm) ---
+# --- SAYFA AYARLARI ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="centered")
 
 if not GOOGLE_API_KEY:
     st.error("❌ API Anahtarı eksik! Lütfen Secrets ayarlarını kontrol et.")
     st.stop()
 
-# --- CSS (APP 17 İLE BİREBİR AYNI) ---
+# --- CSS (GÖRSEL DÜZELTMELER YAPILDI) ---
 st.markdown("""
 <style>
-    .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
-    .dede-img { width: 80px; height: 80px; border-radius: 50%; margin-right: 15px; object-fit: cover; border: 2px solid #eee; }
-    .title-text { font-size: 36px; font-weight: 700; margin: 0; color: #ffffff; }
-    .subtitle-text { font-size: 18px; font-weight: 400; margin-top: 5px; color: #aaaaaa; text-align: center; }
-    .top-logo-container { display: flex; justify-content: center; margin-bottom: 20px; padding-top: 10px; }
+    /* Ana Başlık Kutusu: İkon ve Yazıyı kapsar */
+    .main-header { 
+        display: flex; 
+        align-items: center; /* DİKEY ORTALAMA (İkon ve yazı aynı hizada) */
+        justify-content: center; 
+        margin-top: 10px; 
+        margin-bottom: 0px; /* Alt boşluğu sıfırladık */
+    }
+    
+    /* Can Dede Resmi */
+    .dede-img { 
+        width: 80px; 
+        height: 80px; 
+        border-radius: 50%; 
+        margin-right: 15px; 
+        object-fit: cover; 
+        border: 2px solid #eee; 
+    }
+    
+    /* Başlık Yazısı */
+    .title-text { 
+        font-size: 36px; 
+        font-weight: 700; 
+        margin: 0; 
+        color: #ffffff; 
+        line-height: 1.2; /* Satır yüksekliğini sabitledik */
+        padding-top: 0;
+    }
+    
+    /* Üstteki YolPedia Logosu */
+    .top-logo-container { 
+        display: flex; 
+        justify-content: center; 
+        margin-bottom: 10px; 
+        padding-top: 10px; 
+    }
     .top-logo { width: 80px; opacity: 1.0; }
-    .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
+    
+    /* Motto Yazısı */
+    .motto-text { 
+        text-align: center; 
+        font-size: 16px; 
+        font-style: italic; 
+        color: #cccccc; 
+        margin-top: -5px; /* YUKARI YAKLAŞTIRMA (Negatif değerle yukarı çektik) */
+        margin-bottom: 25px; 
+        font-family: 'Georgia', serif; 
+    }
+    
     @media (prefers-color-scheme: light) { 
         .title-text { color: #000000; } 
-        .subtitle-text { color: #555555; }
         .motto-text { color: #555555; } 
     }
     .stChatMessage { margin-bottom: 10px; }
@@ -93,7 +134,7 @@ with st.sidebar:
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER (APP 17 İLE BİREBİR AYNI YAPI) ---
+# --- HEADER ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
@@ -109,19 +150,20 @@ def alakali_icerik_bul(kelime, db):
     
     for d in db:
         puan = 0
-        d_baslik = d.get('norm_baslik', '')
-        d_icerik = d.get('norm_icerik', '')
-        if norm_sorgu in d_baslik: puan += 200
-        elif norm_sorgu in d_icerik: puan += 100
+        d_baslik = d.get('baslik', '')
+        d_icerik = d.get('icerik', '')
+        if norm_sorgu in tr_normalize(d_baslik): puan += 200
+        elif norm_sorgu in tr_normalize(d_icerik): puan += 100
         for k in anahtarlar:
-            if k in d_baslik: puan += 40
-            elif k in d_icerik: puan += 10
+            if k in tr_normalize(d_baslik): puan += 40
+            elif k in tr_normalize(d_icerik): puan += 10
         
-        if any(x in d_baslik for x in ["gulbank", "deyis", "nefes", "siir"]):
+        # Gülbankları öne çıkar
+        if any(x in tr_normalize(d_baslik) for x in ["gulbank", "deyis", "nefes", "siir"]):
             puan += 300
 
         if puan > 50:
-            sonuclar.append({"baslik": d.get('baslik', 'Başlıksız'), "link": d.get('link', '#'), "icerik": d.get('icerik', '')[:1500], "puan": puan})
+            sonuclar.append({"baslik": d_baslik, "link": d.get('link', '#'), "icerik": d_icerik[:1500], "puan": puan})
             
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     return sonuclar[:5], norm_sorgu
@@ -158,10 +200,10 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
         full_content = f"Sen YolPedia asistanısın. Sadece bu kaynaklara göre cevapla:\n{kaynak_metni}\n\nSoru: {user_prompt}"
 
-    # --- GARANTİ MODEL DÖNGÜSÜ ---
+    # --- MODEL DÖNGÜSÜ ---
     genai.configure(api_key=GOOGLE_API_KEY)
     
-    # Sırayla dene. Biri elbet çalışır.
+    # "Flash" en sağlam ve hızlı olandır. Hata vermez.
     modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
     
     basarili = False
