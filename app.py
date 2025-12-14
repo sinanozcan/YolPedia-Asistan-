@@ -298,127 +298,108 @@ def get_local_response(text: str) -> Optional[str]:
 
 # ===================== AI RESPONSE GENERATOR =====================
 
-def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
-    """Build the prompt for the AI model"""
-    system_instruction = (
-        "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin. "
-        "Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde samimi ve sıcak olsun."
-    )
-    
-    if "Sohbet" in mode:
-        if sources:
-            source_text = "\n".join([
-                f"- {src['baslik']}: {src['icerik']}"
-                for src in sources[:2]
-            ])
-            return (
-                f"{system_instruction}\n\n"
-                f"KAYNAKLAR (Bunları kullanarak cevapla):\n{source_text}\n\n"
-                f"Kullanıcı: {user_query}"
-            )
-        else:
-            return f"{system_instruction}\n\nKullanıcı: {user_query}"
-    else:  # Research mode
-        if not sources:
-            return None
-        
-        source_text = "\n".join([
-            f"- {src['baslik']}: {src['icerik'][:800]}"
-            for src in sources[:3]
-        ])
-        return (
-            f"Sen YolPedia asistanısın. Sadece verilen kaynaklara göre cevapla:\n"
-            f"{source_text}\n\n"
-            f"Soru: {user_query}"
-        )
-
 def generate_ai_response(
     user_query: str,
     sources: List[Dict],
     mode: str
 ) -> Generator[str, None, None]:
-    """Generate AI response using Google Gemini API with smart key rotation"""
+    """
+    Generate AI response using Google Gemini API with VISIBLE robust key rotation.
+    Bu versiyon hata aldığında pes etmez, ekrana bilgi vererek sıradaki anahtara geçer.
+    """
     
-    # Check for local response first
+    # 1. Önce yerel veritabanına bak (API harcamamak için)
     local_response = get_local_response(user_query)
     if local_response:
         time.sleep(0.5)
         yield local_response
         return
     
-    # Build prompt
+    # 2. Prompt hazırla
     prompt = build_prompt(user_query, sources, mode)
-    
     if prompt is None:
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
         return
     
-    last_error = None
     success = False
+    last_error_details = ""
+    
+    # Kullanıcıya işlem durumunu göstermek için geçici alan
+    status_box = st.empty()
 
-    # ANAHTAR DÖNGÜSÜ
+    # ================= ANAHTAR DÖNGÜSÜ =================
+    # Tüm anahtarları sırasıyla dener
     for key_index, current_api_key in enumerate(GOOGLE_API_KEYS):
+        
+        # Eğer bir önceki deneme başarılı olduysa döngüden çık
         if success:
             break
             
+        key_masked = f"...{current_api_key[-4:]}"
+        status_box.info(f"🔄 {key_index + 1}. Anahtar ({key_masked}) deneniyor...")
+        
         try:
-            # Yapılandırmayı sıfırla ve yeni anahtarı ayarla
+            # Yapılandırmayı bu anahtarla ayarla
             genai.configure(api_key=current_api_key)
             
-            # MODEL DÖNGÜSÜ
+            # ================= MODEL DÖNGÜSÜ =================
+            # Mevcut anahtar ile modelleri sırayla dener
             for model_name in config.GEMINI_MODELS:
                 try:
-                    logger.info(f"Trying Key #{key_index + 1} with {model_name}")
-                    
-                    # Modeli yeniden başlat (temiz state için önemli)
+                    # Modeli yükle
                     model = genai.GenerativeModel(model_name)
-                    
                     generation_config = {
                         "temperature": 0.7,
-                        "top_p": 0.95,
-                        "top_k": 40,
                         "max_output_tokens": 1500,
                     }
                     
+                    # İsteği gönder
                     response = model.generate_content(
                         prompt, 
                         stream=True,
                         generation_config=generation_config
                     )
                     
+                    # Yanıtı parça parça al
                     has_content = False
                     for chunk in response:
                         if chunk.text:
+                            # İlk veri geldiğinde başarı kutusunu temizle
+                            status_box.empty()
                             yield chunk.text
                             has_content = True
                     
                     if has_content:
                         success = True
-                        break # Model başarılı olduysa döngüyü kır
+                        break # Model döngüsünden çık (Başarılı!)
                         
-                except Exception as e:
-                    error_str = str(e).lower()
-                    last_error = str(e)
+                except Exception as model_error:
+                    error_msg = str(model_error).lower()
                     
-                    # Eğer hata KOTA (429) ise
-                    if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
-                        logger.warning(f"Key #{key_index + 1} QUOTA EXHAUSTED on {model_name}. Switching key...")
-                        # Bu anahtar bitti demektir, model döngüsünü kır ve bir sonraki ANAHTARA geç
-                        break 
+                    # Eğer hata 429/Quota ise BU ANAHTARI YAK ve sonrakine geç
+                    if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
+                        status_box.warning(f"⚠️ {key_index + 1}. Anahtarın kotası dolmuş. Sıradakine geçiliyor...")
+                        time.sleep(1) # Sistemin nefes alması için bekle
+                        last_error_details = f"Anahtar {key_index+1} Kotası Dolu (429)"
+                        break # Model döngüsünü kır -> Bir sonraki ANAHTARA geçer
                     
-                    # Eğer model bulunamadıysa (404) vs. bir sonraki MODELİ dene
-                    logger.warning(f"Model error ({model_name}): {e}")
+                    # Eğer model bulunamadı vs. ise diğer modeli dene
+                    logger.warning(f"Model hatası: {model_name} -> {model_error}")
                     continue
 
-        except Exception as e:
-            # Genai.configure hatası veya beklenmedik anahtar hatası
-            logger.error(f"Critical error with Key #{key_index + 1}: {e}")
+        except Exception as key_error:
+            # Anahtar yapılandırma hatası
+            status_box.error(f"❌ {key_index + 1}. Anahtar hatalı: {str(key_error)}")
+            last_error_details = str(key_error)
             continue
-    
+            
+    # ================= SONUÇ KONTROLÜ =================
     if not success:
-        logger.error(f"ALL KEYS FAILED. Last error: {last_error}")
-        # Kullanıcıya daha açıklayıcı bir mesaj ver
-        yield f"⚠️ Şu anda tüm sunucularımız çok yoğun (Hata: 429). Lütfen 1-2 dakika bekleyip tekrar dene can."
+        status_box.error("❌ Tüm denemeler başarısız oldu.")
+        yield f"⚠️ Can dost, elimdeki {len(GOOGLE_API_KEYS)} farklı anahtarın hepsini denedim ama Google kapıları kapalı tutuyor. \n\n**Son Hata Detayı:** {last_error_details}\n\nLütfen 2-3 dakika bekleyip tekrar dene."
+    else:
+        # İşlem bittiğinde bilgi kutusunu temizle
+        status_box.empty()
 
 # ===================== UI HELPER FUNCTIONS =====================
 
