@@ -374,9 +374,9 @@ def scroll_to_bottom():
 def render_header():
     """Render application header"""
     st.markdown(f"""
-    <div style="text-align: center; margin-bottom: 20px;">
+    <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="{config.YOLPEDIA_ICON}" style="width: 80px; height: auto;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 70px; height: auto;">
         </div>
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
             <img src="{config.CAN_DEDE_ICON}" 
