@@ -19,7 +19,7 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 10
+    MAX_MESSAGE_LIMIT: int = 40
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
@@ -187,7 +187,10 @@ def validate_rate_limit() -> Tuple[bool, str]:
     
     if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
         logger.warning(f"Rate limit exceeded: {st.session_state.request_count}")
-        return False, "🛑 Mesaj limiti doldu. Lütfen bir saat sonra tekrar deneyin."
+        # Calculate time until reset
+        time_until_reset = int(config.RATE_LIMIT_WINDOW - (time.time() - st.session_state.last_reset_time))
+        minutes = time_until_reset // 60
+        return False, f"🛑 Mesaj limitine ulaştınız ({config.MAX_MESSAGE_LIMIT} mesaj/saat). {minutes} dakika sonra tekrar deneyin."
     
     time_since_last = time.time() - st.session_state.last_request_time
     if time_since_last < config.MIN_TIME_DELAY:
@@ -331,14 +334,33 @@ def generate_ai_response(
         return
     
     # Configure API
-    genai.configure(api_key=GOOGLE_API_KEY)
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+    except Exception as e:
+        logger.error(f"API configuration failed: {e}")
+        yield "⚠️ API anahtarı yapılandırma hatası. Lütfen yöneticiyle iletişime geç."
+        return
     
     # Try models in order
+    last_error = None
     for model_name in config.GEMINI_MODELS:
         try:
             logger.info(f"Attempting to use model: {model_name}")
             model = genai.GenerativeModel(model_name)
-            response = model.generate_content(prompt, stream=True)
+            
+            # Add generation config for better reliability
+            generation_config = {
+                "temperature": 0.7,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": 2048,
+            }
+            
+            response = model.generate_content(
+                prompt, 
+                stream=True,
+                generation_config=generation_config
+            )
             
             has_content = False
             for chunk in response:
@@ -351,12 +373,24 @@ def generate_ai_response(
                 return
                 
         except Exception as e:
+            last_error = str(e)
             logger.warning(f"Model {model_name} failed: {e}")
+            
+            # Check for specific errors
+            if "quota" in str(e).lower() or "limit" in str(e).lower():
+                logger.error(f"API quota exceeded: {e}")
+                yield "⚠️ API kullanım limiti doldu. Lütfen biraz sonra tekrar dene."
+                return
+            elif "invalid" in str(e).lower() or "key" in str(e).lower():
+                logger.error(f"Invalid API key: {e}")
+                yield "⚠️ API anahtarı geçersiz. Lütfen yöneticiyle iletişime geç."
+                return
+            
             continue
     
     # All models failed
-    logger.error("All AI models failed to generate response")
-    yield "⚠️ Can Dost, şu anda Google bağlantısında geçici bir sorun var. Lütfen biraz sonra tekrar dene."
+    logger.error(f"All AI models failed. Last error: {last_error}")
+    yield f"⚠️ Can Dost, şu anda teknik bir sorun var. Detay: {last_error[:100]}"
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -376,11 +410,11 @@ def render_header():
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="{config.YOLPEDIA_ICON}" style="width: 70px; height: auto;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 80px; height: auto;">
         </div>
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
             <img src="{config.CAN_DEDE_ICON}" 
-                 style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                 style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
             <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
                 {config.ASSISTANT_NAME}
             </h1>
@@ -412,6 +446,13 @@ def render_sidebar() -> str:
         # Display usage stats
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        
+        # Debug info (only if API key exists)
+        if GOOGLE_API_KEY:
+            api_preview = GOOGLE_API_KEY[:8] + "..." + GOOGLE_API_KEY[-4:]
+            st.caption(f"🔑 API: {api_preview}")
+        else:
+            st.error("⚠️ API key yok!")
         
     return selected_mode
 
