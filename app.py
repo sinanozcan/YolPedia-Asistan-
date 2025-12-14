@@ -99,6 +99,9 @@ if not GOOGLE_API_KEYS:
     st.error("⚠️ API anahtarı bulunamadı. Lütfen Streamlit secrets'ı kontrol edin.")
     st.stop()
 
+# DÜZELTME BURADA YAPILDI: Listedeki ilk anahtarı tekil değişkene atıyoruz.
+GOOGLE_API_KEY = GOOGLE_API_KEYS[0]
+
 # ===================== STYLING =====================
 
 def apply_custom_styles():
@@ -354,6 +357,7 @@ def generate_ai_response(
     
     # Configure API
     try:
+        # Burada tekil GOOGLE_API_KEY kullanılıyor, artık yukarıda tanımlı.
         genai.configure(api_key=GOOGLE_API_KEY)
     except Exception as e:
         logger.error(f"API configuration failed: {e}")
