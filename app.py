@@ -40,7 +40,8 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            self.GEMINI_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+            # Updated model list - removed deprecated "gemini-pro"
+            self.GEMINI_MODELS = ["gemini-1.5-flash", "gemini-1.5-pro"]
 
 config = AppConfig()
 
