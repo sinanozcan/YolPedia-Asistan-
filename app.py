@@ -19,13 +19,13 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 40
+    MAX_MESSAGE_LIMIT: int = 60  # Limiti biraz artırdık
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 50
+    SEARCH_SCORE_THRESHOLD: int = 45
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -40,11 +40,11 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # Use the latest stable Gemini 2.0 models (December 2024+)
-            # gemini-1.5-flash is deprecated and returns 404
+            # GÜNCELLEME: Daha yüksek kotalı modeller en başa alındı.
             self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",  # Latest experimental (fastest)
-                "gemini-2.0-flash",      # Stable 2.0
+                "gemini-1.5-flash",          # En kararlı ve kotası en yüksek model
+                "gemini-1.5-flash-latest",   # Alternatif güncel sürüm
+                "gemini-2.0-flash-exp",      # Deneysel (Yedek)
             ]
 
 config = AppConfig()
@@ -80,6 +80,11 @@ def get_api_keys() -> List[str]:
         secondary_key = st.secrets.get("API_KEY_2", "")
         if secondary_key:
             api_keys.append(secondary_key)
+            
+        # Third API key (optional - varsa ekleyin)
+        third_key = st.secrets.get("API_KEY_3", "")
+        if third_key:
+            api_keys.append(third_key)
         
         # Check if we have at least one key
         if not api_keys:
@@ -206,7 +211,6 @@ def validate_rate_limit() -> Tuple[bool, str]:
     
     if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
         logger.warning(f"Rate limit exceeded: {st.session_state.request_count}")
-        # Calculate time until reset
         time_until_reset = int(config.RATE_LIMIT_WINDOW - (time.time() - st.session_state.last_reset_time))
         minutes = time_until_reset // 60
         return False, f"🛑 Mesaj limitine ulaştınız ({config.MAX_MESSAGE_LIMIT} mesaj/saat). {minutes} dakika sonra tekrar deneyin."
@@ -228,20 +232,17 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     normalized_title = normalize_turkish_text(title)
     normalized_content = normalize_turkish_text(content)
     
-    # Exact match in title gets highest score
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
         score += 100
     
-    # Keyword matches
     for keyword in keywords:
         if keyword in normalized_title:
             score += 40
         elif keyword in normalized_content:
             score += 10
     
-    # Boost for specific content types
     special_terms = ["gulbank", "deyis", "nefes", "siir"]
     if any(term in normalized_title for term in special_terms):
         score += 300
@@ -336,7 +337,7 @@ def generate_ai_response(
     sources: List[Dict],
     mode: str
 ) -> Generator[str, None, None]:
-    """Generate AI response using Google Gemini API with key rotation"""
+    """Generate AI response using Google Gemini API with smart key rotation"""
     
     # Check for local response first
     local_response = get_local_response(user_query)
@@ -355,26 +356,28 @@ def generate_ai_response(
     last_error = None
     success = False
 
-    # ANAHTAR DÖNGÜSÜ: Bütün anahtarları sırasıyla dener
+    # ANAHTAR DÖNGÜSÜ
     for key_index, current_api_key in enumerate(GOOGLE_API_KEYS):
         if success:
             break
             
         try:
+            # Yapılandırmayı sıfırla ve yeni anahtarı ayarla
             genai.configure(api_key=current_api_key)
-            logger.info(f"Trying API Key #{key_index + 1}")
             
-            # MODEL DÖNGÜSÜ: Mevcut anahtar ile modelleri dener
+            # MODEL DÖNGÜSÜ
             for model_name in config.GEMINI_MODELS:
                 try:
-                    logger.info(f"Attempting to use model: {model_name} with Key #{key_index + 1}")
+                    logger.info(f"Trying Key #{key_index + 1} with {model_name}")
+                    
+                    # Modeli yeniden başlat (temiz state için önemli)
                     model = genai.GenerativeModel(model_name)
                     
                     generation_config = {
                         "temperature": 0.7,
                         "top_p": 0.95,
                         "top_k": 40,
-                        "max_output_tokens": 2048,
+                        "max_output_tokens": 1500,
                     }
                     
                     response = model.generate_content(
@@ -390,32 +393,32 @@ def generate_ai_response(
                             has_content = True
                     
                     if has_content:
-                        logger.info(f"Successfully generated response using {model_name}")
                         success = True
-                        break # Break model loop, then key loop will break
+                        break # Model başarılı olduysa döngüyü kır
                         
                 except Exception as e:
                     error_str = str(e).lower()
                     last_error = str(e)
                     
-                    # Eğer hata KOTA/LIMIT ile ilgiliyse, bu anahtarı atla ve diğer anahtara geç
-                    if "quota" in error_str or "limit" in error_str or "429" in error_str:
-                        logger.warning(f"Key #{key_index + 1} quota exceeded. Switching to next key...")
-                        # Model döngüsünü kırıp dıştaki anahtar döngüsüne devam et
-                        raise e 
+                    # Eğer hata KOTA (429) ise
+                    if "429" in error_str or "quota" in error_str or "exhausted" in error_str:
+                        logger.warning(f"Key #{key_index + 1} QUOTA EXHAUSTED on {model_name}. Switching key...")
+                        # Bu anahtar bitti demektir, model döngüsünü kır ve bir sonraki ANAHTARA geç
+                        break 
                     
-                    # Diğer hatalarda (örn: model bulunamadı) bir sonraki modeli dene
-                    logger.warning(f"Model {model_name} failed with Key #{key_index + 1}: {e}")
+                    # Eğer model bulunamadıysa (404) vs. bir sonraki MODELİ dene
+                    logger.warning(f"Model error ({model_name}): {e}")
                     continue
-        
+
         except Exception as e:
-            # Buraya düşmesi demek, mevcut anahtarın limitinin dolması demektir.
-            # Bir sonraki anahtara geçmek için döngü devam eder.
+            # Genai.configure hatası veya beklenmedik anahtar hatası
+            logger.error(f"Critical error with Key #{key_index + 1}: {e}")
             continue
     
     if not success:
-        logger.error(f"All API keys and models failed. Last error: {last_error}")
-        yield f"⚠️ Üzgünüm Can Dost, tüm sistemler şu an yoğun. Lütfen biraz sonra tekrar dene. (Hata: {last_error[:50]}...)"
+        logger.error(f"ALL KEYS FAILED. Last error: {last_error}")
+        # Kullanıcıya daha açıklayıcı bir mesaj ver
+        yield f"⚠️ Şu anda tüm sunucularımız çok yoğun (Hata: 429). Lütfen 1-2 dakika bekleyip tekrar dene can."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -468,12 +471,9 @@ def render_sidebar() -> str:
             logger.info("Chat history reset by user")
             st.rerun()
         
-        # Display usage stats
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
-        
-        # Debug info - Sadece mevcut kullanılan anahtar sayısını göster
-        st.caption(f"🔑 Aktif Anahtar Sayısı: {len(GOOGLE_API_KEYS)}")
+        st.caption(f"🔑 Aktif Anahtar: {len(GOOGLE_API_KEYS)}")
         
     return selected_mode
 
@@ -505,41 +505,35 @@ def main():
     user_input = st.chat_input("Can Dede'ye sor...")
     
     if user_input:
-        # Validate rate limit
         can_proceed, error_message = validate_rate_limit()
         if not can_proceed:
             st.error(error_message)
             st.stop()
         
-        # Update rate limit counters
         st.session_state.request_count += 1
         st.session_state.last_request_time = time.time()
         
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         scroll_to_bottom()
         
-        # Search knowledge base
         sources, _ = search_knowledge_base(user_input, st.session_state.db)
         
-        # Generate and display AI response
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
             full_response = ""
             
             with st.spinner("Can Dede tefekkürde..."):
+                # Hata yönetimi eklenmiş generator çağrısı
                 for chunk in generate_ai_response(user_input, sources, selected_mode):
                     full_response += chunk
                     placeholder.markdown(full_response + "▌")
             
             placeholder.markdown(full_response)
             
-            # Show sources in research mode
             if sources and "Araştırma" in selected_mode:
                 render_sources(sources)
             
-            # Save assistant message
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_response
