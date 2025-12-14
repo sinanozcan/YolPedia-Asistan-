@@ -30,12 +30,11 @@ if not GOOGLE_API_KEY:
     st.error("❌ API Anahtarı eksik!")
     st.stop()
 
-# --- CSS (Sadece Sohbet Balonları İçin) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .stChatMessage { margin-bottom: 10px; }
     .stSpinner > div { border-top-color: #ff4b4b !important; }
-    /* Streamlit'in üst boşluğunu alalım */
     .block-container { padding-top: 2rem; }
 </style>
 """, unsafe_allow_html=True)
@@ -76,14 +75,22 @@ with st.sidebar:
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER (HTML İLE KESİN HİZALAMA) ---
-# Burası CSS ile değil, saf HTML tablosu mantığıyla hizalandı. Kayması imkansız.
+# --- HEADER (HTML - LOGO GERİ EKLENDİ) ---
 st.markdown(f"""
     <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 20px;">
+        
+        <!-- ÜST LOGO (Bunu unutmuştum, geri koydum) -->
+        <div style="margin-bottom: 15px;">
+            <img src="{YOLPEDIA_ICON}" style="width: 80px; opacity: 1.0;">
+        </div>
+
+        <!-- ORTA KISIM: RESİM VE BAŞLIK -->
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
             <img src="{CAN_DEDE_ICON}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
             <h1 style="font-size: 34px; font-weight: 700; margin: 0; padding: 0; color: #ffffff; line-height: 1;">{ASISTAN_ISMI}</h1>
         </div>
+
+        <!-- ALT KISIM: MOTTO -->
         <div style="margin-top: 5px; font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
             {MOTTO}
         </div>
