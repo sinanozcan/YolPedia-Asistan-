@@ -19,7 +19,7 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 60  # Limiti biraz artırdık
+    MAX_MESSAGE_LIMIT: int = 60
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
@@ -40,11 +40,10 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÜNCELLEME: Daha yüksek kotalı modeller en başa alındı.
             self.GEMINI_MODELS = [
-                "gemini-1.5-flash",          # En kararlı ve kotası en yüksek model
-                "gemini-1.5-flash-latest",   # Alternatif güncel sürüm
-                "gemini-2.0-flash-exp",      # Deneysel (Yedek)
+                "gemini-1.5-flash",          
+                "gemini-1.5-flash-latest",   
+                "gemini-2.0-flash-exp",      
             ]
 
 config = AppConfig()
@@ -71,22 +70,18 @@ def get_api_keys() -> List[str]:
     """Retrieve and validate multiple API keys from secrets"""
     api_keys = []
     try:
-        # Primary API key
         primary_key = st.secrets.get("API_KEY", "")
         if primary_key:
             api_keys.append(primary_key)
         
-        # Secondary API key (optional)
         secondary_key = st.secrets.get("API_KEY_2", "")
         if secondary_key:
             api_keys.append(secondary_key)
             
-        # Third API key (optional - varsa ekleyin)
         third_key = st.secrets.get("API_KEY_3", "")
         if third_key:
             api_keys.append(third_key)
         
-        # Check if we have at least one key
         if not api_keys:
             logger.error("No API keys found")
             return []
@@ -297,6 +292,41 @@ def get_local_response(text: str) -> Optional[str]:
     return None
 
 # ===================== AI RESPONSE GENERATOR =====================
+
+# EKSİK OLAN FONKSİYON BURAYA EKLENDİ
+def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
+    """Build the prompt for the AI model"""
+    system_instruction = (
+        "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin. "
+        "Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde samimi ve sıcak olsun."
+    )
+    
+    if "Sohbet" in mode:
+        if sources:
+            source_text = "\n".join([
+                f"- {src['baslik']}: {src['icerik']}"
+                for src in sources[:2]
+            ])
+            return (
+                f"{system_instruction}\n\n"
+                f"KAYNAKLAR (Bunları kullanarak cevapla):\n{source_text}\n\n"
+                f"Kullanıcı: {user_query}"
+            )
+        else:
+            return f"{system_instruction}\n\nKullanıcı: {user_query}"
+    else:  # Research mode
+        if not sources:
+            return None
+        
+        source_text = "\n".join([
+            f"- {src['baslik']}: {src['icerik'][:800]}"
+            for src in sources[:3]
+        ])
+        return (
+            f"Sen YolPedia asistanısın. Sadece verilen kaynaklara göre cevapla:\n"
+            f"{source_text}\n\n"
+            f"Soru: {user_query}"
+        )
 
 def generate_ai_response(
     user_query: str,
