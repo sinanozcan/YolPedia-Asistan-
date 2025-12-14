@@ -1,20 +1,36 @@
 import streamlit as st
 import streamlit.components.v1 as components 
+import requests
 import google.generativeai as genai
+import time
 import json
 import random
-import time
 
 # ================= AYARLAR =================
-st.set_page_config(page_title="Can Dede | YolPedia", page_icon="🕯️", layout="wide")
+MAX_MESSAGE_LIMIT = 30
+MIN_TIME_DELAY = 1
 
-# API KEY KONTROLÜ
-GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
+GOOGLE_API_KEY = None
+try:
+    GOOGLE_API_KEY = st.secrets.get("API_KEY", "")
+except Exception:
+    GOOGLE_API_KEY = ""
+
+DATA_FILE = "yolpedia_data.json"
+ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
+MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
+YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
+CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
+USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
+
+# --- SAYFA AYARLARI (KUTU GÖRÜNÜMÜ İÇİN CENTERED YAPILDI) ---
+st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="centered")
+
 if not GOOGLE_API_KEY:
-    st.error("❌ API Anahtarı bulunamadı! Secrets ayarlarını kontrol et.")
+    st.error("❌ API Anahtarı eksik! Lütfen Secrets ayarlarını kontrol et.")
     st.stop()
 
-# --- CSS (Senin sevdiğin tasarım) ---
+# --- CSS ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
@@ -25,28 +41,15 @@ st.markdown("""
     .top-logo { width: 80px; opacity: 1.0; }
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
     .stChatMessage { margin-bottom: 10px; }
+    .stSpinner > div { border-top-color: #ff4b4b !important; }
 </style>
 """, unsafe_allow_html=True)
-
-# --- İKONLAR ---
-YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
-CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
-USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
-ASISTAN_ISMI = "Can Dede | YolPedia Rehberiniz"
-MOTTO = '"Bildiğimin âlimiyim, bilmediğinin tâlibiyim!"'
-
-# --- HEADER ---
-st.markdown(f"""
-    <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
-    <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
-    <div class="motto-text">{MOTTO}</div>
-    """, unsafe_allow_html=True)
 
 # --- VERİ YÜKLEME ---
 @st.cache_data(persist="disk", show_spinner=False)
 def veri_yukle():
     try:
-        with open("yolpedia_data.json", "r", encoding="utf-8") as f:
+        with open(DATA_FILE, "r", encoding="utf-8") as f: 
             return json.load(f)
     except: return []
 
@@ -55,63 +58,111 @@ def tr_normalize(text):
     return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
 
 if 'db' not in st.session_state: st.session_state.db = veri_yukle()
-if "messages" not in st.session_state: 
-    st.session_state.messages = [{"role": "assistant", "content": "Merhaba can, hoş geldin. Buyur, gönlünden ne geçiyorsa sor."}]
+
+if "messages" not in st.session_state:
+    st.session_state.messages = [{
+        "role": "assistant", 
+        "content": "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\nBuyur Erenler, hangi modda buluşalım?"
+    }]
+
+if 'request_count' not in st.session_state: st.session_state.request_count = 0
+if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
+if 'last_request_time' not in st.session_state: st.session_state.last_request_time = 0
+
+if time.time() - st.session_state.last_reset_time > 3600:
+    st.session_state.request_count = 0
+    st.session_state.last_reset_time = time.time()
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.title("Mod Seçimi")
+    secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
+    if st.button("🗑️ Sohbeti Sıfırla"):
+        st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
+        st.rerun()
+
+# --- HEADER ---
+st.markdown(f"""
+    <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
+    <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
+    <div class="motto-text">{MOTTO}</div>
+    """, unsafe_allow_html=True)
 
 # --- ARAMA ---
 def alakali_icerik_bul(kelime, db):
-    if not db or not kelime: return []
+    if not db or not kelime or len(kelime) < 3: return [], ""
     norm_sorgu = tr_normalize(kelime)
+    anahtarlar = [k for k in norm_sorgu.split() if len(k) > 2]
     sonuclar = []
+    
     for d in db:
         puan = 0
         d_baslik = d.get('baslik', '')
+        d_icerik = d.get('icerik', '')
         if norm_sorgu in tr_normalize(d_baslik): puan += 200
-        if "gulbank" in tr_normalize(d_baslik) or "deyis" in tr_normalize(d_baslik): puan += 100
+        elif norm_sorgu in tr_normalize(d_icerik): puan += 100
+        for k in anahtarlar:
+            if k in tr_normalize(d_baslik): puan += 40
+            elif k in tr_normalize(d_icerik): puan += 10
         
+        if any(x in tr_normalize(d_baslik) for x in ["gulbank", "deyis", "nefes", "siir"]):
+            puan += 300
+
         if puan > 50:
-            sonuclar.append({"baslik": d_baslik, "icerik": d.get('icerik', ''), "link": d.get('link', '#'), "puan": puan})
-    
-    sonuclar.sort(key=lambda x: x['puan'], reverse=True)
-    return sonuclar[:3]
-
-# --- OTOMATİK MODEL BULUCU VE CEVAPLAYICI ---
-def can_dede_cevapla(prompt, context):
-    try:
-        genai.configure(api_key=GOOGLE_API_KEY)
-        
-        # ADIM 1: SİSTEMDEKİ ÇALIŞAN MODELLERİ BUL
-        # Biz isim tahmin etmiyoruz, Google'a "Eline ne var?" diye soruyoruz.
-        mevcut_modeller = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                mevcut_modeller.append(m.name)
-        
-        if not mevcut_modeller:
-            yield "⚠️ Google hesabında hiç aktif model görünmüyor. API Key veya Bölge kısıtlaması olabilir."
-            return
-
-        # ADIM 2: İLK BULDUĞUNU KULLAN (En garantisi budur)
-        # Genelde 'models/gemini-pro' veya 'models/gemini-1.5-flash' ilk sırada gelir.
-        secilen_model = mevcut_modeller[0] 
-        
-        # Model isminin başındaki 'models/' takısını temizle (bazı sürümler hata verebilir diye)
-        if "/" in secilen_model:
-            secilen_model = secilen_model.split("/")[-1]
-
-        model = genai.GenerativeModel(secilen_model)
-        
-        # Cevabı Üret
-        full_text = f"Sen Can Dedesin. Alevi-Bektaşi diliyle konuş. Kaynaklar:\n{context}\n\nSoru: {prompt}"
-        response = model.generate_content(full_text, stream=True)
-        
-        for chunk in response:
-            if chunk.text: yield chunk.text
+            sonuclar.append({"baslik": d_baslik, "link": d.get('link', '#'), "icerik": d_icerik[:1500], "puan": puan})
             
-    except Exception as e:
-        yield f"⚠️ Hata: {str(e)}"
+    sonuclar.sort(key=lambda x: x['puan'], reverse=True)
+    return sonuclar[:5], norm_sorgu
 
-# --- ARAYÜZ AKIŞI ---
+# --- YEREL CEVAP ---
+def yerel_cevap_kontrol(text):
+    text = tr_normalize(text)
+    selamlar = ["merhaba", "selam", "selamun aleykum", "gunaydin"]
+    hal_hatir = ["nasilsin", "naber", "ne var ne yok"]
+    if any(s == text for s in selamlar): return random.choice(["Aşk ile merhaba can.", "Selam olsun, hoş geldin."])
+    if any(h in text for h in hal_hatir): return "Şükür Hak'ka, hizmetteyiz can."
+    return None
+
+# --- CEVAP MOTORU ---
+def can_dede_cevapla(user_prompt, kaynaklar, mod):
+    yerel = yerel_cevap_kontrol(user_prompt)
+    if yerel:
+        time.sleep(0.5); yield yerel; return
+
+    system_prompt = "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş bir rehbersin. Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde olsun."
+    if "Sohbet" in mod:
+        if kaynaklar:
+             kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik']}" for k in kaynaklar[:2]])
+             full_content = system_prompt + f"\n\nKAYNAKLAR (Bunları kullan):\n{kaynak_metni}\n\nKullanıcı: " + user_prompt
+        else:
+             full_content = system_prompt + "\n\nKullanıcı: " + user_prompt
+    else:
+        if not kaynaklar: yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."; return
+        kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
+        full_content = f"Sen YolPedia asistanısın. Sadece bu kaynaklara göre cevapla:\n{kaynak_metni}\n\nSoru: {user_prompt}"
+
+    genai.configure(api_key=GOOGLE_API_KEY)
+    
+    # HATA VERMEYEN GARANTİ MODELLER
+    modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+    
+    basarili = False
+    for m_isim in modeller:
+        try:
+            model = genai.GenerativeModel(m_isim)
+            response = model.generate_content(full_content, stream=True)
+            for chunk in response:
+                if chunk.text:
+                    yield chunk.text
+                    basarili = True
+            if basarili: break 
+        except Exception:
+            continue 
+
+    if not basarili:
+        yield "⚠️ Can Dost, Google bağlantısında geçici bir sorun var. Birazdan tekrar dene."
+
+# --- UI AKIŞI ---
 def scroll_to_bottom():
     components.html("""<script>window.parent.document.querySelector(".main").scrollTop = 100000;</script>""", height=0)
 
@@ -123,25 +174,34 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Can Dede'ye sor...")
 
 if prompt:
+    if st.session_state.request_count >= MAX_MESSAGE_LIMIT:
+        st.error("🛑 Limit doldu."); st.stop()
+    
+    if time.time() - st.session_state.last_request_time < MIN_TIME_DELAY:
+        st.warning("⏳ Yavaş can..."); st.stop()
+        
+    st.session_state.request_count += 1
+    st.session_state.last_request_time = time.time()
+    
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.chat_message("user", avatar=USER_ICON).markdown(prompt)
     scroll_to_bottom()
     
-    kaynaklar = alakali_icerik_bul(prompt, st.session_state.db)
-    context_text = "\n".join([f"{k['baslik']}: {k['icerik'][:1000]}" for k in kaynaklar])
+    kaynaklar, _ = alakali_icerik_bul(prompt, st.session_state.db)
     
     with st.chat_message("assistant", avatar=CAN_DEDE_ICON):
         placeholder = st.empty()
         full_text = ""
-        with st.spinner("Can Dede düşünüyor..."):
-            for chunk in can_dede_cevapla(prompt, context_text):
+        with st.spinner("Can Dede tefekküre daldı..."):
+            for chunk in can_dede_cevapla(prompt, kaynaklar, secilen_mod):
                 full_text += chunk
                 placeholder.markdown(full_text + "▌")
         placeholder.markdown(full_text)
         
-        if kaynaklar:
+        if kaynaklar and "Araştırma" in secilen_mod:
             st.markdown("---")
-            for k in kaynaklar: st.markdown(f"• [{k['baslik']}]({k['link']})")
+            st.markdown("**📚 Kaynaklar:**")
+            for k in kaynaklar[:3]: st.markdown(f"• [{k['baslik']}]({k['link']})")
             
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         scroll_to_bottom()
