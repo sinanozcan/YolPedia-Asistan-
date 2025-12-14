@@ -99,9 +99,6 @@ if not GOOGLE_API_KEYS:
     st.error("⚠️ API anahtarı bulunamadı. Lütfen Streamlit secrets'ı kontrol edin.")
     st.stop()
 
-# DÜZELTME BURADA YAPILDI: Listedeki ilk anahtarı tekil değişkene atıyoruz.
-GOOGLE_API_KEY = GOOGLE_API_KEYS[0]
-
 # ===================== STYLING =====================
 
 def apply_custom_styles():
@@ -339,7 +336,7 @@ def generate_ai_response(
     sources: List[Dict],
     mode: str
 ) -> Generator[str, None, None]:
-    """Generate AI response using Google Gemini API"""
+    """Generate AI response using Google Gemini API with key rotation"""
     
     # Check for local response first
     local_response = get_local_response(user_query)
@@ -355,65 +352,70 @@ def generate_ai_response(
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
         return
     
-    # Configure API
-    try:
-        # Burada tekil GOOGLE_API_KEY kullanılıyor, artık yukarıda tanımlı.
-        genai.configure(api_key=GOOGLE_API_KEY)
-    except Exception as e:
-        logger.error(f"API configuration failed: {e}")
-        yield "⚠️ API anahtarı yapılandırma hatası. Lütfen yöneticiyle iletişime geç."
-        return
-    
-    # Try models in order
     last_error = None
-    for model_name in config.GEMINI_MODELS:
+    success = False
+
+    # ANAHTAR DÖNGÜSÜ: Bütün anahtarları sırasıyla dener
+    for key_index, current_api_key in enumerate(GOOGLE_API_KEYS):
+        if success:
+            break
+            
         try:
-            logger.info(f"Attempting to use model: {model_name}")
-            model = genai.GenerativeModel(model_name)
+            genai.configure(api_key=current_api_key)
+            logger.info(f"Trying API Key #{key_index + 1}")
             
-            # Add generation config for better reliability
-            generation_config = {
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 2048,
-            }
-            
-            response = model.generate_content(
-                prompt, 
-                stream=True,
-                generation_config=generation_config
-            )
-            
-            has_content = False
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-                    has_content = True
-            
-            if has_content:
-                logger.info(f"Successfully generated response using {model_name}")
-                return
-                
+            # MODEL DÖNGÜSÜ: Mevcut anahtar ile modelleri dener
+            for model_name in config.GEMINI_MODELS:
+                try:
+                    logger.info(f"Attempting to use model: {model_name} with Key #{key_index + 1}")
+                    model = genai.GenerativeModel(model_name)
+                    
+                    generation_config = {
+                        "temperature": 0.7,
+                        "top_p": 0.95,
+                        "top_k": 40,
+                        "max_output_tokens": 2048,
+                    }
+                    
+                    response = model.generate_content(
+                        prompt, 
+                        stream=True,
+                        generation_config=generation_config
+                    )
+                    
+                    has_content = False
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                            has_content = True
+                    
+                    if has_content:
+                        logger.info(f"Successfully generated response using {model_name}")
+                        success = True
+                        break # Break model loop, then key loop will break
+                        
+                except Exception as e:
+                    error_str = str(e).lower()
+                    last_error = str(e)
+                    
+                    # Eğer hata KOTA/LIMIT ile ilgiliyse, bu anahtarı atla ve diğer anahtara geç
+                    if "quota" in error_str or "limit" in error_str or "429" in error_str:
+                        logger.warning(f"Key #{key_index + 1} quota exceeded. Switching to next key...")
+                        # Model döngüsünü kırıp dıştaki anahtar döngüsüne devam et
+                        raise e 
+                    
+                    # Diğer hatalarda (örn: model bulunamadı) bir sonraki modeli dene
+                    logger.warning(f"Model {model_name} failed with Key #{key_index + 1}: {e}")
+                    continue
+        
         except Exception as e:
-            last_error = str(e)
-            logger.warning(f"Model {model_name} failed: {e}")
-            
-            # Check for specific errors
-            if "quota" in str(e).lower() or "limit" in str(e).lower():
-                logger.error(f"API quota exceeded: {e}")
-                yield "⚠️ API kullanım limiti doldu. Lütfen biraz sonra tekrar dene."
-                return
-            elif "invalid" in str(e).lower() or "key" in str(e).lower():
-                logger.error(f"Invalid API key: {e}")
-                yield "⚠️ API anahtarı geçersiz. Lütfen yöneticiyle iletişime geç."
-                return
-            
+            # Buraya düşmesi demek, mevcut anahtarın limitinin dolması demektir.
+            # Bir sonraki anahtara geçmek için döngü devam eder.
             continue
     
-    # All models failed
-    logger.error(f"All AI models failed. Last error: {last_error}")
-    yield f"⚠️ Can Dost, şu anda teknik bir sorun var. Detay: {last_error[:100]}"
+    if not success:
+        logger.error(f"All API keys and models failed. Last error: {last_error}")
+        yield f"⚠️ Üzgünüm Can Dost, tüm sistemler şu an yoğun. Lütfen biraz sonra tekrar dene. (Hata: {last_error[:50]}...)"
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -470,12 +472,8 @@ def render_sidebar() -> str:
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
-        # Debug info (only if API key exists)
-        if GOOGLE_API_KEY:
-            api_preview = GOOGLE_API_KEY[:8] + "..." + GOOGLE_API_KEY[-4:]
-            st.caption(f"🔑 API: {api_preview}")
-        else:
-            st.error("⚠️ API key yok!")
+        # Debug info - Sadece mevcut kullanılan anahtar sayısını göster
+        st.caption(f"🔑 Aktif Anahtar Sayısı: {len(GOOGLE_API_KEYS)}")
         
     return selected_mode
 
