@@ -27,67 +27,16 @@ USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="centered")
 
 if not GOOGLE_API_KEY:
-    st.error("❌ API Anahtarı eksik! Lütfen Secrets ayarlarını kontrol et.")
+    st.error("❌ API Anahtarı eksik!")
     st.stop()
 
-# --- CSS (GÖRSEL DÜZELTMELER YAPILDI) ---
+# --- CSS (Sadece Sohbet Balonları İçin) ---
 st.markdown("""
 <style>
-    /* Ana Başlık Kutusu: İkon ve Yazıyı kapsar */
-    .main-header { 
-        display: flex; 
-        align-items: center; /* DİKEY ORTALAMA (İkon ve yazı aynı hizada) */
-        justify-content: center; 
-        margin-top: 10px; 
-        margin-bottom: 0px; /* Alt boşluğu sıfırladık */
-    }
-    
-    /* Can Dede Resmi */
-    .dede-img { 
-        width: 80px; 
-        height: 80px; 
-        border-radius: 50%; 
-        margin-right: 15px; 
-        object-fit: cover; 
-        border: 2px solid #eee; 
-    }
-    
-    /* Başlık Yazısı */
-    .title-text { 
-        font-size: 36px; 
-        font-weight: 700; 
-        margin: 0; 
-        color: #ffffff; 
-        line-height: 1.2; /* Satır yüksekliğini sabitledik */
-        padding-top: 0;
-    }
-    
-    /* Üstteki YolPedia Logosu */
-    .top-logo-container { 
-        display: flex; 
-        justify-content: center; 
-        margin-bottom: 10px; 
-        padding-top: 10px; 
-    }
-    .top-logo { width: 80px; opacity: 1.0; }
-    
-    /* Motto Yazısı */
-    .motto-text { 
-        text-align: center; 
-        font-size: 16px; 
-        font-style: italic; 
-        color: #cccccc; 
-        margin-top: -5px; /* YUKARI YAKLAŞTIRMA (Negatif değerle yukarı çektik) */
-        margin-bottom: 25px; 
-        font-family: 'Georgia', serif; 
-    }
-    
-    @media (prefers-color-scheme: light) { 
-        .title-text { color: #000000; } 
-        .motto-text { color: #555555; } 
-    }
     .stChatMessage { margin-bottom: 10px; }
     .stSpinner > div { border-top-color: #ff4b4b !important; }
+    /* Streamlit'in üst boşluğunu alalım */
+    .block-container { padding-top: 2rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -122,23 +71,23 @@ if time.time() - st.session_state.last_reset_time > 3600:
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Mod Seçimi")
-    if st.session_state.db: st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
-    
     secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
-    
-    kalan = MAX_MESSAGE_LIMIT - st.session_state.request_count
-    if kalan > 0: st.info(f"⏳ Kalan Soru Hakkı: **{kalan}**")
-    else: st.error("🛑 Günlük limit doldu.")
-
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER ---
+# --- HEADER (HTML İLE KESİN HİZALAMA) ---
+# Burası CSS ile değil, saf HTML tablosu mantığıyla hizalandı. Kayması imkansız.
 st.markdown(f"""
-    <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
-    <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
-    <div class="motto-text">{MOTTO}</div>
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; margin-bottom: 20px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <img src="{CAN_DEDE_ICON}" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+            <h1 style="font-size: 34px; font-weight: 700; margin: 0; padding: 0; color: #ffffff; line-height: 1;">{ASISTAN_ISMI}</h1>
+        </div>
+        <div style="margin-top: 5px; font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+            {MOTTO}
+        </div>
+    </div>
     """, unsafe_allow_html=True)
 
 # --- ARAMA ---
@@ -158,12 +107,11 @@ def alakali_icerik_bul(kelime, db):
             if k in tr_normalize(d_baslik): puan += 40
             elif k in tr_normalize(d_icerik): puan += 10
         
-        # Gülbankları öne çıkar
         if any(x in tr_normalize(d_baslik) for x in ["gulbank", "deyis", "nefes", "siir"]):
             puan += 300
 
         if puan > 50:
-            sonuclar.append({"baslik": d_baslik, "link": d.get('link', '#'), "icerik": d_icerik[:1500], "puan": puan})
+            sonuclar.append({"baslik": d.get('baslik', 'Başlıksız'), "link": d.get('link', '#'), "icerik": d.get('icerik', '')[:1500], "puan": puan})
             
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     return sonuclar[:5], norm_sorgu
@@ -187,7 +135,6 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
     if yerel:
         time.sleep(0.5); yield yerel; return
 
-    # Prompt
     system_prompt = "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş bir rehbersin. Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde olsun."
     if "Sohbet" in mod:
         if kaynaklar:
@@ -200,10 +147,8 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
         full_content = f"Sen YolPedia asistanısın. Sadece bu kaynaklara göre cevapla:\n{kaynak_metni}\n\nSoru: {user_prompt}"
 
-    # --- MODEL DÖNGÜSÜ ---
     genai.configure(api_key=GOOGLE_API_KEY)
     
-    # "Flash" en sağlam ve hızlı olandır. Hata vermez.
     modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
     
     basarili = False
@@ -265,3 +210,4 @@ if prompt:
             
         st.session_state.messages.append({"role": "assistant", "content": full_text})
         scroll_to_bottom()
+        
