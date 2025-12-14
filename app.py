@@ -7,7 +7,7 @@ import json
 import random
 
 # ================= AYARLAR =================
-MAX_MESSAGE_LIMIT = 30
+MAX_MESSAGE_LIMIT = 40
 MIN_TIME_DELAY = 1
 
 GOOGLE_API_KEY = None
@@ -23,14 +23,14 @@ YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon
 CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png" 
 USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
-# --- SAYFA AYARLARI (KUTU GÖRÜNÜMÜ İÇİN CENTERED YAPILDI) ---
+# --- SAYFA AYARLARI (Kutu Görünüm) ---
 st.set_page_config(page_title=ASISTAN_ISMI, page_icon=YOLPEDIA_ICON, layout="centered")
 
 if not GOOGLE_API_KEY:
     st.error("❌ API Anahtarı eksik! Lütfen Secrets ayarlarını kontrol et.")
     st.stop()
 
-# --- CSS ---
+# --- CSS (APP 17 İLE BİREBİR AYNI) ---
 st.markdown("""
 <style>
     .main-header { display: flex; align-items: center; justify-content: center; margin-top: 5px; margin-bottom: 5px; }
@@ -40,6 +40,11 @@ st.markdown("""
     .top-logo-container { display: flex; justify-content: center; margin-bottom: 20px; padding-top: 10px; }
     .top-logo { width: 80px; opacity: 1.0; }
     .motto-text { text-align: center; font-size: 16px; font-style: italic; color: #cccccc; margin-bottom: 25px; font-family: 'Georgia', serif; }
+    @media (prefers-color-scheme: light) { 
+        .title-text { color: #000000; } 
+        .subtitle-text { color: #555555; }
+        .motto-text { color: #555555; } 
+    }
     .stChatMessage { margin-bottom: 10px; }
     .stSpinner > div { border-top-color: #ff4b4b !important; }
 </style>
@@ -76,12 +81,19 @@ if time.time() - st.session_state.last_reset_time > 3600:
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Mod Seçimi")
+    if st.session_state.db: st.success(f"📊 **{len(st.session_state.db)} kayıt** hazır")
+    
     secilen_mod = st.radio("Can Dede nasıl yardımcı olsun?", ["Sohbet Modu", "Araştırma Modu"])
+    
+    kalan = MAX_MESSAGE_LIMIT - st.session_state.request_count
+    if kalan > 0: st.info(f"⏳ Kalan Soru Hakkı: **{kalan}**")
+    else: st.error("🛑 Günlük limit doldu.")
+
     if st.button("🗑️ Sohbeti Sıfırla"):
         st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
         st.rerun()
 
-# --- HEADER ---
+# --- HEADER (APP 17 İLE BİREBİR AYNI YAPI) ---
 st.markdown(f"""
     <div class="top-logo-container"><img src="{YOLPEDIA_ICON}" class="top-logo"></div>
     <div class="main-header"><img src="{CAN_DEDE_ICON}" class="dede-img"><h1 class="title-text">{ASISTAN_ISMI}</h1></div>
@@ -97,19 +109,19 @@ def alakali_icerik_bul(kelime, db):
     
     for d in db:
         puan = 0
-        d_baslik = d.get('baslik', '')
-        d_icerik = d.get('icerik', '')
-        if norm_sorgu in tr_normalize(d_baslik): puan += 200
-        elif norm_sorgu in tr_normalize(d_icerik): puan += 100
+        d_baslik = d.get('norm_baslik', '')
+        d_icerik = d.get('norm_icerik', '')
+        if norm_sorgu in d_baslik: puan += 200
+        elif norm_sorgu in d_icerik: puan += 100
         for k in anahtarlar:
-            if k in tr_normalize(d_baslik): puan += 40
-            elif k in tr_normalize(d_icerik): puan += 10
+            if k in d_baslik: puan += 40
+            elif k in d_icerik: puan += 10
         
-        if any(x in tr_normalize(d_baslik) for x in ["gulbank", "deyis", "nefes", "siir"]):
+        if any(x in d_baslik for x in ["gulbank", "deyis", "nefes", "siir"]):
             puan += 300
 
         if puan > 50:
-            sonuclar.append({"baslik": d_baslik, "link": d.get('link', '#'), "icerik": d_icerik[:1500], "puan": puan})
+            sonuclar.append({"baslik": d.get('baslik', 'Başlıksız'), "link": d.get('link', '#'), "icerik": d.get('icerik', '')[:1500], "puan": puan})
             
     sonuclar.sort(key=lambda x: x['puan'], reverse=True)
     return sonuclar[:5], norm_sorgu
@@ -125,10 +137,15 @@ def yerel_cevap_kontrol(text):
 
 # --- CEVAP MOTORU ---
 def can_dede_cevapla(user_prompt, kaynaklar, mod):
+    if not GOOGLE_API_KEY:
+        yield "❌ HATA: API Anahtarı eksik."
+        return
+
     yerel = yerel_cevap_kontrol(user_prompt)
     if yerel:
         time.sleep(0.5); yield yerel; return
 
+    # Prompt
     system_prompt = "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş bir rehbersin. Üslubun 'Aşk ile', 'Can', 'Erenler' şeklinde olsun."
     if "Sohbet" in mod:
         if kaynaklar:
@@ -141,9 +158,10 @@ def can_dede_cevapla(user_prompt, kaynaklar, mod):
         kaynak_metni = "\n".join([f"- {k['baslik']}: {k['icerik'][:800]}" for k in kaynaklar[:3]])
         full_content = f"Sen YolPedia asistanısın. Sadece bu kaynaklara göre cevapla:\n{kaynak_metni}\n\nSoru: {user_prompt}"
 
+    # --- GARANTİ MODEL DÖNGÜSÜ ---
     genai.configure(api_key=GOOGLE_API_KEY)
     
-    # HATA VERMEYEN GARANTİ MODELLER
+    # Sırayla dene. Biri elbet çalışır.
     modeller = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
     
     basarili = False
