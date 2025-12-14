@@ -67,21 +67,35 @@ st.set_page_config(
 
 # ===================== API KEY VALIDATION =====================
 
-def get_api_key() -> Optional[str]:
-    """Retrieve and validate API key from secrets"""
+def get_api_keys() -> List[str]:
+    """Retrieve and validate multiple API keys from secrets"""
+    api_keys = []
     try:
-        api_key = st.secrets.get("API_KEY", "")
-        if not api_key:
-            logger.error("API key is empty")
-            return None
-        return api_key
+        # Primary API key
+        primary_key = st.secrets.get("API_KEY", "")
+        if primary_key:
+            api_keys.append(primary_key)
+        
+        # Secondary API key (optional)
+        secondary_key = st.secrets.get("API_KEY_2", "")
+        if secondary_key:
+            api_keys.append(secondary_key)
+        
+        # Check if we have at least one key
+        if not api_keys:
+            logger.error("No API keys found")
+            return []
+        
+        logger.info(f"Loaded {len(api_keys)} API key(s)")
+        return api_keys
+        
     except Exception as e:
-        logger.error(f"Failed to retrieve API key: {e}")
-        return None
+        logger.error(f"Failed to retrieve API keys: {e}")
+        return []
 
-GOOGLE_API_KEY = get_api_key()
+GOOGLE_API_KEYS = get_api_keys()
 
-if not GOOGLE_API_KEY:
+if not GOOGLE_API_KEYS:
     st.error("⚠️ API anahtarı bulunamadı. Lütfen Streamlit secrets'ı kontrol edin.")
     st.stop()
 
