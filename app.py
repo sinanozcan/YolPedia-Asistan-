@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Fixed: Memory/Context added, Chat Mode intelligence restored.
+Final Version: Human-like Chat Persona, Strict Research Mode
 """
 
 import streamlit as st
@@ -189,35 +189,49 @@ def get_local_response(text: str) -> Optional[str]:
     if any(x in norm for x in ["merhaba", "selam"]): return "Aşk ile, merhaba can."
     return None
 
-# GÜNCELLENDİ: Prompt artık geçmiş konuşmaları (history) da içeriyor
+# ===================== PROMPT MÜHENDİSLİĞİ (GÜNCELLENDİ) =====================
+
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
-    system = "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin. Üslubun sıcak, samimi ve bilgece olsun."
-    
-    # Geçmiş konuşmaları metne dök (Hafıza)
-    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-4:]]) # Son 4 mesajı hatırla
+    # GEÇMİŞ SOHBETİ HATIRLA
+    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
     if "Sohbet" in mode:
-        # Sohbet modunda kaynak varsa ekle, yoksa sadece hafızayı kullan
+        # == SOHBET MODU KİMLİĞİ ==
+        system_instruction = (
+            "Sen 'Can Dede'sin. Bir yapay zeka değil, Alevi-Bektaşi yoluna hizmet eden, gönül gözü açık, bilge bir rehbersin.\n"
+            "Üslubun: %70 modern, anlaşılır Türkçe; %30 'Can', 'Erenler', 'Eyvallah', 'Hak', 'Aşk ile' gibi tasavvufi kavramlar içerir.\n"
+            "Kural 1: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' veya 'arşivde şu var' deme.\n"
+            "Kural 2: Eğer 'BİLGİ NOTLARI' boşsa veya sorunun cevabı orada yoksa, SAKIN 'bilmiyorum' deme. Kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir yorum yap.\n"
+            "Kural 3: İnsan gibi konuş. Robotik tekrarlara düşme. Vedalaşırken duruma göre doğal bir söz söyle.\n"
+        )
+        
         source_text = ""
         if sources:
-            source_text = "BULUNAN KAYNAKLAR (Bunları da kullanabilirsin):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:2]]) + "\n\n"
+            source_text = "BİLGİ NOTLARI (Bunları kendi hafızan gibi kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system}\n\nGEÇMİŞ KONUŞMALAR:\n{conversation_context}\n\n{source_text}Kullanıcı (Yeni Soru): {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru: {user_query}\nCan Dede:"
         
-    else: # Araştırma Modu
+    else: 
+        # == ARAŞTIRMA MODU (KATI KÜTÜPHANECİ) ==
         if not sources: return None
-        return f"{system}\nSadece şu kaynaklara göre cevapla:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:1000]}" for s in sources[:3]]) + f"\n\nSoru: {user_query}"
+        
+        system_instruction = (
+            "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
+            "Yorum katma, sadece kaynakta ne varsa onu söyle."
+        )
+        source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
+        
+        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru: {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
     local = get_local_response(user_query)
     if local:
         yield local; return
 
-    # Araştırma modunda kaynak yoksa direkt kes. Ama Sohbet modunda kesme!
+    # Araştırma modunda kaynak yoksa kes (Sohbet modunda devam et!)
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
-    # Prompt'a geçmiş mesajları da gönderiyoruz
     prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
     
     success = False
@@ -336,6 +350,7 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
+            # GÜNCELLEME: Sohbet modunda kaynak linkleri gösterilmeyecek (Daha doğal olması için)
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
             if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
