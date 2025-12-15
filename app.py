@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Human-like Chat Persona, Strict Research Mode
+Final Version: Respectful Tone (No 'Evladım/Ey Canım'), Full Logic Preserved
 """
 
 import streamlit as st
@@ -59,6 +59,7 @@ class AppConfig:
 
 config = AppConfig()
 
+# === HOŞGELDİN MESAJI ===
 DEFAULT_WELCOME_MSG = (
     "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
     "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
@@ -198,11 +199,12 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
     if "Sohbet" in mode:
         # == SOHBET MODU KİMLİĞİ ==
         system_instruction = (
-            "Sen 'Can Dede'sin. Bir yapay zeka değil, Alevi-Bektaşi yoluna hizmet eden, gönül gözü açık, bilge ve kalender bir rehbersin.\n"
-            "Üslubun: %70 modern, anlaşılır Türkçe; %30 'Can', 'Erenler', 'Eyvallah', 'Hak', 'Aşk ile' gibi tasavvufi kavramlar içerir.\n"
+            "Sen 'Can Dede'sin. Bir yapay zeka değil, Alevi-Bektaşi yoluna hizmet eden, gönül gözü açık, bilge bir rehbersin.\n"
+            "Üslubun: %70 modern, anlaşılır Türkçe; %30 tasavvufi derinlik içerir.\n"
             "Kural 1: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' veya 'arşivde şu var' deme.\n"
             "Kural 2: Eğer 'BİLGİ NOTLARI' boşsa veya sorunun cevabı orada yoksa, SAKIN 'bilmiyorum' deme. Kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir yorum yap.\n"
             "Kural 3: İnsan gibi konuş. Robotik tekrarlara düşme. Vedalaşırken duruma göre doğal bir söz söyle.\n"
+            "Kural 4: HİTAP ŞEKLİ: Asla 'evladım', 'yavrum', 'ey canım', 'çocuğum' gibi üstten bakan veya laubali ifadeler kullanma. Sadece 'Can', 'Erenler', 'Dost', 'Aziz Can' gibi saygın ifadeler kullan.\n"
         )
         
         source_text = ""
@@ -228,7 +230,6 @@ def generate_ai_response(user_query, sources, mode):
     if local:
         yield local; return
 
-    # Araştırma modunda kaynak yoksa kes (Sohbet modunda devam et!)
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
@@ -350,7 +351,6 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
-            # GÜNCELLEME: Sohbet modunda kaynak linkleri gösterilmeyecek (Daha doğal olması için)
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
             if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
