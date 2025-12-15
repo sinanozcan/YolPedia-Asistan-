@@ -10,7 +10,7 @@ import json
 import time
 import random
 import logging
-import unicodedata  # <--- YENİ EKLENDİ: En güçlü karakter temizleyici
+import unicodedata
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -27,7 +27,7 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Eşik değeri güvenli seviyede
+    # Eşik değeri
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -41,14 +41,16 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Stop words listesi (Etkisiz kelimeler)
+    # GÜNCELLEME: Stop Words Listesi Genişletildi
+    # Kullanıcının sohbet ederken kurduğu "bilgi almak istiyorum" gibi cümleleri temizliyoruz.
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
         "ne", "var", "mi", "mu", "bana", "soyle", "goster", "ver", 
         "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
         "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
-        "istiyorum", "elinde", "okur", "musun", "bul", "getir"
+        "istiyorum", "elinde", "okur", "musun", "bul", "getir",
+        "bilgi", "almak", "edinmek", "ogrenmek", "hakkindaki", "hakkindaki"
     ])
     
     def __post_init__(self):
@@ -166,17 +168,13 @@ def load_knowledge_base() -> List[Dict]:
 def normalize_turkish_text(text: str) -> str:
     """
     Profesyonel Normalizasyon: Unicode NFKD yöntemi ile tüm şapkaları ve işaretleri söker.
-    'Celâli' -> 'celali'
-    'Kâmil' -> 'kamil'
-    'İsyan' -> 'isyan'
     """
     if not isinstance(text, str):
         return ""
     
-    # 1. Önce standart küçük harfe çevir
     text = text.lower()
     
-    # 2. Türkçe özel karakterleri manuel düzelt (Unicodedata bunları bazen kaçırabilir)
+    # Türkçe özel karakterleri manuel düzelt
     replacements = {
         "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c",
         "İ": "i", "Ğ": "g", "Ü": "u", "Ş": "s", "Ö": "o", "Ç": "c"
@@ -184,8 +182,7 @@ def normalize_turkish_text(text: str) -> str:
     for src, dest in replacements.items():
         text = text.replace(src, dest)
     
-    # 3. Unicode Normalizasyonu (Şapkalı harfler için kesin çözüm)
-    # Bu işlem 'â' harfini 'a' ve 'şapka' diye ayırır, sonra şapkayı atar.
+    # Unicode Normalizasyonu
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
     
     return text
@@ -254,13 +251,11 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     normalized_title = normalize_turkish_text(entry.get('baslik', ''))
     normalized_content = normalize_turkish_text(entry.get('icerik', ''))
     
-    # Tam eşleşme puanları
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
         score += 80 
     
-    # Kelime bazlı eşleşme
     for keyword in keywords:
         if keyword in normalized_title:
             score += 100 
@@ -273,20 +268,21 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     return score
 
-def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
+def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     """Search knowledge base for relevant content with STOP WORDS filtering"""
     if not db or not query or len(query) < config.MIN_SEARCH_LENGTH:
-        return [], ""
+        return [], []
     
     normalized_query = normalize_turkish_text(query)
     
+    # Stop Words listesindeki kelimeleri çıkartıyoruz
     keywords = [
         k for k in normalized_query.split() 
         if len(k) > 2 and k not in config.STOP_WORDS
     ]
     
     if not keywords:
-        return [], normalized_query
+        return [], []
         
     results = []
     for entry in db:
@@ -304,7 +300,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
     logger.info(f"Search for '{query}' returned {len(top_results)} results. Keywords: {keywords}")
-    return top_results, normalized_query
+    return top_results, keywords
 
 # ===================== LOCAL RESPONSE HANDLER =====================
 
@@ -359,9 +355,8 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             for src in sources[:3]
         ])
         return (
-            f"Sen YolPedia asistanısın. Görevin sadece aşağıdaki KAYNAKLARI kullanarak cevap vermektir.\n"
-            f"Eğer sorunun cevabı kaynaklarda yoksa, KESİNLİKLE uydurma ve 'Arşivde bu konuda bilgi bulamadım' de.\n"
-            f"Asla kaynakların dışına çıkma.\n\n"
+            f"Sen YolPedia asistanısın. Aşağıdaki KAYNAKLARI kullanarak kullanıcının sorusunu cevapla.\n"
+            f"Kaynaklarda konuyla ilgili bilgi varsa özetle ve kullanıcıya aktar.\n"
             f"KAYNAKLAR:\n{source_text}\n\n"
             f"Soru: {user_query}"
         )
@@ -571,7 +566,15 @@ def main():
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         scroll_to_bottom()
         
-        sources, _ = search_knowledge_base(user_input, st.session_state.db)
+        # Arama yap ve bulunan keywords'leri de al
+        sources, found_keywords = search_knowledge_base(user_input, st.session_state.db)
+        
+        # GÜNCELLEME: Can Dede cevap vermeden önce bulduklarını kullanıcıya göster (GÜVEN İNŞASI)
+        if sources:
+             with st.expander(f"🔍 Can Dede Arka Planda Bunları Buldu ({len(sources)} Kaynak)"):
+                 st.caption(f"Aranan Anahtar Kelimeler: {found_keywords}")
+                 for s in sources:
+                     st.write(f"- {s['baslik']}")
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
