@@ -19,7 +19,7 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 60
+    MAX_MESSAGE_LIMIT: int = 30  # GÜNCELLEME: Limit 30'a düşürüldü
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
@@ -293,7 +293,6 @@ def get_local_response(text: str) -> Optional[str]:
 
 # ===================== AI RESPONSE GENERATOR =====================
 
-# EKSİK OLAN FONKSİYON BURAYA EKLENDİ
 def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
     """Build the prompt for the AI model"""
     system_instruction = (
@@ -366,7 +365,10 @@ def generate_ai_response(
             break
             
         key_masked = f"...{current_api_key[-4:]}"
-        status_box.info(f"🔄 {key_index + 1}. Anahtar ({key_masked}) deneniyor...")
+        # status_box.info(f"🔄 {key_index + 1}. Anahtar ({key_masked}) deneniyor...") 
+        # (Opsiyonel: Kullanıcı anahtar denendiğini görmesin isterseniz bu satırı silebilirsiniz,
+        # ama hata durumunda bilgi vermesi iyidir)
+        status_box.info(f"Can Dede düşünüyor... (Sunucu {key_index + 1})")
         
         try:
             # Yapılandırmayı bu anahtarla ayarla
@@ -408,7 +410,7 @@ def generate_ai_response(
                     
                     # Eğer hata 429/Quota ise BU ANAHTARI YAK ve sonrakine geç
                     if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
-                        status_box.warning(f"⚠️ {key_index + 1}. Anahtarın kotası dolmuş. Sıradakine geçiliyor...")
+                        # status_box.warning(f"⚠️ {key_index + 1}. Anahtarın kotası dolmuş. Sıradakine geçiliyor...")
                         time.sleep(1) # Sistemin nefes alması için bekle
                         last_error_details = f"Anahtar {key_index+1} Kotası Dolu (429)"
                         break # Model döngüsünü kır -> Bir sonraki ANAHTARA geçer
@@ -419,7 +421,7 @@ def generate_ai_response(
 
         except Exception as key_error:
             # Anahtar yapılandırma hatası
-            status_box.error(f"❌ {key_index + 1}. Anahtar hatalı: {str(key_error)}")
+            # status_box.error(f"❌ {key_index + 1}. Anahtar hatalı: {str(key_error)}")
             last_error_details = str(key_error)
             continue
             
@@ -484,7 +486,7 @@ def render_sidebar() -> str:
         
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
-        st.caption(f"🔑 Aktif Anahtar: {len(GOOGLE_API_KEYS)}")
+        # GÜNCELLEME: Anahtar sayısı göstergesi kaldırıldı.
         
     return selected_mode
 
