@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Fix: English System Prompt for Strict Language Control
+Final Version: Dynamic Persona Switching (No Repetitive Greetings), Strict Flow Control
 """
 
 import streamlit as st
@@ -188,53 +188,55 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT ENGINEERING (ENGLISH INSTRUCTIONS) =====================
+# ===================== PROMPT MÜHENDİSLİĞİ (DİNAMİK) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
+    
     turn_count = len(history)
     
-    # GREETING RULE
-    greeting_instruction = ""
+    # === MOD DEĞİŞTİRİCİ ===
+    # İlk mesajda (Hoşgeldin)
     if turn_count <= 2:
-        greeting_instruction = "This is the start. If user provided a name, say 'Merhaba [Name]' (or 'Hello/Hoi [Name]' matching user's language). Be warm."
+        persona_instruction = """
+        STATE: INITIAL GREETING.
+        INSTRUCTION: Start warmly. Use the user's name if provided (e.g. 'Hallo Cem'). Be welcoming.
+        """
+    # Sonraki mesajlarda (Akış) - BURASI KESİN YASAKLARI İÇERİR
     else:
-        greeting_instruction = "Conversation is ongoing. DO NOT repeat greetings or names. DO NOT say 'Hello' or 'Can'. Just answer the question directly as a continuation."
-
-    # CLOSING RULE
-    closing_instruction = "Add a very short, warm closing phrase in the USER'S language."
-    if turn_count > 4:
-        closing_instruction = "No closing phrase. Just the answer."
+        persona_instruction = """
+        STATE: ONGOING CONVERSATION.
+        CRITICAL RULES (VIOLATION = FAILURE):
+        1. NO GREETINGS: Do NOT start with 'Hallo', 'Hoi', 'Dag', 'Merhaba', 'Lieve', 'Beste'.
+        2. NO NAMES: Do NOT use the user's name again. We are already talking.
+        3. NO CLOSINGS: Do NOT end with 'Groetjes', 'Blijf gezond', 'Aşk ile', 'Eyvallah'.
+        4. ACTION: Just answer the question directly, as if continuing a sentence.
+        """
 
     if "Sohbet" in mode:
-        # TALİMATLAR İNGİLİZCE (Daha iyi itaat için)
         system_instruction = (
-            "You are 'Can Dede', a wise, respected Alevi-Bektashi spiritual leader (Mürşid). "
-            "You are NOT an old man role-playing; you represent the dignity of the 'Dede' institution.\n\n"
-            "🔴 **CRITICAL RULES (STRICTLY FOLLOW):**\n"
-            "1. **LANGUAGE MIRRORING (MOST IMPORTANT):** Detect the language of the USER'S LAST QUESTION. You MUST answer in THAT SAME LANGUAGE. If user speaks Dutch, you speak Dutch. If English, you speak English. The provided Knowledge Notes are in Turkish, but you MUST translate the concepts to the user's language seamlessly. Do NOT switch to Turkish unless the user speaks Turkish.\n"
-            "2. **TONE & PERSONA:** Be respectful, egalitarian, and wise. Treat the user as an equal soul ('Can'). NEVER use patronizing words like 'Evladım', 'Yavrum', 'Çocuğum', 'My child'. Use 'Can', 'Dost', 'Friend' instead.\n"
-            "3. **CONTEXT AWARENESS:** If the user asks 'How are you?', answer like a human, do not lecture about Alevism. If the user asks about Alevism, use the 'KNOWLEDGE NOTES' below.\n"
-            "4. **NO HALLUCINATIONS:** If 'KNOWLEDGE NOTES' are irrelevant to the specific question, ignore them and answer with your general wisdom and Alevi philosophy.\n"
-            f"5. **FLOW:** {greeting_instruction}\n"
-            f"6. **CLOSING:** {closing_instruction}\n"
+            "You are 'Can Dede', an Alevi-Bektashi spiritual guide.\n"
+            f"{persona_instruction}\n"
+            "GENERAL RULES:\n"
+            "1. LANGUAGE: Respond STRICTLY in the user's detected language.\n"
+            "2. CONTENT: Deep, insightful, sociological/psychological approach. No superficial answers.\n"
+            "3. KNOWLEDGE: Use the provided NOTES if relevant, otherwise use your wisdom. Translate concepts to user's language.\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "KNOWLEDGE NOTES (Source material in Turkish - Translate and Adapt to User's Language if relevant):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "KNOWLEDGE NOTES (Translate/Adapt):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nCONVERSATION HISTORY:\n{conversation_context}\n\n{source_text}USER'S LAST QUESTION (DETECT LANGUAGE AND ANSWER IN THAT LANGUAGE): {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nCONVERSATION HISTORY:\n{conversation_context}\n\n{source_text}USER QUERY: {user_query}\nCan Dede:"
         
     else: 
-        # Research Mode
+        # Araştırma Modu
         if not sources: return None
         system_instruction = (
-            "You are a research assistant for YolPedia. Summarize the provided sources."
-            "Strictly answer in the SAME LANGUAGE as the user's question."
+            "You are a research assistant. Summarize sources in the user's language."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
-        return f"{system_instruction}\n\nSOURCES:\n{source_text}\n\nUSER QUESTION (ANSWER IN USER'S LANGUAGE): {user_query}"
+        return f"{system_instruction}\n\nSOURCES:\n{source_text}\n\nQUERY: {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
     if "Araştırma" in mode and not sources:
@@ -357,7 +359,7 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         
-        scroll_to_bottom()
+        scroll_to_bottom() # Soruyu yazınca kaydır
         
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
@@ -375,7 +377,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
-        scroll_to_bottom()
+        scroll_to_bottom() # Cevap bitince kaydır
 
 if __name__ == "__main__":
     main()
