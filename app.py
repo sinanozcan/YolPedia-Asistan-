@@ -10,6 +10,7 @@ import json
 import time
 import random
 import logging
+import unicodedata  # <--- YENİ EKLENDİ: En güçlü karakter temizleyici
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -26,8 +27,7 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # GÜNCELLEME: Barajı 30'a çektik. 
-    # Sitenin kendi araması gibi, içinde tek bir kelime geçse bile yakalasın.
+    # Eşik değeri güvenli seviyede
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -41,7 +41,7 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Stop words listesi (Etkisiz kelimeler) - Normalize edilmiş halleri
+    # Stop words listesi (Etkisiz kelimeler)
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
@@ -161,36 +161,33 @@ def load_knowledge_base() -> List[Dict]:
         st.error(f"❌ Veri yüklenirken beklenmeyen hata: {e}")
         return []
 
-# ===================== TEXT PROCESSING =====================
+# ===================== TEXT PROCESSING (UNICODE NORMALIZATION) =====================
 
 def normalize_turkish_text(text: str) -> str:
     """
-    Agresif Normalizasyon: Türkçe karakterleri, şapkalı harfleri ve noktalı harfleri
-    standart İngilizce/ASCII karakterlerine çevirir.
+    Profesyonel Normalizasyon: Unicode NFKD yöntemi ile tüm şapkaları ve işaretleri söker.
+    'Celâli' -> 'celali'
+    'Kâmil' -> 'kamil'
+    'İsyan' -> 'isyan'
     """
     if not isinstance(text, str):
         return ""
     
+    # 1. Önce standart küçük harfe çevir
     text = text.lower()
     
-    # Kapsamlı değişim tablosu
+    # 2. Türkçe özel karakterleri manuel düzelt (Unicodedata bunları bazen kaçırabilir)
     replacements = {
-        # Standart Türkçe harfler
-        "ğ": "g", "Ğ": "g",
-        "ü": "u", "Ü": "u",
-        "ş": "s", "Ş": "s",
-        "ı": "i", "İ": "i",
-        "ö": "o", "Ö": "o",
-        "ç": "c", "Ç": "c",
-        # Şapkalı (inceltme) harfler
-        "â": "a", "Â": "a",
-        "î": "i", "Î": "i",
-        "û": "u", "Û": "u"
+        "ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c",
+        "İ": "i", "Ğ": "g", "Ü": "u", "Ş": "s", "Ö": "o", "Ç": "c"
     }
-    
     for src, dest in replacements.items():
         text = text.replace(src, dest)
-        
+    
+    # 3. Unicode Normalizasyonu (Şapkalı harfler için kesin çözüm)
+    # Bu işlem 'â' harfini 'a' ve 'şapka' diye ayırır, sonra şapkayı atar.
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+    
     return text
 
 # ===================== SESSION STATE INITIALIZATION =====================
@@ -265,7 +262,6 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     # Kelime bazlı eşleşme
     for keyword in keywords:
-        # Başlıkta geçen kelimeye çok yüksek puan ver ki site araması gibi çalışsın
         if keyword in normalized_title:
             score += 100 
         elif keyword in normalized_content:
@@ -284,7 +280,6 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     
     normalized_query = normalize_turkish_text(query)
     
-    # Stop Words listesindeki kelimeleri çıkartıyoruz
     keywords = [
         k for k in normalized_query.split() 
         if len(k) > 2 and k not in config.STOP_WORDS
@@ -380,19 +375,16 @@ def generate_ai_response(
     Generate AI response using Google Gemini API with VISIBLE robust key rotation.
     """
     
-    # 1. Önce yerel veritabanına bak
     local_response = get_local_response(user_query)
     if local_response:
         time.sleep(0.5)
         yield local_response
         return
     
-    # 2. ARAŞTIRMA MODU KORUMASI
     if "Araştırma" in mode and not sources:
         yield "📚 Üzgünüm can, YolPedia arşivinde bu konuyla ilgili yeterli kaynak bulunamadı. Başka bir konuda yardımcı olabilir miyim?"
         return
 
-    # 3. Prompt hazırla
     prompt = build_prompt(user_query, sources, mode)
     if prompt is None:
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
@@ -510,11 +502,30 @@ def render_sidebar() -> str:
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
-        # GÜNCELLEME: İSTEDİĞİNİZ ÖZELLİK EKLENDİ
-        # Toplam kaynak sayısını veritabanından çekip gösterir
+        # Teşhis Paneli - Veritabanı Bilgisi
         if 'db' in st.session_state:
             total_sources = len(st.session_state.db)
             st.info(f"📚 Arşivdeki Toplam Kaynak: **{total_sources}**")
+            
+            st.markdown("---")
+            st.caption("🔍 **Test Paneli:** Veritabanında bir kelimenin varlığını yapay zeka olmadan kontrol et.")
+            test_query = st.text_input("Kelime Ara:", placeholder="Örn: celali").strip()
+            
+            if test_query:
+                normalized_test = normalize_turkish_text(test_query)
+                matches = []
+                for entry in st.session_state.db:
+                    title_norm = normalize_turkish_text(entry.get('baslik', ''))
+                    if normalized_test in title_norm:
+                        matches.append(entry['baslik'])
+                
+                if matches:
+                    st.success(f"✅ Bulundu ({len(matches)} Adet):")
+                    for match in matches[:3]: # İlk 3 tanesini göster
+                        st.caption(f"• {match}")
+                else:
+                    st.error(f"❌ '{test_query}' arşivde bulunamadı.")
+                    st.caption(f"Aranan (Normalize): {normalized_test}")
         else:
              st.warning("⚠️ Veritabanı yüklenemedi!")
         
@@ -588,26 +599,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    # === TEŞHİS MODU BAŞLANGIÇ ===
-    if 'db' in st.session_state and st.session_state.db:
-        ilk_kayit = st.session_state.db[0]
-        st.sidebar.error("🛠️ TEŞHİS PANELİ")
-        st.sidebar.write("Veritabanındaki İlk Kayıtın Anahtarları:")
-        st.sidebar.json(list(ilk_kayit.keys()))
-        
-        # Anahtar testi
-        baslik_var_mi = "baslik" in ilk_kayit
-        icerik_var_mi = "icerik" in ilk_kayit
-        
-        if not baslik_var_mi:
-            st.sidebar.warning("⚠️ DİKKAT: 'baslik' anahtarı bulunamadı!")
-            st.sidebar.info(f"Olası doğru anahtar: {[k for k in ilk_kayit.keys() if 'title' in k or 'ad' in k or 'name' in k]}")
-            
-        # Karakter testi
-        st.sidebar.write("Örnek Başlık Görünümü:")
-        # Hangi anahtar varsa onu yazdır
-        dogru_anahtar = "baslik" if baslik_var_mi else list(ilk_kayit.keys())[0]
-        ornek_metin = ilk_kayit[dogru_anahtar]
-        st.sidebar.code(ornek_metin)
-    # === TEŞHİS MODU BİTİŞ ===
