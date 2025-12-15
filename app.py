@@ -40,14 +40,14 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # GÜNCELLEME: Arama motorunun görmezden geleceği kelimeler
+    # Stop words listesi (Etkisiz kelimeler) - Hepsi İngilizce karakterle yazıldı ki normalize edilmiş metinle eşleşsin.
     STOP_WORDS: List[str] = field(default_factory=lambda: [
-        "ve", "veya", "ile", "bir", "bu", "şu", "o", "icin", "için", 
-        "hakkinda", "hakkında", "kaynak", "kaynaklar", "ariyorum", "arıyorum", 
-        "nedir", "kimdir", "nasil", "nasıl", "ne", "var", "mi", "mu", "mı",
-        "bana", "soyle", "söyle", "goster", "göster", "ver", "ilgili", "alakali",
-        "yazi", "yazı", "belge", "kitap", "makale", "soz", "söz", "lutfen", "lütfen",
-        "merhaba", "selam", "dedem", "can", "erenler", "konusunda", "istiyorum"
+        "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
+        "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
+        "ne", "var", "mi", "mu", "bana", "soyle", "goster", "ver", 
+        "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
+        "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
+        "istiyorum", "elinde", "okur", "musun"
     ])
     
     def __post_init__(self):
@@ -160,18 +160,38 @@ def load_knowledge_base() -> List[Dict]:
         st.error(f"❌ Veri yüklenirken beklenmeyen hata: {e}")
         return []
 
-# ===================== TEXT PROCESSING =====================
+# ===================== TEXT PROCESSING (TAM NORMALİZASYON) =====================
 
 def normalize_turkish_text(text: str) -> str:
-    """Normalize Turkish text for better searching"""
+    """
+    Agresif Normalizasyon: Türkçe karakterleri, şapkalı harfleri ve noktalı harfleri
+    standart İngilizce/ASCII karakterlerine çevirir.
+    Böylece 'şah' == 'sah', 'hâl' == 'hal', 'ığdır' == 'igdir' olur.
+    """
     if not isinstance(text, str):
         return ""
     
-    translation_table = str.maketrans(
-        "ğĞüÜşŞıİöÖçÇ",
-        "gGuUsSiIoOcC"
-    )
-    return text.translate(translation_table).lower()
+    text = text.lower()
+    
+    # Kapsamlı değişim tablosu
+    replacements = {
+        # Standart Türkçe harfler
+        "ğ": "g", "Ğ": "g",
+        "ü": "u", "Ü": "u",
+        "ş": "s", "Ş": "s",
+        "ı": "i", "İ": "i",
+        "ö": "o", "Ö": "o",
+        "ç": "c", "Ç": "c",
+        # Şapkalı (inceltme) harfler
+        "â": "a", "Â": "a",
+        "î": "i", "Î": "i",
+        "û": "u", "Û": "u"
+    }
+    
+    for src, dest in replacements.items():
+        text = text.replace(src, dest)
+        
+    return text
 
 # ===================== SESSION STATE INITIALIZATION =====================
 
@@ -233,11 +253,10 @@ def validate_rate_limit() -> Tuple[bool, str]:
 def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List[str]) -> int:
     """Calculate relevance score for a knowledge base entry"""
     score = 0
-    title = entry.get('baslik', '')
-    content = entry.get('icerik', '')
-    
-    normalized_title = normalize_turkish_text(title)
-    normalized_content = normalize_turkish_text(content)
+    # Veritabanındaki metni de AYNI fonksiyonla normalize et
+    # Bu sayede 'Celâli' veritabanında varsa bile 'celali'ye dönüşür
+    normalized_title = normalize_turkish_text(entry.get('baslik', ''))
+    normalized_content = normalize_turkish_text(entry.get('icerik', ''))
     
     # Tam eşleşme (Tüm sorgu olduğu gibi geçiyorsa)
     if normalized_query in normalized_title:
@@ -263,10 +282,11 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     if not db or not query or len(query) < config.MIN_SEARCH_LENGTH:
         return [], ""
     
+    # Sorguyu normalize et (ör: 'Celâli' -> 'celali', 'Kâmil' -> 'kamil')
     normalized_query = normalize_turkish_text(query)
     
-    # GÜNCELLEME: Stop Words (Etkisiz Kelimeler) Temizliği
-    # "hakkında", "kaynak", "arıyorum" gibi kelimeleri listeden çıkarıyoruz.
+    # Stop Words Temizliği
+    # Stop words listesi de artık normalize edilmiş durumda ("için" -> "icin" gibi)
     keywords = [
         k for k in normalized_query.split() 
         if len(k) > 2 and k not in config.STOP_WORDS
@@ -303,14 +323,14 @@ def get_local_response(text: str) -> Optional[str]:
     greetings = ["merhaba", "selam", "selamun aleykum", "gunaydin"]
     status_queries = ["nasilsin", "naber", "ne var ne yok"]
     
-    if any(greeting == normalized for greeting in greetings):
-        return random.choice([
+    if any(g in normalized for g in greetings):
+         return random.choice([
             "Aşk ile, merhaba güzel can.",
             "Selam olsun. Hoş geldin, sevgili dost.",
             "Hoş geldin, can dost."
         ])
     
-    if any(query in normalized for query in status_queries):
+    if any(q in normalized for q in status_queries):
         return "Şükür Hak'ka, yolun hizmetindeyiz erenler."
     
     return None
@@ -339,6 +359,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             return f"{system_instruction}\n\nKullanıcı: {user_query}"
             
     else:  # Research mode
+        # KAYNAK YOKSA DOĞRUDAN UYARI DÖNDÜR
         if not sources:
             return None
         
@@ -361,10 +382,9 @@ def generate_ai_response(
 ) -> Generator[str, None, None]:
     """
     Generate AI response using Google Gemini API with VISIBLE robust key rotation.
-    Bu versiyon hata aldığında pes etmez, ekrana bilgi vererek sıradaki anahtara geçer.
     """
     
-    # 1. Önce yerel veritabanına bak (API harcamamak için)
+    # 1. Önce yerel veritabanına bak
     local_response = get_local_response(user_query)
     if local_response:
         time.sleep(0.5)
@@ -372,7 +392,6 @@ def generate_ai_response(
         return
     
     # 2. ARAŞTIRMA MODU KORUMASI
-    # Eğer Araştırma modundaysak ve kaynak bulamadıysak, API'ye hiç gitme.
     if "Araştırma" in mode and not sources:
         yield "📚 Üzgünüm can, YolPedia arşivinde bu konuyla ilgili yeterli kaynak bulunamadı. Başka bir konuda yardımcı olabilir miyim?"
         return
@@ -385,23 +404,16 @@ def generate_ai_response(
     
     success = False
     last_error_details = ""
-    
-    # Kullanıcıya işlem durumunu göstermek için geçici alan
     status_box = st.empty()
 
-    # ================= ANAHTAR DÖNGÜSÜ =================
-    # Tüm anahtarları sırasıyla dener
     for key_index, current_api_key in enumerate(GOOGLE_API_KEYS):
         
         if success:
             break
             
-        # status_box.info(f"Can Dede düşünüyor... (Sunucu {key_index + 1})")
-        
         try:
             genai.configure(api_key=current_api_key)
             
-            # ================= MODEL DÖNGÜSÜ =================
             for model_name in config.GEMINI_MODELS:
                 try:
                     model = genai.GenerativeModel(model_name)
@@ -442,7 +454,6 @@ def generate_ai_response(
             last_error_details = str(key_error)
             continue
             
-    # ================= SONUÇ KONTROLÜ =================
     if not success:
         status_box.error("❌ Tüm denemeler başarısız oldu.")
         yield f"⚠️ Can dost, elimdeki {len(GOOGLE_API_KEYS)} farklı anahtarın hepsini denedim ama Google kapıları kapalı tutuyor. \n\n**Son Hata Detayı:** {last_error_details}\n\nLütfen 2-3 dakika bekleyip tekrar dene."
@@ -559,7 +570,6 @@ def main():
             
             placeholder.markdown(full_response)
             
-            # SADECE KAYNAK VARSA VE MOD ARAŞTIRMAYSA KAYNAKLARI GÖSTER
             if sources and "Araştırma" in selected_mode:
                 render_sources(sources)
             
