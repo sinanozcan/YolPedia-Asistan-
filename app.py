@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Strict Multi-language Support & Auto-Scroll Fixed
+Final Version: Natural Address (No Redundant Titles), Aggressive Auto-Scroll
 """
 
 import streamlit as st
@@ -186,31 +186,29 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
     return results[:config.MAX_SEARCH_RESULTS], keywords
 
 def get_local_response(text: str) -> Optional[str]:
-    norm = normalize_turkish_text(text)
-    # Dil otomatik algılansın diye yerel cevapları kapattık
+    # Dil otomatik algılandığı için yerel cevapları kapattık
     return None
 
+# ===================== PROMPT MÜHENDİSLİĞİ (HİTAP DÜZELTİLDİ) =====================
+
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
-    # Geçmiş sohbeti al (Context)
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
-    # Sohbet derinliği kontrolü (Veda mesajı için)
     turn_count = len(history)
     closing_instruction = ""
     if turn_count > 4:
-        closing_instruction = "Sohbet ilerledi. Artık cevabın sonuna 'Aşk ile', 'Eyvallah' gibi veda sözleri EKLEME. Direkt cevabı verip sus."
+        closing_instruction = "Sohbet ilerledi. Artık cevabın sonuna veda sözleri EKLEME. Direkt cevabı verip sus."
     else:
-        closing_instruction = "Cevabın sonuna sıcak, kısa bir Alevi-Bektaşi veda sözü ekle."
+        closing_instruction = "Cevabın sonuna sıcak, kısa bir veda sözü ekle (Dile uygun)."
 
     if "Sohbet" in mode:
         system_instruction = (
-            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin.\n"
-            "ÇOK ÖNEMLİ KURAL (DİL): Kullanıcının son sorusu ('Son Soru') hangi dildiyse (Hollandaca, Almanca, İngilizce vs.) cevabı O DİLDE ver. Asla Türkçe cevap verme (eğer soru Türkçe değilse). Bilgi notları Türkçe olsa bile sen çevirip anlat.\n"
+            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n"
             "GÖREVLERİN:\n"
-            "1. DERİNLİK: Asla yuvarlak, geçiştirici cevaplar verme. Konunun özüne in, derinlemesine ve doyurucu anlat. Her yaş grubunun anlayacağı berrak bir dil kullan.\n"
-            "2. BİLGİ KAYNAĞI: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' deme.\n"
-            "3. YORUM GÜCÜ: Eğer 'BİLGİ NOTLARI' boşsa, kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir cevap ver. 'Bilmiyorum' deyip kestirip atma.\n"
-            "4. HİTAP: 'Evladım', 'yavrum' gibi ifadeler YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
+            "1. DİL: Kullanıcı hangi dilde (Hollandaca, Almanca, İngilizce vs.) sorarsa o dilde cevap ver.\n"
+            "2. HİTAP KURALI (ÇOK ÖNEMLİ): Eğer kullanıcı ismini belirttiyse (örneğin Cem), sadece ismini kullan ('Lieve Cem', 'Dag Cem', 'Merhaba Cem' gibi). İsmin hemen arkasına 'Erenler', 'Can', 'Dost' gibi sıfatlar EKLEME. Bu kulağa çok garip geliyor. Sadece ismi kullanmak yeterli ve samimidir. Yabancı dillerde o dilin doğal hitap şeklini asla bozma.\n"
+            "3. İÇERİK: Asla yuvarlak cevaplar verme. Konunun özüne in, derinlemesine anlat. 'BİLGİ NOTLARI'nı oku ve kendi bilginmiş gibi anlat.\n"
+            "4. YORUM: Bilgi yoksa, kendi bilgeliğinle kucaklayıcı bir yorum yap. 'Bilmiyorum' deme.\n"
             f"5. VEDA: {closing_instruction}\n"
         )
         
@@ -218,22 +216,18 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
         if sources:
             source_text = "BİLGİ NOTLARI (Bunları kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE BU DİLDE CEVAP VER): {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (BU DİLDE DOĞAL CEVAP VER): {user_query}\nCan Dede:"
         
     else: 
-        # Araştırma Modu
         if not sources: return None
-        
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
             "Kullanıcı hangi dilde sorduysa o dilde özetle."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
-        
         return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
-    # Araştırma modunda kaynak yoksa direkt kes (Sohbet modunda devam et!)
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
@@ -274,17 +268,23 @@ def generate_ai_response(user_query, sources, mode):
 # ===================== UI HELPER FUNCTIONS =====================
 
 def scroll_to_bottom():
-    # JavaScript ile sayfayı en alta kaydırma
+    # JavaScript ile sayfayı en alta kaydırma (Agresif Mod)
     js = """
     <script>
         function scrollDown() {
             var body = window.parent.document.querySelector(".main");
+            var footer = window.parent.document.querySelector("footer");
             if (body) {
                 body.scrollTop = body.scrollHeight;
             }
+            if (footer) {
+                footer.scrollIntoView({behavior: "smooth", block: "end"});
+            }
         }
-        // Biraz gecikmeli çalıştır ki içerik yüklensin
-        setTimeout(scrollDown, 300);
+        // Sayfa yüklendiğinde ve mesaj geldiğinde çalışır
+        scrollDown();
+        setTimeout(scrollDown, 100);
+        setTimeout(scrollDown, 500);
     </script>
     """
     components.html(js, height=0)
@@ -351,6 +351,9 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         
+        # Mesajı gönderir göndermez aşağı kaydır
+        scroll_to_bottom()
+        
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
@@ -367,7 +370,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
-        # OTOMATİK SCROLL ÇAĞRISI
+        # Cevap bittikten sonra tekrar aşağı kaydır
         scroll_to_bottom()
 
 if __name__ == "__main__":
