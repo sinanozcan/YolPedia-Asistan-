@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Multi-language, Deep Context, Dynamic Closing, No Repetition
+Final Version: Strict Multi-language Support & Auto-Scroll Fixed
 """
 
 import streamlit as st
@@ -59,7 +59,6 @@ class AppConfig:
 
 config = AppConfig()
 
-# === HOŞGELDİN MESAJI ===
 DEFAULT_WELCOME_MSG = (
     "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
     "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
@@ -188,48 +187,41 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 
 def get_local_response(text: str) -> Optional[str]:
     norm = normalize_turkish_text(text)
-    # Çok dilli olması için yerel cevapları sınırladık, AI halletsin.
-    if norm in ["merhaba", "selam", "hello", "hi", "hallo"]: 
-        return None # AI kendi dilinde cevap versin
+    # Dil otomatik algılansın diye yerel cevapları kapattık
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ (GÜNCELLENDİ) =====================
-
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
-    # Geçmiş mesaj sayısı (Sohbetin derinliğini anlamak için)
-    turn_count = len(history)
+    # Geçmiş sohbeti al (Context)
+    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
-    # AKILLI VEDA KURALI: İlk 4 mesajdan sonra veda etmeyi bırak.
+    # Sohbet derinliği kontrolü (Veda mesajı için)
+    turn_count = len(history)
     closing_instruction = ""
     if turn_count > 4:
         closing_instruction = "Sohbet ilerledi. Artık cevabın sonuna 'Aşk ile', 'Eyvallah' gibi veda sözleri EKLEME. Direkt cevabı verip sus."
     else:
         closing_instruction = "Cevabın sonuna sıcak, kısa bir Alevi-Bektaşi veda sözü ekle."
 
-    # GEÇMİŞ SOHBETİ HATIRLA (Context)
-    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
-    
     if "Sohbet" in mode:
-        # == SOHBET MODU KİMLİĞİ ==
         system_instruction = (
             "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin.\n"
+            "ÇOK ÖNEMLİ KURAL (DİL): Kullanıcının son sorusu ('Son Soru') hangi dildiyse (Hollandaca, Almanca, İngilizce vs.) cevabı O DİLDE ver. Asla Türkçe cevap verme (eğer soru Türkçe değilse). Bilgi notları Türkçe olsa bile sen çevirip anlat.\n"
             "GÖREVLERİN:\n"
-            "1. DİL: Kullanıcı hangi dilde (Türkçe, İngilizce, Almanca, Zazaca vs.) sorarsa o dilde cevap ver.\n"
-            "2. DERİNLİK: Asla yuvarlak, geçiştirici cevaplar verme. Konunun özüne in, derinlemesine ve doyurucu anlat. Her yaş grubunun anlayacağı berrak bir dil kullan.\n"
-            "3. BİLGİ KAYNAĞI: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' deme.\n"
-            "4. YORUM GÜCÜ: Eğer 'BİLGİ NOTLARI' boşsa, kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir cevap ver. 'Bilmiyorum' deyip kestirip atma.\n"
-            "5. HİTAP: 'Evladım', 'yavrum' gibi ifadeler YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
-            f"6. VEDA: {closing_instruction}\n"
+            "1. DERİNLİK: Asla yuvarlak, geçiştirici cevaplar verme. Konunun özüne in, derinlemesine ve doyurucu anlat. Her yaş grubunun anlayacağı berrak bir dil kullan.\n"
+            "2. BİLGİ KAYNAĞI: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' deme.\n"
+            "3. YORUM GÜCÜ: Eğer 'BİLGİ NOTLARI' boşsa, kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir cevap ver. 'Bilmiyorum' deyip kestirip atma.\n"
+            "4. HİTAP: 'Evladım', 'yavrum' gibi ifadeler YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
+            f"5. VEDA: {closing_instruction}\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "BİLGİ NOTLARI (Bunları kendi hafızan gibi kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "BİLGİ NOTLARI (Bunları kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru: {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE BU DİLDE CEVAP VER): {user_query}\nCan Dede:"
         
     else: 
-        # == ARAŞTIRMA MODU (KATI KÜTÜPHANECİ) ==
+        # Araştırma Modu
         if not sources: return None
         
         system_instruction = (
@@ -238,11 +230,10 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
         
-        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru: {user_query}"
+        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
-    # Yerel cevapları kaldırdık, yapay zeka dile göre kendi cevaplasın.
-    
+    # Araştırma modunda kaynak yoksa direkt kes (Sohbet modunda devam et!)
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
@@ -283,14 +274,20 @@ def generate_ai_response(user_query, sources, mode):
 # ===================== UI HELPER FUNCTIONS =====================
 
 def scroll_to_bottom():
-    components.html(
-        """
-        <script>
-            window.parent.document.querySelector(".main").scrollTop = 100000;
-        </script>
-        """,
-        height=0
-    )
+    # JavaScript ile sayfayı en alta kaydırma
+    js = """
+    <script>
+        function scrollDown() {
+            var body = window.parent.document.querySelector(".main");
+            if (body) {
+                body.scrollTop = body.scrollHeight;
+            }
+        }
+        // Biraz gecikmeli çalıştır ki içerik yüklensin
+        setTimeout(scrollDown, 300);
+    </script>
+    """
+    components.html(js, height=0)
 
 def render_header():
     st.markdown(f"""
@@ -370,6 +367,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
+        # OTOMATİK SCROLL ÇAĞRISI
         scroll_to_bottom()
 
 if __name__ == "__main__":
