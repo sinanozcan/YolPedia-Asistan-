@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Source Memory Persistence (Fixes 'Summarize This' bug)
+Final Fix: Context Persistence (Memory) & Clickable Links Logic
 """
 
 import streamlit as st
@@ -40,6 +40,7 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
+    # Gereksiz kelimeler
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
@@ -48,11 +49,11 @@ class AppConfig:
         "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
         "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
     ])
-    
-    # DEVAM ETTİRME KELİMELERİ (Hafızayı korumak için)
+
+    # HAFIZA TETİKLEYİCİLERİ (Bu kelimeler varsa eski konuyu hatırla)
     FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
-        "bu", "bunu", "bunun", "o", "onu", "onun", "sunu", "ozet", "ozetle", 
-        "detay", "anlat", "devam", "bahset", "acikla", "nedir", "nasil"
+        "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
+        "acikla", "detay", "bahset", "peki", "nasil"
     ])
     
     def __post_init__(self):
@@ -100,6 +101,9 @@ def apply_custom_styles():
         .stSpinner > div { border-top-color: #ff4b4b !important; }
         .block-container { padding-top: 6rem !important; }
         h1 { line-height: 1.2 !important; }
+        /* Linklerin görünürlüğünü artır */
+        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -144,7 +148,8 @@ def initialize_session_state():
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
     
-    # YENİ: Son bulunan kaynakları hafızada tutmak için
+    # === HAFIZA DEPOSU ===
+    # Son bulunan kaynakları burada saklayacağız ki "bunu özetle" denince hatırlasın
     if 'last_sources' not in st.session_state: st.session_state.last_sources = []
 
 initialize_session_state()
@@ -174,21 +179,20 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     return score
 
+# === ARAMA MOTORU (HAFIZA GÜNCELLEMESİ) ===
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     normalized_query = normalize_turkish_text(query)
     
-    # Anahtar kelimeleri çıkar
+    # 1. Anahtar kelimeleri çıkar
     keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
     
-    # === KAYNAK HAFIZASI MANTIĞI ===
-    # Eğer sorgu bir "takip sorusu" ise (bu, bunu, özetle vb. içeriyorsa)
-    # VE elimizde güçlü anahtar kelime yoksa (yeni bir konuya geçiş yoksa)
+    # 2. Takip Sorusu Kontrolü ("Bunu özetle", "O ne demek" gibi)
     is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
-    has_strong_keywords = len(keywords) > 0
+    has_strong_keywords = len(keywords) > 0 # Eğer "Hacı Bektaş" gibi yeni, güçlü bir isim varsa
     
-    # Eğer bu bir takip sorusuysa ve yeni bir konu aramıyorsa, ESKİ KAYNAKLARI KULLAN
+    # Eğer bu bir takip sorusuysa VE yeni bir konu ismi geçmiyorsa VE elimizde eski kaynak varsa
+    # ESKİ KAYNAKLARI KULLAN (HAFIZA DEVREYE GİRER)
     if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
-        logger.info("Using cached sources due to follow-up query")
         return st.session_state.last_sources, ["(Önceki Konu Devam)"]
 
     # Değilse yeni arama yap
@@ -208,7 +212,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
     results.sort(key=lambda x: x['puan'], reverse=True)
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
-    # Bulunan sonuçları hafızaya kaydet
+    # 3. Bulunanları Hafızaya At
     if top_results:
         st.session_state.last_sources = top_results
         
@@ -238,14 +242,14 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
             "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
             "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
             "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
-            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. Kullanıcı 'Bunu özetle' derse, bu notları özetle.\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
             f"5. **AKIŞ:** {greeting_instruction}\n"
             f"6. **KAPANIŞ:** {closing_instruction}\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "BİLGİ NOTLARI (Kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "BİLGİ NOTLARI (Bunlar mevcut konuyla ilgilidir, gerekirse özetle veya açıkla):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
         return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE CEVAP VER): {user_query}\nCan Dede:"
         
@@ -358,8 +362,13 @@ def render_sidebar():
         return mode
 
 def render_sources(sources):
-    st.markdown("---"); st.markdown("**📚 Kaynaklar:**")
-    for s in sources[:3]: st.markdown(f"• [{s['baslik']}]({s['link']})")
+    # LİNKLERİ GÖSTEREN FONKSİYON
+    st.markdown("---"); st.markdown("**📚 İlgili Kaynaklar (Tıkla İndir/Oku):**")
+    for s in sources[:3]: 
+        # Linkin tıklanabilir olduğundan emin olalım
+        link = s.get('link', '#')
+        title = s.get('baslik', 'Adsız Belge')
+        st.markdown(f"• [{title}]({link})")
 
 # ===================== MAIN =====================
 
@@ -391,8 +400,10 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
+            # GÜNCELLEME: Linkleri HER ZAMAN göster (Eğer kaynak varsa)
+            # Çünkü kullanıcı "Belge var mı?" diye sorunca metin içinde link verilemiyor.
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            if sources and "Araştırma" in selected_mode and not fail:
+            if sources and not fail:
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
