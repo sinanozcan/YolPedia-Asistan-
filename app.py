@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Fix: Context Persistence (Memory) & Clickable Links Logic
+Final Fix: Strict Context Memory (Fixes Summary Hallucinations) & Directional Correction
 """
 
 import streamlit as st
@@ -53,7 +53,7 @@ class AppConfig:
     # HAFIZA TETİKLEYİCİLERİ (Bu kelimeler varsa eski konuyu hatırla)
     FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
         "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
-        "acikla", "detay", "bahset", "peki", "nasil"
+        "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
     ])
     
     def __post_init__(self):
@@ -148,7 +148,7 @@ def initialize_session_state():
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
     
-    # === HAFIZA DEPOSU ===
+    # === HAFIZA DEPOSU (Kritik Eklenti) ===
     # Son bulunan kaynakları burada saklayacağız ki "bunu özetle" denince hatırlasın
     if 'last_sources' not in st.session_state: st.session_state.last_sources = []
 
@@ -179,20 +179,19 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     return score
 
-# === ARAMA MOTORU (HAFIZA GÜNCELLEMESİ) ===
+# === ARAMA MOTORU (HAFIZA KİLİDİ EKLENDİ) ===
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     normalized_query = normalize_turkish_text(query)
     
     # 1. Anahtar kelimeleri çıkar
     keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
     
-    # 2. Takip Sorusu Kontrolü ("Bunu özetle", "O ne demek" gibi)
+    # 2. Takip Sorusu Kontrolü ("Bunu özetle", "O belge" gibi)
     is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
-    has_strong_keywords = len(keywords) > 0 # Eğer "Hacı Bektaş" gibi yeni, güçlü bir isim varsa
     
-    # Eğer bu bir takip sorusuysa VE yeni bir konu ismi geçmiyorsa VE elimizde eski kaynak varsa
-    # ESKİ KAYNAKLARI KULLAN (HAFIZA DEVREYE GİRER)
-    if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
+    # Eğer yeni ve güçlü bir konu ismi (Örn: "Hacı Bektaş") YOKSA, ama takip kelimesi VARSA:
+    # ESKİ KAYNAKLARI KULLAN (Hafızayı Koru)
+    if is_follow_up and len(keywords) < 1 and st.session_state.last_sources:
         return st.session_state.last_sources, ["(Önceki Konu Devam)"]
 
     # Değilse yeni arama yap
@@ -212,7 +211,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
     results.sort(key=lambda x: x['puan'], reverse=True)
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
-    # 3. Bulunanları Hafızaya At
+    # 3. Bulunanları Hafızaya At (Bir sonraki "bunu özetle" sorusu için)
     if top_results:
         st.session_state.last_sources = top_results
         
@@ -221,7 +220,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ =====================
+# ===================== PROMPT MÜHENDİSLİĞİ (YÖN TARİFİ DÜZELTİLDİ) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
@@ -241,7 +240,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
             "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
             "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
             "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
-            "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
+            "3. **LİNK YÖNLENDİRMESİ:** Asla 'Link yukarıda', 'Yukarıdaki bağlantı' deme. Çünkü linkler mesajın ALTINDA listelenir. 'Aşağıdaki kaynaklardan ulaşabilirsin' veya 'Link aşağıdadır' de.\n"
             "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
             f"5. **AKIŞ:** {greeting_instruction}\n"
             f"6. **KAPANIŞ:** {closing_instruction}\n"
@@ -257,7 +256,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
         if not sources: return None
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
-            "Kullanıcı hangi dilde sorduysa o dilde özetle."
+            "Kullanıcı hangi dilde sorduysa o dilde özetle. Asla 'Link yukarıda' deme, 'Link aşağıda' de."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
         return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
@@ -362,10 +361,8 @@ def render_sidebar():
         return mode
 
 def render_sources(sources):
-    # LİNKLERİ GÖSTEREN FONKSİYON
     st.markdown("---"); st.markdown("**📚 İlgili Kaynaklar (Tıkla İndir/Oku):**")
     for s in sources[:3]: 
-        # Linkin tıklanabilir olduğundan emin olalım
         link = s.get('link', '#')
         title = s.get('baslik', 'Adsız Belge')
         st.markdown(f"• [{title}]({link})")
@@ -401,7 +398,6 @@ def main():
             placeholder.markdown(full_resp)
             
             # GÜNCELLEME: Linkleri HER ZAMAN göster (Eğer kaynak varsa)
-            # Çünkü kullanıcı "Belge var mı?" diye sorunca metin içinde link verilemiyor.
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
             if sources and not fail:
                 render_sources(sources)
