@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Strict Language Lock, Balanced Persona (No Caricature)
+Final Version: Natural Conversation Flow (No Repetitive Greetings), Multi-language, Auto-Scroll
 """
 
 import streamlit as st
@@ -188,39 +188,46 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ (REVİZE EDİLDİ) =====================
+# ===================== PROMPT MÜHENDİSLİĞİ (OTOMATİK VE DOĞAL AKIŞ) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
     turn_count = len(history)
-    closing_instruction = ""
-    # Sadece ilk 2-3 mesajda kısa bir selam/veda olsun, sonra kesinlikle kesilsin.
-    if turn_count > 4:
-        closing_instruction = "Sohbet ilerledi. Cevabı ver ve SUS. Veda cümlesi, iyi dilekler EKLEME."
+    
+    # 1. DOĞAL AKIŞ KURALI (GREETING FILTER)
+    # Eğer sohbet ilerlediyse (2. turdan sonra), selam/isim/hitap YASAKLANIYOR.
+    greeting_instruction = ""
+    if turn_count <= 2:
+        greeting_instruction = "Bu sohbetin başı. Eğer kullanıcı ismini verdiyse 'Merhaba [İsim]' diyerek başla. Değilse sıcak bir giriş yap."
     else:
-        closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle."
+        greeting_instruction = "Sohbet akıyor. SAKIN tekrar 'Merhaba Cem', 'Hoi Cem', 'Dag Cem' gibi girişler yapma. İsmi tekrarlama. Direkt konuya, cümlenin devamıymış gibi gir. Doğal ol."
+
+    # 2. VEDA KURALI
+    closing_instruction = ""
+    if turn_count > 4:
+        closing_instruction = "Sohbet derinleşti. Artık cevabın sonuna veda sözleri (Aşk ile vb.) EKLEME. Direkt cevabı verip sus."
+    else:
+        closing_instruction = "Cevabın sonuna sıcak, kısa bir veda sözü ekle (Dile uygun)."
 
     if "Sohbet" in mode:
         system_instruction = (
-            "Sen 'Can Dede'sin. Alevi-Bektaşi kültürünü bilen, modern, sakin ve bilge bir rehbersin.\n"
-            "ÇOK ÖNEMLİ KURALLAR:\n"
-            "1. **DİL KİLİDİ:** Kullanıcı hangi dilde yazıyorsa (Hollandaca, İngilizce, Almanca vb.) KESİNLİKLE o dilde cevap ver. Veritabanı notları Türkçe olsa bile, sen onları kullanıcının diline çevirip anlat. Asla Türkçe cevap verme (soru Türkçe değilse).\n"
-            "2. **TON:** Abartılı, 'maşallah', 'canım ciğerim', 'delikanlı' gibi ifadelerden kaçın. Sakin, dengeli, yetişkin bir insan gibi konuş. Karşındaki 17 yaşında da olsa ona birey olarak saygı duy, çocuk muamelesi yapma.\n"
-            "3. **GEREKSİZ BİLGİ:** Kullanıcı sadece hal hatır soruyorsa ('Nasılsın?'), ona Alevilik tarihi anlatma. Sadece halini hatırını sor, kısa tut. Konuyu zorla Aleviliğe çekme.\n"
-            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. Alakasızsa görmezden gel.\n"
-            "5. **HİTAP:** Sadece ismi kullan (Örn: 'Dag Cem', 'Hello Cem'). 'Erenler', 'Dost' gibi sıfatları YABANCI DİLDE kullanma, doğal durmuyor.\n"
-            f"6. **VEDA:** {closing_instruction}\n"
+            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n"
+            "GÖREVLERİN:\n"
+            "1. DİL: Kullanıcı hangi dilde (Hollandaca, Almanca, İngilizce vs.) sorarsa o dilde cevap ver.\n"
+            f"2. GİRİŞ VE HİTAP (ÇOK ÖNEMLİ): {greeting_instruction}\n"
+            "3. İÇERİK: Asla yuvarlak cevaplar verme. Konunun özüne in, derinlemesine anlat. 'BİLGİ NOTLARI'nı oku ve kendi bilginmiş gibi anlat.\n"
+            "4. YORUM: Bilgi yoksa, kendi bilgeliğinle kucaklayıcı bir yorum yap. 'Bilmiyorum' deme.\n"
+            f"5. VEDA: {closing_instruction}\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "CEBİNDEKİ BİLGİ NOTLARI (Sadece konu açılırsa kullan, yoksa yoksay):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "BİLGİ NOTLARI (Bunları kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
         return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE DOĞAL CEVAPLA): {user_query}\nCan Dede:"
         
     else: 
-        # Araştırma Modu
         if not sources: return None
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
@@ -351,7 +358,7 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         
-        scroll_to_bottom() # Soruyu yazınca kaydır
+        scroll_to_bottom()
         
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
@@ -369,7 +376,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
-        scroll_to_bottom() # Cevap bitince kaydır
+        scroll_to_bottom()
 
 if __name__ == "__main__":
     main()
