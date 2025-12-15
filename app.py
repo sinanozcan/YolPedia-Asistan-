@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Polish: UI Adjustments (Padding & Sidebar Cleanup)
+Fixed: Memory/Context added, Chat Mode intelligence restored.
 """
 
 import streamlit as st
@@ -59,7 +59,6 @@ class AppConfig:
 
 config = AppConfig()
 
-# === HOŞGELDİN MESAJI ===
 DEFAULT_WELCOME_MSG = (
     "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
     "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
@@ -91,16 +90,9 @@ if not GOOGLE_API_KEYS: st.stop()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* Mesaj kutuları arası boşluk */
         .stChatMessage { margin-bottom: 10px; }
-        
-        /* Yükleme animasyonu rengi */
         .stSpinner > div { border-top-color: #ff4b4b !important; }
-        
-        /* ANA EKRANI AŞAĞI İNDİREN KOD BURADA */
-        /* Normalde 2rem olur, 6rem yaparak aşağı ittik */
         .block-container { padding-top: 6rem !important; }
-        
         h1 { line-height: 1.2 !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -197,11 +189,22 @@ def get_local_response(text: str) -> Optional[str]:
     if any(x in norm for x in ["merhaba", "selam"]): return "Aşk ile, merhaba can."
     return None
 
-def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
-    system = "Sen Can Dede'sin. Alevi-Bektaşi rehberisin. Cevapların kısa, öz ve anlaşılır olsun."
+# GÜNCELLENDİ: Prompt artık geçmiş konuşmaları (history) da içeriyor
+def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
+    system = "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin. Üslubun sıcak, samimi ve bilgece olsun."
+    
+    # Geçmiş konuşmaları metne dök (Hafıza)
+    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-4:]]) # Son 4 mesajı hatırla
+    
     if "Sohbet" in mode:
-        return f"{system}\nKAYNAKLAR:\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:2]]) + f"\n\nSoru: {user_query}"
-    else:
+        # Sohbet modunda kaynak varsa ekle, yoksa sadece hafızayı kullan
+        source_text = ""
+        if sources:
+            source_text = "BULUNAN KAYNAKLAR (Bunları da kullanabilirsin):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:2]]) + "\n\n"
+        
+        return f"{system}\n\nGEÇMİŞ KONUŞMALAR:\n{conversation_context}\n\n{source_text}Kullanıcı (Yeni Soru): {user_query}\nCan Dede:"
+        
+    else: # Araştırma Modu
         if not sources: return None
         return f"{system}\nSadece şu kaynaklara göre cevapla:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:1000]}" for s in sources[:3]]) + f"\n\nSoru: {user_query}"
 
@@ -210,10 +213,13 @@ def generate_ai_response(user_query, sources, mode):
     if local:
         yield local; return
 
+    # Araştırma modunda kaynak yoksa direkt kes. Ama Sohbet modunda kesme!
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
-    prompt = build_prompt(user_query, sources, mode)
+    # Prompt'a geçmiş mesajları da gönderiyoruz
+    prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
+    
     success = False
     last_error = ""
     
@@ -293,7 +299,6 @@ def render_sidebar():
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
-        # KAYNAK SAYISI EN ALTA, KÜÇÜK VE BASİT OLARAK EKLENDİ
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
         
