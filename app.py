@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Dynamic Persona Switching (No Repetitive Greetings), Strict Flow Control
+Final Version: Source Memory Persistence (Fixes 'Summarize This' bug)
 """
 
 import streamlit as st
@@ -47,6 +47,12 @@ class AppConfig:
         "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
         "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
         "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
+    ])
+    
+    # DEVAM ETTİRME KELİMELERİ (Hafızayı korumak için)
+    FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
+        "bu", "bunu", "bunun", "o", "onu", "onun", "sunu", "ozet", "ozetle", 
+        "detay", "anlat", "devam", "bahset", "acikla", "nedir", "nasil"
     ])
     
     def __post_init__(self):
@@ -137,6 +143,9 @@ def initialize_session_state():
     
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
+    
+    # YENİ: Son bulunan kaynakları hafızada tutmak için
+    if 'last_sources' not in st.session_state: st.session_state.last_sources = []
 
 initialize_session_state()
 
@@ -167,8 +176,22 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
 
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     normalized_query = normalize_turkish_text(query)
+    
+    # Anahtar kelimeleri çıkar
     keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
     
+    # === KAYNAK HAFIZASI MANTIĞI ===
+    # Eğer sorgu bir "takip sorusu" ise (bu, bunu, özetle vb. içeriyorsa)
+    # VE elimizde güçlü anahtar kelime yoksa (yeni bir konuya geçiş yoksa)
+    is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
+    has_strong_keywords = len(keywords) > 0
+    
+    # Eğer bu bir takip sorusuysa ve yeni bir konu aramıyorsa, ESKİ KAYNAKLARI KULLAN
+    if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
+        logger.info("Using cached sources due to follow-up query")
+        return st.session_state.last_sources, ["(Önceki Konu Devam)"]
+
+    # Değilse yeni arama yap
     if not keywords and len(normalized_query) < 3: return [], []
     
     results = []
@@ -183,60 +206,57 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
             })
     
     results.sort(key=lambda x: x['puan'], reverse=True)
-    return results[:config.MAX_SEARCH_RESULTS], keywords
+    top_results = results[:config.MAX_SEARCH_RESULTS]
+    
+    # Bulunan sonuçları hafızaya kaydet
+    if top_results:
+        st.session_state.last_sources = top_results
+        
+    return top_results, keywords
 
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ (DİNAMİK) =====================
+# ===================== PROMPT MÜHENDİSLİĞİ =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
-    
     turn_count = len(history)
     
-    # === MOD DEĞİŞTİRİCİ ===
-    # İlk mesajda (Hoşgeldin)
+    greeting_instruction = ""
     if turn_count <= 2:
-        persona_instruction = """
-        STATE: INITIAL GREETING.
-        INSTRUCTION: Start warmly. Use the user's name if provided (e.g. 'Hallo Cem'). Be welcoming.
-        """
-    # Sonraki mesajlarda (Akış) - BURASI KESİN YASAKLARI İÇERİR
+        greeting_instruction = "Sadece ilk mesajda sıcak bir giriş yap. Eğer kullanıcı adını verdiyse sadece 'Merhaba [İsim]' de."
     else:
-        persona_instruction = """
-        STATE: ONGOING CONVERSATION.
-        CRITICAL RULES (VIOLATION = FAILURE):
-        1. NO GREETINGS: Do NOT start with 'Hallo', 'Hoi', 'Dag', 'Merhaba', 'Lieve', 'Beste'.
-        2. NO NAMES: Do NOT use the user's name again. We are already talking.
-        3. NO CLOSINGS: Do NOT end with 'Groetjes', 'Blijf gezond', 'Aşk ile', 'Eyvallah'.
-        4. ACTION: Just answer the question directly, as if continuing a sentence.
-        """
+        greeting_instruction = "Sohbet ilerledi. İsim tekrar etme. Selam verme. Direkt konuya gir."
+
+    closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
 
     if "Sohbet" in mode:
         system_instruction = (
-            "You are 'Can Dede', an Alevi-Bektashi spiritual guide.\n"
-            f"{persona_instruction}\n"
-            "GENERAL RULES:\n"
-            "1. LANGUAGE: Respond STRICTLY in the user's detected language.\n"
-            "2. CONTENT: Deep, insightful, sociological/psychological approach. No superficial answers.\n"
-            "3. KNOWLEDGE: Use the provided NOTES if relevant, otherwise use your wisdom. Translate concepts to user's language.\n"
+            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n\n"
+            "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
+            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
+            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
+            "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. Kullanıcı 'Bunu özetle' derse, bu notları özetle.\n"
+            f"5. **AKIŞ:** {greeting_instruction}\n"
+            f"6. **KAPANIŞ:** {closing_instruction}\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "KNOWLEDGE NOTES (Translate/Adapt):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "BİLGİ NOTLARI (Kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nCONVERSATION HISTORY:\n{conversation_context}\n\n{source_text}USER QUERY: {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE CEVAP VER): {user_query}\nCan Dede:"
         
     else: 
-        # Araştırma Modu
         if not sources: return None
         system_instruction = (
-            "You are a research assistant. Summarize sources in the user's language."
+            "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
+            "Kullanıcı hangi dilde sorduysa o dilde özetle."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
-        return f"{system_instruction}\n\nSOURCES:\n{source_text}\n\nQUERY: {user_query}"
+        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
     if "Araştırma" in mode and not sources:
@@ -359,7 +379,7 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         
-        scroll_to_bottom() # Soruyu yazınca kaydır
+        scroll_to_bottom()
         
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
@@ -377,7 +397,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
-        scroll_to_bottom() # Cevap bitince kaydır
+        scroll_to_bottom()
 
 if __name__ == "__main__":
     main()
