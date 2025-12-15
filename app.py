@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Corrected UI Text, Full Logic Preserved
+Final Polish: UI Adjustments (Padding & Sidebar Cleanup)
 """
 
 import streamlit as st
@@ -59,7 +59,7 @@ class AppConfig:
 
 config = AppConfig()
 
-# === SENİN İSTEDİĞİN MESAJ METNİ (SABİT) ===
+# === HOŞGELDİN MESAJI ===
 DEFAULT_WELCOME_MSG = (
     "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
     "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
@@ -91,9 +91,16 @@ if not GOOGLE_API_KEYS: st.stop()
 def apply_custom_styles():
     st.markdown("""
     <style>
+        /* Mesaj kutuları arası boşluk */
         .stChatMessage { margin-bottom: 10px; }
+        
+        /* Yükleme animasyonu rengi */
         .stSpinner > div { border-top-color: #ff4b4b !important; }
-        .block-container { padding-top: 2rem; }
+        
+        /* ANA EKRANI AŞAĞI İNDİREN KOD BURADA */
+        /* Normalde 2rem olur, 6rem yaparak aşağı ittik */
+        .block-container { padding-top: 6rem !important; }
+        
         h1 { line-height: 1.2 !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -129,7 +136,6 @@ def normalize_turkish_text(text: str) -> str:
 def initialize_session_state():
     if 'db' not in st.session_state: st.session_state.db = load_knowledge_base()
     
-    # İŞTE BURASI DÜZELTİLDİ: ARTIK HEP AYNI MESAJ
     if "messages" not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
@@ -276,7 +282,6 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         
-        # RESET BUTONU DA ARTIK AYNI MESAJI BASACAK
         if st.button("🗑️ Sohbeti Sıfırla"):
             st.session_state.messages = [{
                 "role": "assistant",
@@ -285,11 +290,12 @@ def render_sidebar():
             st.session_state.request_count = 0
             st.rerun()
         
-        if 'db' in st.session_state:
-            st.info(f"📚 Arşivdeki Toplam Kaynak: **{len(st.session_state.db)}**")
-            
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        
+        # KAYNAK SAYISI EN ALTA, KÜÇÜK VE BASİT OLARAK EKLENDİ
+        if 'db' in st.session_state:
+            st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
         
         return mode
 
@@ -335,4 +341,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
