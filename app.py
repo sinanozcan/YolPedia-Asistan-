@@ -26,8 +26,10 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # GÜNCELLEME: Barajı biraz daha yükselttik
-    SEARCH_SCORE_THRESHOLD: int = 70
+    # GÜNCELLEME: Baraj 40'a çekildi. 
+    # Stop Words filtresi olduğu için artık düşük baraj sorun yaratmaz, 
+    # aksine "isyanı/isyanları" gibi ek uyuşmazlıklarında sonucu kaçırmamızı engeller.
+    SEARCH_SCORE_THRESHOLD: int = 40
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -260,15 +262,13 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
-        score += 80 # İçerik tam eşleşme puanı biraz düşürüldü
+        score += 80 
     
     # Kelime bazlı eşleşme
     for keyword in keywords:
         if keyword in normalized_title:
             score += 40
         elif keyword in normalized_content:
-            # GÜNCELLEME: İçerikte geçen kelime puanı ciddi oranda düşürüldü.
-            # Böylece sadece içeriğinde "isyan" geçen alakasız şiirler öne çıkmayacak.
             score += 5 
     
     special_terms = ["gulbank", "deyis", "nefes", "siir"]
@@ -284,6 +284,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     
     normalized_query = normalize_turkish_text(query)
     
+    # Stop Words listesindeki kelimeleri çıkartıyoruz
     keywords = [
         k for k in normalized_query.split() 
         if len(k) > 2 and k not in config.STOP_WORDS
@@ -565,7 +566,6 @@ def main():
             placeholder.markdown(full_response)
             
             # GÜNCELLEME: Can Dede "Bulamadım" derse kaynakları gizle!
-            # Eğer cevap içinde olumsuz kelimeler varsa kaynak listesini gösterme.
             failure_phrases = ["bilgi bulamadım", "kaynak bulamadım", "yeterli kaynak", "üzgünüm"]
             is_failure = any(phrase in full_response.lower() for phrase in failure_phrases)
             
@@ -580,3 +580,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
