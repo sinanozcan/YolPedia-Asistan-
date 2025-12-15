@@ -10,7 +10,7 @@ import json
 import time
 import random
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
 
@@ -21,12 +21,12 @@ class AppConfig:
     """Application configuration constants"""
     MAX_MESSAGE_LIMIT: int = 30
     MIN_TIME_DELAY: int = 1
-    RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
+    RATE_LIMIT_WINDOW: int = 3600
     
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # GÜNCELLEME: Eşik değeri 65 yapıldı. Alakasız sonuçları eler.
+    # Eşik değerini koruyoruz
     SEARCH_SCORE_THRESHOLD: int = 65
     MAX_SEARCH_RESULTS: int = 5
     
@@ -39,6 +39,16 @@ class AppConfig:
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
     GEMINI_MODELS: List[str] = None
+    
+    # GÜNCELLEME: Arama motorunun görmezden geleceği kelimeler
+    STOP_WORDS: List[str] = field(default_factory=lambda: [
+        "ve", "veya", "ile", "bir", "bu", "şu", "o", "icin", "için", 
+        "hakkinda", "hakkında", "kaynak", "kaynaklar", "ariyorum", "arıyorum", 
+        "nedir", "kimdir", "nasil", "nasıl", "ne", "var", "mi", "mu", "mı",
+        "bana", "soyle", "söyle", "goster", "göster", "ver", "ilgili", "alakali",
+        "yazi", "yazı", "belge", "kitap", "makale", "soz", "söz", "lutfen", "lütfen",
+        "merhaba", "selam", "dedem", "can", "erenler", "konusunda", "istiyorum"
+    ])
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
@@ -229,11 +239,13 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     normalized_title = normalize_turkish_text(title)
     normalized_content = normalize_turkish_text(content)
     
+    # Tam eşleşme (Tüm sorgu olduğu gibi geçiyorsa)
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
         score += 100
     
+    # Kelime bazlı eşleşme
     for keyword in keywords:
         if keyword in normalized_title:
             score += 40
@@ -247,13 +259,23 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     return score
 
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
-    """Search knowledge base for relevant content"""
+    """Search knowledge base for relevant content with STOP WORDS filtering"""
     if not db or not query or len(query) < config.MIN_SEARCH_LENGTH:
         return [], ""
     
     normalized_query = normalize_turkish_text(query)
-    keywords = [k for k in normalized_query.split() if len(k) > 2]
     
+    # GÜNCELLEME: Stop Words (Etkisiz Kelimeler) Temizliği
+    # "hakkında", "kaynak", "arıyorum" gibi kelimeleri listeden çıkarıyoruz.
+    keywords = [
+        k for k in normalized_query.split() 
+        if len(k) > 2 and k not in config.STOP_WORDS
+    ]
+    
+    # Eğer tüm kelimeler stop word ise (örn: "bana kaynak ver"), arama yapma
+    if not keywords:
+        return [], normalized_query
+        
     results = []
     for entry in db:
         score = calculate_relevance_score(entry, normalized_query, keywords)
@@ -269,7 +291,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     results.sort(key=lambda x: x['puan'], reverse=True)
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
-    logger.info(f"Search for '{query}' returned {len(top_results)} results")
+    logger.info(f"Search for '{query}' returned {len(top_results)} results. Keywords: {keywords}")
     return top_results, normalized_query
 
 # ===================== LOCAL RESPONSE HANDLER =====================
@@ -317,7 +339,6 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             return f"{system_instruction}\n\nKullanıcı: {user_query}"
             
     else:  # Research mode
-        # KAYNAK YOKSA DOĞRUDAN UYARI DÖNDÜR (BURASI KRİTİK)
         if not sources:
             return None
         
@@ -359,7 +380,6 @@ def generate_ai_response(
     # 3. Prompt hazırla
     prompt = build_prompt(user_query, sources, mode)
     if prompt is None:
-        # Sohbet modunda kaynak yoksa bile konuşabilir, o yüzden burası sadece genel fallback
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
         return
     
@@ -373,58 +393,48 @@ def generate_ai_response(
     # Tüm anahtarları sırasıyla dener
     for key_index, current_api_key in enumerate(GOOGLE_API_KEYS):
         
-        # Eğer bir önceki deneme başarılı olduysa döngüden çık
         if success:
             break
             
         # status_box.info(f"Can Dede düşünüyor... (Sunucu {key_index + 1})")
         
         try:
-            # Yapılandırmayı bu anahtarla ayarla
             genai.configure(api_key=current_api_key)
             
             # ================= MODEL DÖNGÜSÜ =================
-            # Mevcut anahtar ile modelleri sırayla dener
             for model_name in config.GEMINI_MODELS:
                 try:
-                    # Modeli yükle
                     model = genai.GenerativeModel(model_name)
                     generation_config = {
-                        "temperature": 0.3, # Daha tutarlı cevaplar için düşürüldü
+                        "temperature": 0.3,
                         "max_output_tokens": 1500,
                     }
                     
-                    # İsteği gönder
                     response = model.generate_content(
                         prompt, 
                         stream=True,
                         generation_config=generation_config
                     )
                     
-                    # Yanıtı parça parça al
                     has_content = False
                     for chunk in response:
                         if chunk.text:
-                            # İlk veri geldiğinde başarı kutusunu temizle
                             status_box.empty()
                             yield chunk.text
                             has_content = True
                     
                     if has_content:
                         success = True
-                        break # Model döngüsünden çık (Başarılı!)
+                        break 
                         
                 except Exception as model_error:
                     error_msg = str(model_error).lower()
                     
-                    # Eğer hata 429/Quota ise BU ANAHTARI YAK ve sonrakine geç
                     if "429" in error_msg or "quota" in error_msg or "exhausted" in error_msg:
-                        # status_box.warning(f"⚠️ {key_index + 1}. Anahtarın kotası dolmuş. Sıradakine geçiliyor...")
-                        time.sleep(1) # Sistemin nefes alması için bekle
+                        time.sleep(1)
                         last_error_details = f"Anahtar {key_index+1} Kotası Dolu (429)"
-                        break # Model döngüsünü kır -> Bir sonraki ANAHTARA geçer
+                        break 
                     
-                    # Eğer model bulunamadı vs. ise diğer modeli dene
                     logger.warning(f"Model hatası: {model_name} -> {model_error}")
                     continue
 
@@ -437,7 +447,6 @@ def generate_ai_response(
         status_box.error("❌ Tüm denemeler başarısız oldu.")
         yield f"⚠️ Can dost, elimdeki {len(GOOGLE_API_KEYS)} farklı anahtarın hepsini denedim ama Google kapıları kapalı tutuyor. \n\n**Son Hata Detayı:** {last_error_details}\n\nLütfen 2-3 dakika bekleyip tekrar dene."
     else:
-        # İşlem bittiğinde bilgi kutusunu temizle
         status_box.empty()
 
 # ===================== UI HELPER FUNCTIONS =====================
