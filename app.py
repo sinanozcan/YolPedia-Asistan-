@@ -588,3 +588,26 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    # === TEŞHİS MODU BAŞLANGIÇ ===
+    if 'db' in st.session_state and st.session_state.db:
+        ilk_kayit = st.session_state.db[0]
+        st.sidebar.error("🛠️ TEŞHİS PANELİ")
+        st.sidebar.write("Veritabanındaki İlk Kayıtın Anahtarları:")
+        st.sidebar.json(list(ilk_kayit.keys()))
+        
+        # Anahtar testi
+        baslik_var_mi = "baslik" in ilk_kayit
+        icerik_var_mi = "icerik" in ilk_kayit
+        
+        if not baslik_var_mi:
+            st.sidebar.warning("⚠️ DİKKAT: 'baslik' anahtarı bulunamadı!")
+            st.sidebar.info(f"Olası doğru anahtar: {[k for k in ilk_kayit.keys() if 'title' in k or 'ad' in k or 'name' in k]}")
+            
+        # Karakter testi
+        st.sidebar.write("Örnek Başlık Görünümü:")
+        # Hangi anahtar varsa onu yazdır
+        dogru_anahtar = "baslik" if baslik_var_mi else list(ilk_kayit.keys())[0]
+        ornek_metin = ilk_kayit[dogru_anahtar]
+        st.sidebar.code(ornek_metin)
+    # === TEŞHİS MODU BİTİŞ ===
