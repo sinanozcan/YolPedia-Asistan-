@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Empathic Persona, Context-Aware, Human-like Interaction
+Final Version: Strict Language Lock, Balanced Persona (No Caricature)
 """
 
 import streamlit as st
@@ -188,40 +188,39 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== YENİLENMİŞ PROMPT YAPISI =====================
+# ===================== PROMPT MÜHENDİSLİĞİ (REVİZE EDİLDİ) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
     turn_count = len(history)
     closing_instruction = ""
+    # Sadece ilk 2-3 mesajda kısa bir selam/veda olsun, sonra kesinlikle kesilsin.
     if turn_count > 4:
-        closing_instruction = "Sohbet ilerledi. Veda sözü EKLEME. Direkt konuş."
+        closing_instruction = "Sohbet ilerledi. Cevabı ver ve SUS. Veda cümlesi, iyi dilekler EKLEME."
     else:
-        closing_instruction = "Cevabın sonuna sıcak, kısa bir veda sözü ekle (Dile uygun)."
+        closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle."
 
     if "Sohbet" in mode:
         system_instruction = (
-            "Sen 'Can Dede'sin. Bir yapay zeka değil, görmüş geçirmiş, bilge, tonton bir dedesin.\n"
-            "AYNI ZAMANDA BİR PEDAGOG VE SOSYOLOG GİBİ DÜŞÜNMELİSİN.\n\n"
-            "GÖREVLERİN VE KURALLARIN:\n"
-            "1. **KULLANICIYI TANI:** Kullanıcının mesajından yaşını, ruh halini ve niyetini anlamaya çalış (Örn: 17 yaşındaki bir çocuk 'nasılsın' derse, ona akademik cevap verme, halini hatırını sor, okulunu sor, onunla bağ kur).\n"
-            "2. **DİL:** Kullanıcı Hollandaca sorduysa Hollandaca, Türkçe sorduysa Türkçe cevap ver. Dili asla değiştirme.\n"
-            "3. **İŞGÜZARLIK YAPMA:** Eğer kullanıcı sadece 'Selam', 'Nasılsın', 'Hava nasıl' gibi günlük sohbet ediyorsa, ona SAKIN veritabanından alakasız Alevi kaynakları, kitap isimleri veya dini bilgiler YIĞMA. Sadece bir insan gibi sohbet et.\n"
-            "4. **KAYNAK KULLANIMI (AKILLI OL):** Sana aşağıda 'BİLGİ NOTLARI' vereceğim. Bunları SADECE VE SADECE kullanıcı o konuyla ilgili bir şey sorarsa kullan. Eğer 'Nasılsın dedem?' demişse, 'Melamet hırkası'ndan bahsetme. O bilgileri cebinde tut.\n"
-            "5. **HİTAP:** 'Can', 'Güzel can', 'Cem' (ismiyse) gibi samimi hitaplar kullan. 'Evladım', 'Yavrum' gibi üstten bakan kelimeler YASAK.\n"
+            "Sen 'Can Dede'sin. Alevi-Bektaşi kültürünü bilen, modern, sakin ve bilge bir rehbersin.\n"
+            "ÇOK ÖNEMLİ KURALLAR:\n"
+            "1. **DİL KİLİDİ:** Kullanıcı hangi dilde yazıyorsa (Hollandaca, İngilizce, Almanca vb.) KESİNLİKLE o dilde cevap ver. Veritabanı notları Türkçe olsa bile, sen onları kullanıcının diline çevirip anlat. Asla Türkçe cevap verme (soru Türkçe değilse).\n"
+            "2. **TON:** Abartılı, 'maşallah', 'canım ciğerim', 'delikanlı' gibi ifadelerden kaçın. Sakin, dengeli, yetişkin bir insan gibi konuş. Karşındaki 17 yaşında da olsa ona birey olarak saygı duy, çocuk muamelesi yapma.\n"
+            "3. **GEREKSİZ BİLGİ:** Kullanıcı sadece hal hatır soruyorsa ('Nasılsın?'), ona Alevilik tarihi anlatma. Sadece halini hatırını sor, kısa tut. Konuyu zorla Aleviliğe çekme.\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. Alakasızsa görmezden gel.\n"
+            "5. **HİTAP:** Sadece ismi kullan (Örn: 'Dag Cem', 'Hello Cem'). 'Erenler', 'Dost' gibi sıfatları YABANCI DİLDE kullanma, doğal durmuyor.\n"
             f"6. **VEDA:** {closing_instruction}\n"
         )
         
         source_text = ""
-        # Kaynakları veriyoruz ama kullanıp kullanmamayı yapay zekanın inisiyatifine (Kural 4'e) bırakıyoruz.
         if sources:
-            source_text = "CEBİNDEKİ BİLGİ NOTLARI (Bunları sadece soruyla alakalıysa kullan, yoksa yoksay):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "CEBİNDEKİ BİLGİ NOTLARI (Sadece konu açılırsa kullan, yoksa yoksay):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (PSİKOLOG GİBİ YAKLAŞ, ROBOTLAŞMA): {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE DOĞAL CEVAPLA): {user_query}\nCan Dede:"
         
     else: 
-        # Araştırma Modu (Burası akademik kalabilir)
+        # Araştırma Modu
         if not sources: return None
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
@@ -271,7 +270,7 @@ def generate_ai_response(user_query, sources, mode):
 # ===================== UI HELPER FUNCTIONS =====================
 
 def scroll_to_bottom():
-    # JavaScript: Mesaj gönderilince ve cevap gelince en alta in
+    # JavaScript ile sayfayı en alta kaydırma
     js = """
     <script>
         function scrollDown() {
@@ -364,8 +363,8 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
-            # Kaynakları sadece Araştırma Modunda göster
-            if sources and "Araştırma" in selected_mode:
+            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
+            if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
