@@ -26,10 +26,9 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # GÜNCELLEME: Baraj 40'a çekildi. 
-    # Stop Words filtresi olduğu için artık düşük baraj sorun yaratmaz, 
-    # aksine "isyanı/isyanları" gibi ek uyuşmazlıklarında sonucu kaçırmamızı engeller.
-    SEARCH_SCORE_THRESHOLD: int = 40
+    # GÜNCELLEME: Barajı 30'a çektik. 
+    # Sitenin kendi araması gibi, içinde tek bir kelime geçse bile yakalasın.
+    SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -266,8 +265,9 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     # Kelime bazlı eşleşme
     for keyword in keywords:
+        # Başlıkta geçen kelimeye çok yüksek puan ver ki site araması gibi çalışsın
         if keyword in normalized_title:
-            score += 40
+            score += 100 
         elif keyword in normalized_content:
             score += 5 
     
@@ -510,6 +510,14 @@ def render_sidebar() -> str:
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
+        # GÜNCELLEME: İSTEDİĞİNİZ ÖZELLİK EKLENDİ
+        # Toplam kaynak sayısını veritabanından çekip gösterir
+        if 'db' in st.session_state:
+            total_sources = len(st.session_state.db)
+            st.info(f"📚 Arşivdeki Toplam Kaynak: **{total_sources}**")
+        else:
+             st.warning("⚠️ Veritabanı yüklenemedi!")
+        
     return selected_mode
 
 def render_sources(sources: List[Dict]):
@@ -580,4 +588,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
