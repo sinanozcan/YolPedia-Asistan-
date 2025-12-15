@@ -120,6 +120,8 @@ def normalize_turkish_text(text: str) -> str:
 
 def initialize_session_state():
     if 'db' not in st.session_state: st.session_state.db = load_knowledge_base()
+    
+    # İŞTE O AÇIKLAMA BURAYA GERİ GELDİ
     if "messages" not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
@@ -130,6 +132,7 @@ def initialize_session_state():
                 "Buyur Erenler, hangi modda buluşalım?"
             )
         }]
+    
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
@@ -247,7 +250,6 @@ def scroll_to_bottom():
     )
 
 def render_header():
-    """Render application header with HTML/CSS - RESTORED"""
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -270,7 +272,19 @@ def render_sidebar():
     with st.sidebar:
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
-        if st.button("🗑️ Sohbeti Sıfırla"): st.session_state.messages = []; st.rerun()
+        
+        # SIFIRLAMA BUTONUNA DA AÇIKLAMALARI EKLEDİM
+        if st.button("🗑️ Sohbeti Sıfırla"):
+            st.session_state.messages = [{
+                "role": "assistant",
+                "content": (
+                    "Sohbet sıfırlandı. Buyur can. Sendeyim yine.\n\n"
+                    "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
+                    "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım."
+                )
+            }]
+            st.session_state.request_count = 0
+            st.rerun()
         
         if 'db' in st.session_state:
             st.info(f"📚 Arşivdeki Toplam Kaynak: **{len(st.session_state.db)}**")
