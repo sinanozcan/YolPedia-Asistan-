@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Refactored version with improved code quality, error handling, and maintainability
+Final Version: Corrected UI Text, Full Logic Preserved
 """
 
 import streamlit as st
@@ -58,6 +58,14 @@ class AppConfig:
             ]
 
 config = AppConfig()
+
+# === SENİN İSTEDİĞİN MESAJ METNİ (SABİT) ===
+DEFAULT_WELCOME_MSG = (
+    "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
+    "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
+    "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\n"
+    "Buyur Erenler, hangi modda buluşalım?"
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -121,16 +129,11 @@ def normalize_turkish_text(text: str) -> str:
 def initialize_session_state():
     if 'db' not in st.session_state: st.session_state.db = load_knowledge_base()
     
-    # İŞTE O AÇIKLAMA BURAYA GERİ GELDİ
+    # İŞTE BURASI DÜZELTİLDİ: ARTIK HEP AYNI MESAJ
     if "messages" not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
-            "content": (
-                "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
-                "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
-                "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\n"
-                "Buyur Erenler, hangi modda buluşalım?"
-            )
+            "content": DEFAULT_WELCOME_MSG
         }]
     
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
@@ -273,15 +276,11 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         
-        # SIFIRLAMA BUTONUNA DA AÇIKLAMALARI EKLEDİM
+        # RESET BUTONU DA ARTIK AYNI MESAJI BASACAK
         if st.button("🗑️ Sohbeti Sıfırla"):
             st.session_state.messages = [{
                 "role": "assistant",
-                "content": (
-                    "Sohbet sıfırlandı. Buyur can. Sendeyim yine.\n\n"
-                    "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
-                    "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım."
-                )
+                "content": DEFAULT_WELCOME_MSG
             }]
             st.session_state.request_count = 0
             st.rerun()
@@ -336,3 +335,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
