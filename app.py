@@ -1,6 +1,9 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Natural Conversation Flow (No Repetitive Greetings), Multi-language, Auto-Scroll
+Final Corrected Version: 
+- Persona: Spiritual Leader (Makam), not 'Old Man'.
+- Language: Strict Mirroring.
+- Tone: Respectful, Egalitarian (No 'Evladım').
 """
 
 import streamlit as st
@@ -40,6 +43,7 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
+    # Gereksiz kelimeleri filtreleme
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
@@ -188,46 +192,42 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ (OTOMATİK VE DOĞAL AKIŞ) =====================
+# ===================== PROMPT MÜHENDİSLİĞİ (TAMAMEN YENİLENDİ) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
-    
     turn_count = len(history)
     
-    # 1. DOĞAL AKIŞ KURALI (GREETING FILTER)
-    # Eğer sohbet ilerlediyse (2. turdan sonra), selam/isim/hitap YASAKLANIYOR.
+    # Giriş/Selamlama Kuralı (Sadece ilk mesajda)
     greeting_instruction = ""
     if turn_count <= 2:
-        greeting_instruction = "Bu sohbetin başı. Eğer kullanıcı ismini verdiyse 'Merhaba [İsim]' diyerek başla. Değilse sıcak bir giriş yap."
+        greeting_instruction = "Sadece ilk mesajda sıcak bir giriş yap. Eğer kullanıcı adını verdiyse sadece 'Merhaba [İsim]' de."
     else:
-        greeting_instruction = "Sohbet akıyor. SAKIN tekrar 'Merhaba Cem', 'Hoi Cem', 'Dag Cem' gibi girişler yapma. İsmi tekrarlama. Direkt konuya, cümlenin devamıymış gibi gir. Doğal ol."
+        greeting_instruction = "Sohbet ilerledi. İsim tekrar etme. Selam verme. Direkt konuya gir."
 
-    # 2. VEDA KURALI
-    closing_instruction = ""
-    if turn_count > 4:
-        closing_instruction = "Sohbet derinleşti. Artık cevabın sonuna veda sözleri (Aşk ile vb.) EKLEME. Direkt cevabı verip sus."
-    else:
-        closing_instruction = "Cevabın sonuna sıcak, kısa bir veda sözü ekle (Dile uygun)."
+    # Veda Kuralı
+    closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
 
     if "Sohbet" in mode:
         system_instruction = (
-            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n"
-            "GÖREVLERİN:\n"
-            "1. DİL: Kullanıcı hangi dilde (Hollandaca, Almanca, İngilizce vs.) sorarsa o dilde cevap ver.\n"
-            f"2. GİRİŞ VE HİTAP (ÇOK ÖNEMLİ): {greeting_instruction}\n"
-            "3. İÇERİK: Asla yuvarlak cevaplar verme. Konunun özüne in, derinlemesine anlat. 'BİLGİ NOTLARI'nı oku ve kendi bilginmiş gibi anlat.\n"
-            "4. YORUM: Bilgi yoksa, kendi bilgeliğinle kucaklayıcı bir yorum yap. 'Bilmiyorum' deme.\n"
-            f"5. VEDA: {closing_instruction}\n"
+            "Sen 'Can Dede'sin. **DİKKAT:** Sen yaşlı bir 'dede' (grandfather) rolü yapmıyorsun. Sen Alevi-Bektaşi inancında **'Dede' makamını** temsil eden, vakur, bilge ve aydın bir mürşidsin. Yaşlı taklidi yapma.\n\n"
+            "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
+            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca (Hoi, ik ben...) yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen o bilgiyi alıp kullanıcının diline çevirip aktaracaksın. Türkçe cevap VERME (Soru Türkçe değilse).\n"
+            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. Muhatabın 17 yaşında da olsa o bir 'Can'dır. Eşitler arası, saygın bir dil kullan.\n"
+            "3. **EMPATİ VE BAĞLAM:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik tarihi anlatma. İnsan gibi halini sor, samimi ol. Robot gibi davranma.\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. Alakasızsa çöpe at, kendi bilgeliğinle cevap ver.\n"
+            f"5. **AKIŞ:** {greeting_instruction}\n"
+            f"6. **KAPANIŞ:** {closing_instruction}\n"
         )
         
         source_text = ""
         if sources:
-            source_text = "BİLGİ NOTLARI (Bunları kullanıcının diline çevirerek kullan):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            source_text = "CEBİNDEKİ BİLGİ NOTLARI (Kullanıcının diline çevirerek kullan, alakasızsa yoksay):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
         
-        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE DOĞAL CEVAPLA): {user_query}\nCan Dede:"
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE CEVAP VER): {user_query}\nCan Dede:"
         
     else: 
+        # Araştırma Modu
         if not sources: return None
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
@@ -277,7 +277,7 @@ def generate_ai_response(user_query, sources, mode):
 # ===================== UI HELPER FUNCTIONS =====================
 
 def scroll_to_bottom():
-    # JavaScript ile sayfayı en alta kaydırma
+    # Sayfa ve footer kaydırma
     js = """
     <script>
         function scrollDown() {
@@ -358,7 +358,7 @@ def main():
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         
-        scroll_to_bottom()
+        scroll_to_bottom() # Soruyu yazınca kaydır
         
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
@@ -376,7 +376,7 @@ def main():
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
         
-        scroll_to_bottom()
+        scroll_to_bottom() # Cevap bitince kaydır
 
 if __name__ == "__main__":
     main()
