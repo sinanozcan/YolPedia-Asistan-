@@ -26,8 +26,8 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Eşik değerini koruyoruz
-    SEARCH_SCORE_THRESHOLD: int = 65
+    # GÜNCELLEME: Barajı biraz daha yükselttik
+    SEARCH_SCORE_THRESHOLD: int = 70
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -40,14 +40,14 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Stop words listesi (Etkisiz kelimeler) - Hepsi İngilizce karakterle yazıldı ki normalize edilmiş metinle eşleşsin.
+    # Stop words listesi (Etkisiz kelimeler) - Normalize edilmiş halleri
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
         "ne", "var", "mi", "mu", "bana", "soyle", "goster", "ver", 
         "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
         "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
-        "istiyorum", "elinde", "okur", "musun"
+        "istiyorum", "elinde", "okur", "musun", "bul", "getir"
     ])
     
     def __post_init__(self):
@@ -160,13 +160,12 @@ def load_knowledge_base() -> List[Dict]:
         st.error(f"❌ Veri yüklenirken beklenmeyen hata: {e}")
         return []
 
-# ===================== TEXT PROCESSING (TAM NORMALİZASYON) =====================
+# ===================== TEXT PROCESSING =====================
 
 def normalize_turkish_text(text: str) -> str:
     """
     Agresif Normalizasyon: Türkçe karakterleri, şapkalı harfleri ve noktalı harfleri
     standart İngilizce/ASCII karakterlerine çevirir.
-    Böylece 'şah' == 'sah', 'hâl' == 'hal', 'ığdır' == 'igdir' olur.
     """
     if not isinstance(text, str):
         return ""
@@ -253,23 +252,24 @@ def validate_rate_limit() -> Tuple[bool, str]:
 def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List[str]) -> int:
     """Calculate relevance score for a knowledge base entry"""
     score = 0
-    # Veritabanındaki metni de AYNI fonksiyonla normalize et
-    # Bu sayede 'Celâli' veritabanında varsa bile 'celali'ye dönüşür
+    
     normalized_title = normalize_turkish_text(entry.get('baslik', ''))
     normalized_content = normalize_turkish_text(entry.get('icerik', ''))
     
-    # Tam eşleşme (Tüm sorgu olduğu gibi geçiyorsa)
+    # Tam eşleşme puanları
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
-        score += 100
+        score += 80 # İçerik tam eşleşme puanı biraz düşürüldü
     
     # Kelime bazlı eşleşme
     for keyword in keywords:
         if keyword in normalized_title:
             score += 40
         elif keyword in normalized_content:
-            score += 10
+            # GÜNCELLEME: İçerikte geçen kelime puanı ciddi oranda düşürüldü.
+            # Böylece sadece içeriğinde "isyan" geçen alakasız şiirler öne çıkmayacak.
+            score += 5 
     
     special_terms = ["gulbank", "deyis", "nefes", "siir"]
     if any(term in normalized_title for term in special_terms):
@@ -282,17 +282,13 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     if not db or not query or len(query) < config.MIN_SEARCH_LENGTH:
         return [], ""
     
-    # Sorguyu normalize et (ör: 'Celâli' -> 'celali', 'Kâmil' -> 'kamil')
     normalized_query = normalize_turkish_text(query)
     
-    # Stop Words Temizliği
-    # Stop words listesi de artık normalize edilmiş durumda ("için" -> "icin" gibi)
     keywords = [
         k for k in normalized_query.split() 
         if len(k) > 2 and k not in config.STOP_WORDS
     ]
     
-    # Eğer tüm kelimeler stop word ise (örn: "bana kaynak ver"), arama yapma
     if not keywords:
         return [], normalized_query
         
@@ -359,7 +355,6 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             return f"{system_instruction}\n\nKullanıcı: {user_query}"
             
     else:  # Research mode
-        # KAYNAK YOKSA DOĞRUDAN UYARI DÖNDÜR
         if not sources:
             return None
         
@@ -563,14 +558,18 @@ def main():
             full_response = ""
             
             with st.spinner("Can Dede tefekkürde..."):
-                # Hata yönetimi eklenmiş generator çağrısı
                 for chunk in generate_ai_response(user_input, sources, selected_mode):
                     full_response += chunk
                     placeholder.markdown(full_response + "▌")
             
             placeholder.markdown(full_response)
             
-            if sources and "Araştırma" in selected_mode:
+            # GÜNCELLEME: Can Dede "Bulamadım" derse kaynakları gizle!
+            # Eğer cevap içinde olumsuz kelimeler varsa kaynak listesini gösterme.
+            failure_phrases = ["bilgi bulamadım", "kaynak bulamadım", "yeterli kaynak", "üzgünüm"]
+            is_failure = any(phrase in full_response.lower() for phrase in failure_phrases)
+            
+            if sources and "Araştırma" in selected_mode and not is_failure:
                 render_sources(sources)
             
             st.session_state.messages.append({
