@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Respectful Tone (No 'Evladım/Ey Canım'), Full Logic Preserved
+Final Version: Multi-language, Deep Context, Dynamic Closing, No Repetition
 """
 
 import streamlit as st
@@ -118,7 +118,8 @@ def normalize_turkish_text(text: str) -> str:
     replacements = {
         "I": "i", "ı": "i", "İ": "i", "i": "i", "Ğ": "g", "ğ": "g",
         "Ü": "u", "ü": "u", "Ş": "s", "ş": "s", "Ö": "o", "ö": "o",
-        "Ç": "c", "ç": "c", "Â": "a", "â": "a", "Î": "i", "î": "i", "Û": "u", "û": "u"
+        "Ç": "c", "ç": "c", "Â": "a", "â": "a", "Î": "i", "î": "i",
+        "Û": "u", "û": "u"
     }
     output = []
     for char in text: output.append(replacements.get(char, char))
@@ -187,24 +188,38 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 
 def get_local_response(text: str) -> Optional[str]:
     norm = normalize_turkish_text(text)
-    if any(x in norm for x in ["merhaba", "selam"]): return "Aşk ile, merhaba can."
+    # Çok dilli olması için yerel cevapları sınırladık, AI halletsin.
+    if norm in ["merhaba", "selam", "hello", "hi", "hallo"]: 
+        return None # AI kendi dilinde cevap versin
     return None
 
 # ===================== PROMPT MÜHENDİSLİĞİ (GÜNCELLENDİ) =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
-    # GEÇMİŞ SOHBETİ HATIRLA
+    # Geçmiş mesaj sayısı (Sohbetin derinliğini anlamak için)
+    turn_count = len(history)
+    
+    # AKILLI VEDA KURALI: İlk 4 mesajdan sonra veda etmeyi bırak.
+    closing_instruction = ""
+    if turn_count > 4:
+        closing_instruction = "Sohbet ilerledi. Artık cevabın sonuna 'Aşk ile', 'Eyvallah' gibi veda sözleri EKLEME. Direkt cevabı verip sus."
+    else:
+        closing_instruction = "Cevabın sonuna sıcak, kısa bir Alevi-Bektaşi veda sözü ekle."
+
+    # GEÇMİŞ SOHBETİ HATIRLA (Context)
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
     
     if "Sohbet" in mode:
         # == SOHBET MODU KİMLİĞİ ==
         system_instruction = (
-            "Sen 'Can Dede'sin. Bir yapay zeka değil, Alevi-Bektaşi yoluna hizmet eden, gönül gözü açık, bilge, kalender bir rehbersin.\n"
-            "Üslubun: %70 modern, anlaşılır Türkçe; %30 tasavvufi derinlik içerir.\n"
-            "Kural 1: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' veya 'arşivde şu var' deme.\n"
-            "Kural 2: Eğer 'BİLGİ NOTLARI' boşsa veya sorunun cevabı orada yoksa, SAKIN 'bilmiyorum' deme. Kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir yorum yap.\n"
-            "Kural 3: İnsan gibi konuş. Robotik tekrarlara düşme. Vedalaşırken duruma göre doğal bir söz söyle.\n"
-            "Kural 4: HİTAP ŞEKLİ: Asla 'evladım', 'yavrum', 'ey canım', 'çocuğum' gibi üstten bakan veya laubali ifadeler kullanma. Sadece 'Can', 'Erenler', 'Dost', 'Aziz Can' gibi saygın ifadeler kullan.\n"
+            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, insan-ı kâmil bir rehbersin.\n"
+            "GÖREVLERİN:\n"
+            "1. DİL: Kullanıcı hangi dilde (Türkçe, İngilizce, Almanca, Zazaca vs.) sorarsa o dilde cevap ver.\n"
+            "2. DERİNLİK: Asla yuvarlak, geçiştirici cevaplar verme. Konunun özüne in, derinlemesine ve doyurucu anlat. Her yaş grubunun anlayacağı berrak bir dil kullan.\n"
+            "3. BİLGİ KAYNAĞI: Sana verilen 'BİLGİ NOTLARI'nı oku, içselleştir ve kendi ilminmiş gibi anlat. Asla 'kaynakta yazdığına göre' deme.\n"
+            "4. YORUM GÜCÜ: Eğer 'BİLGİ NOTLARI' boşsa, kendi genel bilgeliğinle, Alevi-Bektaşi felsefesine uygun, kucaklayıcı ve aydınlatıcı bir cevap ver. 'Bilmiyorum' deyip kestirip atma.\n"
+            "5. HİTAP: 'Evladım', 'yavrum' gibi ifadeler YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
+            f"6. VEDA: {closing_instruction}\n"
         )
         
         source_text = ""
@@ -219,17 +234,15 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
         
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
-            "Yorum katma, sadece kaynakta ne varsa onu söyle."
+            "Kullanıcı hangi dilde sorduysa o dilde özetle."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
         
         return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru: {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
-    local = get_local_response(user_query)
-    if local:
-        yield local; return
-
+    # Yerel cevapları kaldırdık, yapay zeka dile göre kendi cevaplasın.
+    
     if "Araştırma" in mode and not sources:
         yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
