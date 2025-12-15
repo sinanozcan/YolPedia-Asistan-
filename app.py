@@ -19,13 +19,15 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 30  # GÜNCELLEME: Limit 30'a düşürüldü
+    MAX_MESSAGE_LIMIT: int = 30
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 45
+    
+    # GÜNCELLEME: Eşik değeri 65 yapıldı. Alakasız sonuçları eler.
+    SEARCH_SCORE_THRESHOLD: int = 65
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -313,7 +315,9 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             )
         else:
             return f"{system_instruction}\n\nKullanıcı: {user_query}"
+            
     else:  # Research mode
+        # KAYNAK YOKSA DOĞRUDAN UYARI DÖNDÜR (BURASI KRİTİK)
         if not sources:
             return None
         
@@ -322,8 +326,10 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             for src in sources[:3]
         ])
         return (
-            f"Sen YolPedia asistanısın. Sadece verilen kaynaklara göre cevapla:\n"
-            f"{source_text}\n\n"
+            f"Sen YolPedia asistanısın. Görevin sadece aşağıdaki KAYNAKLARI kullanarak cevap vermektir.\n"
+            f"Eğer sorunun cevabı kaynaklarda yoksa, KESİNLİKLE uydurma ve 'Arşivde bu konuda bilgi bulamadım' de.\n"
+            f"Asla kaynakların dışına çıkma.\n\n"
+            f"KAYNAKLAR:\n{source_text}\n\n"
             f"Soru: {user_query}"
         )
 
@@ -344,9 +350,16 @@ def generate_ai_response(
         yield local_response
         return
     
-    # 2. Prompt hazırla
+    # 2. ARAŞTIRMA MODU KORUMASI
+    # Eğer Araştırma modundaysak ve kaynak bulamadıysak, API'ye hiç gitme.
+    if "Araştırma" in mode and not sources:
+        yield "📚 Üzgünüm can, YolPedia arşivinde bu konuyla ilgili yeterli kaynak bulunamadı. Başka bir konuda yardımcı olabilir miyim?"
+        return
+
+    # 3. Prompt hazırla
     prompt = build_prompt(user_query, sources, mode)
     if prompt is None:
+        # Sohbet modunda kaynak yoksa bile konuşabilir, o yüzden burası sadece genel fallback
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
         return
     
@@ -364,11 +377,7 @@ def generate_ai_response(
         if success:
             break
             
-        key_masked = f"...{current_api_key[-4:]}"
-        # status_box.info(f"🔄 {key_index + 1}. Anahtar ({key_masked}) deneniyor...") 
-        # (Opsiyonel: Kullanıcı anahtar denendiğini görmesin isterseniz bu satırı silebilirsiniz,
-        # ama hata durumunda bilgi vermesi iyidir)
-        status_box.info(f"Can Dede düşünüyor... (Sunucu {key_index + 1})")
+        # status_box.info(f"Can Dede düşünüyor... (Sunucu {key_index + 1})")
         
         try:
             # Yapılandırmayı bu anahtarla ayarla
@@ -381,7 +390,7 @@ def generate_ai_response(
                     # Modeli yükle
                     model = genai.GenerativeModel(model_name)
                     generation_config = {
-                        "temperature": 0.7,
+                        "temperature": 0.3, # Daha tutarlı cevaplar için düşürüldü
                         "max_output_tokens": 1500,
                     }
                     
@@ -420,8 +429,6 @@ def generate_ai_response(
                     continue
 
         except Exception as key_error:
-            # Anahtar yapılandırma hatası
-            # status_box.error(f"❌ {key_index + 1}. Anahtar hatalı: {str(key_error)}")
             last_error_details = str(key_error)
             continue
             
@@ -486,7 +493,6 @@ def render_sidebar() -> str:
         
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
-        # GÜNCELLEME: Anahtar sayısı göstergesi kaldırıldı.
         
     return selected_mode
 
@@ -544,6 +550,7 @@ def main():
             
             placeholder.markdown(full_response)
             
+            # SADECE KAYNAK VARSA VE MOD ARAŞTIRMAYSA KAYNAKLARI GÖSTER
             if sources and "Araştırma" in selected_mode:
                 render_sources(sources)
             
