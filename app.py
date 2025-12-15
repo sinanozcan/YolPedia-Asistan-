@@ -27,7 +27,6 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Eşik değeri düşük tutuyoruz (Kapsayıcılık için)
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -41,7 +40,6 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Gereksiz kelimeleri temizleme listesi
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
@@ -104,7 +102,7 @@ def load_knowledge_base() -> List[Dict]:
         with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
 
-# ===================== TEXT PROCESSING (BALYOZ) =====================
+# ===================== TEXT PROCESSING =====================
 
 def normalize_turkish_text(text: str) -> str:
     if not isinstance(text, str): return ""
@@ -125,7 +123,12 @@ def initialize_session_state():
     if "messages" not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
-            "content": "Merhaba, Can Dost! Ben Can Dede. Buyur Erenler, hangi modda buluşalım?"
+            "content": (
+                "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
+                "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
+                "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\n"
+                "Buyur Erenler, hangi modda buluşalım?"
+            )
         }]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
@@ -202,7 +205,6 @@ def generate_ai_response(user_query, sources, mode):
     success = False
     last_error = ""
     
-    # GÜVENLİK FİLTRELERİ KAPALI (Şiddet/İsyan konuları için)
     safe_config = {
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -232,7 +234,57 @@ def generate_ai_response(user_query, sources, mode):
     if not success:
         yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, maalesef teknik bir sorun var."
 
-# ===================== UI =====================
+# ===================== UI HELPER FUNCTIONS =====================
+
+def scroll_to_bottom():
+    components.html(
+        """
+        <script>
+            window.parent.document.querySelector(".main").scrollTop = 100000;
+        </script>
+        """,
+        height=0
+    )
+
+def render_header():
+    """Render application header with HTML/CSS - RESTORED"""
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 30px;">
+        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
+        </div>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+            <img src="{config.CAN_DEDE_ICON}" 
+                 style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+            <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
+                {config.ASSISTANT_NAME}
+            </h1>
+        </div>
+        <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+            {config.MOTTO}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_sidebar():
+    with st.sidebar:
+        st.title("Mod Seçimi")
+        mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
+        if st.button("🗑️ Sohbeti Sıfırla"): st.session_state.messages = []; st.rerun()
+        
+        if 'db' in st.session_state:
+            st.info(f"📚 Arşivdeki Toplam Kaynak: **{len(st.session_state.db)}**")
+            
+        st.divider()
+        st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        
+        return mode
+
+def render_sources(sources):
+    st.markdown("---"); st.markdown("**📚 Kaynaklar:**")
+    for s in sources[:3]: st.markdown(f"• [{s['baslik']}]({s['link']})")
+
+# ===================== MAIN =====================
 
 def main():
     render_header()
@@ -265,27 +317,8 @@ def main():
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
-
-def render_header():
-    st.markdown(f"<h1 style='text-align:center'>{config.ASSISTANT_NAME}</h1>", unsafe_allow_html=True)
-
-def render_sidebar():
-    with st.sidebar:
-        st.title("Mod Seçimi")
-        mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
-        if st.button("🗑️ Sohbeti Sıfırla"): st.session_state.messages = []; st.rerun()
         
-        if 'db' in st.session_state:
-            st.info(f"📚 Arşivdeki Toplam Kaynak: **{len(st.session_state.db)}**")
-            
-        st.divider()
-        st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
-        
-        return mode
-
-def render_sources(sources):
-    st.markdown("---"); st.markdown("**📚 Kaynaklar:**")
-    for s in sources[:3]: st.markdown(f"• [{s['baslik']}]({s['link']})")
+        scroll_to_bottom()
 
 if __name__ == "__main__":
     main()
