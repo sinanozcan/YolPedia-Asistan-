@@ -6,10 +6,12 @@ Refactored version with improved code quality, error handling, and maintainabili
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold # Sansür ayarları için
 import json
 import time
 import random
 import logging
+import unicodedata
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -25,7 +27,6 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Eşik değerini düşük tutuyoruz ki "celali" gibi tek kelimeleri kaçırmasın
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -50,7 +51,11 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            self.GEMINI_MODELS = ["gemini-1.5-flash", "gemini-1.5-flash-latest"]
+            self.GEMINI_MODELS = [
+                "gemini-1.5-flash",
+                "gemini-1.5-flash-latest",
+                "gemini-2.0-flash-exp"
+            ]
 
 config = AppConfig()
 
@@ -97,35 +102,18 @@ def load_knowledge_base() -> List[Dict]:
         with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
 
-# ===================== TEXT PROCESSING (BALYOZ YÖNTEMİ) =====================
+# ===================== TEXT PROCESSING =====================
 
 def normalize_turkish_text(text: str) -> str:
-    """
-    Türkçe karakter sorununu kökten çözen manuel haritalama.
-    Python'un lower() fonksiyonuna güvenmiyoruz, kendimiz çeviriyoruz.
-    """
-    if not isinstance(text, str):
-        return ""
-    
-    # Harf harf dönüşüm tablosu (Hem büyük hem küçük harfleri kapsar)
+    if not isinstance(text, str): return ""
+    text = text.lower()
     replacements = {
-        "I": "i", "ı": "i", "İ": "i", "i": "i",
-        "Ğ": "g", "ğ": "g",
-        "Ü": "u", "ü": "u",
-        "Ş": "s", "ş": "s",
-        "Ö": "o", "ö": "o",
-        "Ç": "c", "ç": "c",
-        "Â": "a", "â": "a",
-        "Î": "i", "î": "i",
-        "Û": "u", "û": "u"
+        "I": "i", "ı": "i", "İ": "i", "i": "i", "Ğ": "g", "ğ": "g",
+        "Ü": "u", "ü": "u", "Ş": "s", "ş": "s", "Ö": "o", "ö": "o",
+        "Ç": "c", "ç": "c", "Â": "a", "â": "a", "Î": "i", "î": "i", "Û": "u", "û": "u"
     }
-    
     output = []
-    for char in text:
-        # Varsa tablodan al, yoksa harfin kendisini al
-        output.append(replacements.get(char, char))
-    
-    # Birleştir ve her ihtimale karşı yine de lower() ve ascii temizliği yap
+    for char in text: output.append(replacements.get(char, char))
     return "".join(output).lower().encode('ASCII', 'ignore').decode('utf-8')
 
 # ===================== SESSION STATE =====================
@@ -158,11 +146,9 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     title = normalize_turkish_text(entry.get('baslik', ''))
     content = normalize_turkish_text(entry.get('icerik', ''))
     
-    # Tam eşleşme (Title Priority)
-    if normalized_query in title: score += 300 # Başlıkta geçiyorsa çok yüksek puan
-    elif normalized_query in content: score += 50
+    if normalized_query in title: score += 200
+    elif normalized_query in content: score += 80
     
-    # Kelime bazlı eşleşme
     for keyword in keywords:
         if keyword in title: score += 100
         elif keyword in content: score += 5
@@ -183,7 +169,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
                 "baslik": entry.get('baslik'),
                 "link": entry.get('link'),
                 "icerik": entry.get('icerik', '')[:config.MAX_CONTENT_LENGTH],
-                "puan": score # Debug için puanı ekliyoruz
+                "puan": score
             })
     
     results.sort(key=lambda x: x['puan'], reverse=True)
@@ -195,10 +181,10 @@ def get_local_response(text: str) -> Optional[str]:
     return None
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
-    system = "Sen Can Dede'sin. Alevi-Bektaşi rehberisin."
+    system = "Sen Can Dede'sin. Alevi-Bektaşi rehberisin. Cevapların kısa, öz ve anlaşılır olsun."
     if "Sohbet" in mode:
         return f"{system}\nKAYNAKLAR:\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:2]]) + f"\n\nSoru: {user_query}"
-    else: # Research
+    else:
         if not sources: return None
         return f"{system}\nSadece şu kaynaklara göre cevapla:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:1000]}" for s in sources[:3]]) + f"\n\nSoru: {user_query}"
 
@@ -208,23 +194,61 @@ def generate_ai_response(user_query, sources, mode):
         yield local; return
 
     if "Araştırma" in mode and not sources:
-        yield "📚 Arşivde bu konuda (kelime eşleşmesiyle) kaynak bulamadım can."; return
+        yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
     prompt = build_prompt(user_query, sources, mode)
     success = False
+    last_error = ""
     
-    for key in GOOGLE_API_KEYS:
+    # SANSÜRÜ KALDIRAN AYAR (BLOCK_NONE)
+    safe_config = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+    # Anahtar Döngüsü
+    for key_idx, key in enumerate(GOOGLE_API_KEYS):
         if success: break
         try:
             genai.configure(api_key=key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-            response = model.generate_content(prompt, stream=True)
-            for chunk in response:
-                if chunk.text: yield chunk.text; success = True
-            if success: break
-        except: continue
+            
+            # Model Döngüsü
+            for model_name in config.GEMINI_MODELS:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    # Safety settings burada veriliyor
+                    response = model.generate_content(
+                        prompt, 
+                        stream=True,
+                        safety_settings=safe_config
+                    )
+                    
+                    has_content = False
+                    for chunk in response:
+                        if chunk.text: 
+                            yield chunk.text
+                            has_content = True
+                            success = True
+                    
+                    if success: break # Model başarılı, döngüden çık
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    last_error = error_msg # Hatayı kaydet
+                    # Eğer kota hatasıysa bir sonraki anahtara geç (break ile model döngüsünü kır)
+                    if "429" in error_msg or "quota" in error_msg.lower():
+                        break 
+                    continue # Diğer hatalarda (örn model bulunamadı) bir sonraki modeli dene
+
+        except Exception as e:
+            last_error = str(e)
+            continue
     
-    if not success: yield "⚠️ Teknik bir sorun oluştu can."
+    if not success:
+        # HATAYI GİZLEMEK YOK! Ekrana basıyoruz.
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, maalesef teknik bir sorun var. Yukarıdaki hata mesajı sorunu çözmemize yardımcı olacaktır."
 
 # ===================== UI =====================
 
@@ -246,12 +270,11 @@ def main():
         
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
-        # DEBUG EXPANDER (Puanları Göster)
         if sources:
             with st.expander(f"🔍 Can Dede Arka Planda Bunları Buldu ({len(sources)} Kaynak)"):
-                st.caption(f"Aranan Anahtar Kelimeler: {keywords}")
+                st.caption(f"Aranan: {keywords}")
                 for s in sources:
-                    st.write(f"• **{s['baslik']}** (Uygunluk Puanı: {s['puan']})")
+                    st.write(f"• **{s['baslik']}** (Puan: {s['puan']})")
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
@@ -261,8 +284,7 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
-            # Negatif kontrol
-            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm"])
+            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
             if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
             
@@ -279,7 +301,6 @@ def render_sidebar():
         
         if 'db' in st.session_state:
             st.info(f"📚 Kaynak Sayısı: **{len(st.session_state.db)}**")
-            # TEST KUTUSU
             st.markdown("---")
             test_q = st.text_input("Test Arama:", placeholder="celali").strip()
             if test_q:
