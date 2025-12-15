@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Fix: Strict Context Memory (Fixes Summary Hallucinations) & Directional Correction
+Final Version: Smart Scoring (Length-based Weighting) to prevent False Positives
 """
 
 import streamlit as st
@@ -27,7 +27,10 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    SEARCH_SCORE_THRESHOLD: int = 30
+    # GÜNCELLEME: Barajı 35'e çektik (Güvenli Bölge).
+    # Sadece "Gül" yazan biri 10 puan alır ve elenir.
+    # "Mahsuni" yazan biri 40 puan alır ve geçer.
+    SEARCH_SCORE_THRESHOLD: int = 35
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -40,7 +43,6 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Gereksiz kelimeler
     STOP_WORDS: List[str] = field(default_factory=lambda: [
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
         "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
@@ -49,13 +51,13 @@ class AppConfig:
         "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
         "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
     ])
-
-    # HAFIZA TETİKLEYİCİLERİ (Bu kelimeler varsa eski konuyu hatırla)
+    
+    # HAFIZA İÇİN TAKİP KELİMELERİ
     FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
         "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
         "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
     ])
-    
+
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
             self.GEMINI_MODELS = [
@@ -101,7 +103,6 @@ def apply_custom_styles():
         .stSpinner > div { border-top-color: #ff4b4b !important; }
         .block-container { padding-top: 6rem !important; }
         h1 { line-height: 1.2 !important; }
-        /* Linklerin görünürlüğünü artır */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
         a:hover { text-decoration: underline; }
     </style>
@@ -148,8 +149,6 @@ def initialize_session_state():
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
     
-    # === HAFIZA DEPOSU (Kritik Eklenti) ===
-    # Son bulunan kaynakları burada saklayacağız ki "bunu özetle" denince hatırlasın
     if 'last_sources' not in st.session_state: st.session_state.last_sources = []
 
 initialize_session_state()
@@ -170,31 +169,34 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     title = normalize_turkish_text(entry.get('baslik', ''))
     content = normalize_turkish_text(entry.get('icerik', ''))
     
+    # Tam eşleşme puanları
     if normalized_query in title: score += 200
-    elif normalized_query in content: score += 80
+    elif normalized_query in content: score += 100
     
+    # GÜNCELLEME: AKILLI PUANLAMA (UZUNLUK AĞIRLIKLI)
     for keyword in keywords:
-        if keyword in title: score += 100
-        elif keyword in content: score += 5
+        if keyword in title: 
+            score += 100
+        elif keyword in content: 
+            # Eğer kelime uzunsa (Mahsuni) -> Yüksek Puan (40) -> Tek başına barajı geçer (40 > 35)
+            if len(keyword) > 3:
+                score += 40
+            # Eğer kelime kısaysa (Gül, Şah) -> Düşük Puan (10) -> Tek başına barajı geçemez (10 < 35)
+            else:
+                score += 10
     
     return score
 
-# === ARAMA MOTORU (HAFIZA KİLİDİ EKLENDİ) ===
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     normalized_query = normalize_turkish_text(query)
-    
-    # 1. Anahtar kelimeleri çıkar
     keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
     
-    # 2. Takip Sorusu Kontrolü ("Bunu özetle", "O belge" gibi)
     is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
+    has_strong_keywords = len(keywords) > 0
     
-    # Eğer yeni ve güçlü bir konu ismi (Örn: "Hacı Bektaş") YOKSA, ama takip kelimesi VARSA:
-    # ESKİ KAYNAKLARI KULLAN (Hafızayı Koru)
-    if is_follow_up and len(keywords) < 1 and st.session_state.last_sources:
+    if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
         return st.session_state.last_sources, ["(Önceki Konu Devam)"]
 
-    # Değilse yeni arama yap
     if not keywords and len(normalized_query) < 3: return [], []
     
     results = []
@@ -211,7 +213,6 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
     results.sort(key=lambda x: x['puan'], reverse=True)
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
-    # 3. Bulunanları Hafızaya At (Bir sonraki "bunu özetle" sorusu için)
     if top_results:
         st.session_state.last_sources = top_results
         
@@ -220,7 +221,7 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
 def get_local_response(text: str) -> Optional[str]:
     return None
 
-# ===================== PROMPT MÜHENDİSLİĞİ (YÖN TARİFİ DÜZELTİLDİ) =====================
+# ===================== PROMPT ENGINEERING =====================
 
 def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
     conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
@@ -240,7 +241,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
             "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
             "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
             "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
-            "3. **LİNK YÖNLENDİRMESİ:** Asla 'Link yukarıda', 'Yukarıdaki bağlantı' deme. Çünkü linkler mesajın ALTINDA listelenir. 'Aşağıdaki kaynaklardan ulaşabilirsin' veya 'Link aşağıdadır' de.\n"
+            "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
             "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
             f"5. **AKIŞ:** {greeting_instruction}\n"
             f"6. **KAPANIŞ:** {closing_instruction}\n"
@@ -397,7 +398,6 @@ def main():
                 placeholder.markdown(full_resp + "▌")
             placeholder.markdown(full_resp)
             
-            # GÜNCELLEME: Linkleri HER ZAMAN göster (Eğer kaynak varsa)
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
             if sources and not fail:
                 render_sources(sources)
