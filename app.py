@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Refactored version with improved code quality, error handling, and maintainability
+Multi-API Key Support + Gemini 2.5 Models
 """
 
 import streamlit as st
@@ -19,7 +19,7 @@ from pathlib import Path
 @dataclass
 class AppConfig:
     """Application configuration constants"""
-    MAX_MESSAGE_LIMIT: int = 40
+    MAX_MESSAGE_LIMIT: int = 30
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600  # 1 hour in seconds
     
@@ -40,11 +40,11 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # Use the latest stable Gemini 2.0 models (December 2024+)
-            # gemini-1.5-flash is deprecated and returns 404
+            # GÜNCEL MODEL LİSTESİ (Aralık 2024)
+            # 1.5 modelleri Nisan 2025'te kaldırıldı
             self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",  # Latest experimental (fastest)
-                "gemini-2.0-flash",      # Stable 2.0
+                "gemini-2.5-flash",      # En hızlı ve güvenilir
+                "gemini-2.5-pro",        # Daha güçlü
             ]
 
 config = AppConfig()
@@ -80,6 +80,11 @@ def get_api_keys() -> List[str]:
         secondary_key = st.secrets.get("API_KEY_2", "")
         if secondary_key:
             api_keys.append(secondary_key)
+        
+        # Third API key (optional)
+        third_key = st.secrets.get("API_KEY_3", "")
+        if third_key:
+            api_keys.append(third_key)
         
         # Check if we have at least one key
         if not api_keys:
@@ -206,7 +211,6 @@ def validate_rate_limit() -> Tuple[bool, str]:
     
     if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
         logger.warning(f"Rate limit exceeded: {st.session_state.request_count}")
-        # Calculate time until reset
         time_until_reset = int(config.RATE_LIMIT_WINDOW - (time.time() - st.session_state.last_reset_time))
         minutes = time_until_reset // 60
         return False, f"🛑 Mesaj limitine ulaştınız ({config.MAX_MESSAGE_LIMIT} mesaj/saat). {minutes} dakika sonra tekrar deneyin."
@@ -228,20 +232,17 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     normalized_title = normalize_turkish_text(title)
     normalized_content = normalize_turkish_text(content)
     
-    # Exact match in title gets highest score
     if normalized_query in normalized_title:
         score += 200
     elif normalized_query in normalized_content:
         score += 100
     
-    # Keyword matches
     for keyword in keywords:
         if keyword in normalized_title:
             score += 40
         elif keyword in normalized_content:
             score += 10
     
-    # Boost for specific content types
     special_terms = ["gulbank", "deyis", "nefes", "siir"]
     if any(term in normalized_title for term in special_terms):
         score += 300
@@ -317,7 +318,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str) -> str:
             )
         else:
             return f"{system_instruction}\n\nKullanıcı: {user_query}"
-    else:  # Research mode
+    else:
         if not sources:
             return None
         
@@ -336,80 +337,79 @@ def generate_ai_response(
     sources: List[Dict],
     mode: str
 ) -> Generator[str, None, None]:
-    """Generate AI response using Google Gemini API"""
+    """Generate AI response using Google Gemini API with multiple key fallback"""
     
-    # Check for local response first
     local_response = get_local_response(user_query)
     if local_response:
         time.sleep(0.5)
         yield local_response
         return
     
-    # Build prompt
     prompt = build_prompt(user_query, sources, mode)
     
     if prompt is None:
         yield "📚 Aradığın konuyla ilgili kaynak bulamadım can."
         return
     
-    # Configure API
-    try:
-        genai.configure(api_key=GOOGLE_API_KEY)
-    except Exception as e:
-        logger.error(f"API configuration failed: {e}")
-        yield "⚠️ API anahtarı yapılandırma hatası. Lütfen yöneticiyle iletişime geç."
-        return
-    
-    # Try models in order
-    last_error = None
-    for model_name in config.GEMINI_MODELS:
+    for key_index, api_key in enumerate(GOOGLE_API_KEYS, 1):
         try:
-            logger.info(f"Attempting to use model: {model_name}")
-            model = genai.GenerativeModel(model_name)
+            logger.info(f"Trying API key #{key_index}")
+            genai.configure(api_key=api_key)
             
-            # Add generation config for better reliability
-            generation_config = {
-                "temperature": 0.7,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 2048,
-            }
-            
-            response = model.generate_content(
-                prompt, 
-                stream=True,
-                generation_config=generation_config
-            )
-            
-            has_content = False
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
-                    has_content = True
-            
-            if has_content:
-                logger.info(f"Successfully generated response using {model_name}")
-                return
-                
+            for model_name in config.GEMINI_MODELS:
+                try:
+                    logger.info(f"Attempting model: {model_name} with key #{key_index}")
+                    model = genai.GenerativeModel(model_name)
+                    
+                    generation_config = {
+                        "temperature": 0.7,
+                        "top_p": 0.95,
+                        "top_k": 40,
+                        "max_output_tokens": 2048,
+                    }
+                    
+                    response = model.generate_content(
+                        prompt, 
+                        stream=True,
+                        generation_config=generation_config
+                    )
+                    
+                    has_content = False
+                    for chunk in response:
+                        if chunk.text:
+                            yield chunk.text
+                            has_content = True
+                    
+                    if has_content:
+                        logger.info(f"Success with key #{key_index}, model: {model_name}")
+                        return
+                        
+                except Exception as e:
+                    error_str = str(e)
+                    logger.warning(f"Model {model_name} with key #{key_index} failed: {e}")
+                    
+                    if "quota" in error_str.lower() or "limit" in error_str.lower() or "429" in error_str:
+                        logger.warning(f"Quota exceeded on key #{key_index}, trying next key")
+                        break
+                    
+                    if "invalid" in error_str.lower() or "key" in error_str.lower() or "401" in error_str:
+                        logger.error(f"Auth error with key #{key_index}")
+                        break
+                    
+                    if "404" in error_str or "not found" in error_str.lower():
+                        continue
+                    
+                    continue
+                    
         except Exception as e:
-            last_error = str(e)
-            logger.warning(f"Model {model_name} failed: {e}")
-            
-            # Check for specific errors
-            if "quota" in str(e).lower() or "limit" in str(e).lower():
-                logger.error(f"API quota exceeded: {e}")
-                yield "⚠️ API kullanım limiti doldu. Lütfen biraz sonra tekrar dene."
-                return
-            elif "invalid" in str(e).lower() or "key" in str(e).lower():
-                logger.error(f"Invalid API key: {e}")
-                yield "⚠️ API anahtarı geçersiz. Lütfen yöneticiyle iletişime geç."
-                return
-            
+            logger.error(f"Failed to configure API key #{key_index}: {e}")
             continue
     
-    # All models failed
-    logger.error(f"All AI models failed. Last error: {last_error}")
-    yield f"⚠️ Can Dost, şu anda teknik bir sorun var. Detay: {last_error[:100]}"
+    logger.error("All API keys exhausted")
+    if len(GOOGLE_API_KEYS) > 1:
+        yield "⚠️ Tüm API anahtarlarının kotası doldu. Lütfen birkaç saat sonra tekrar dene."
+    else:
+        yield "⚠️ API kullanım limiti doldu. Lütfen biraz sonra tekrar dene."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -429,11 +429,11 @@ def render_header():
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="{config.YOLPEDIA_ICON}" style="width: 80px; height: auto;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 70px; height: auto;">
         </div>
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
             <img src="{config.CAN_DEDE_ICON}" 
-                 style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                 style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
             <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
                 {config.ASSISTANT_NAME}
             </h1>
@@ -462,16 +462,19 @@ def render_sidebar() -> str:
             logger.info("Chat history reset by user")
             st.rerun()
         
-        # Display usage stats
         st.divider()
-        st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        remaining = config.MAX_MESSAGE_LIMIT - st.session_state.request_count
+        st.caption(f"📊 Kalan mesaj hakkı: {remaining}/{config.MAX_MESSAGE_LIMIT}")
         
-        # Debug info (only if API key exists)
-        if GOOGLE_API_KEY:
-            api_preview = GOOGLE_API_KEY[:8] + "..." + GOOGLE_API_KEY[-4:]
-            st.caption(f"🔑 API: {api_preview}")
+        if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT - 2:
+            time_until_reset = int(config.RATE_LIMIT_WINDOW - (time.time() - st.session_state.last_reset_time))
+            minutes = time_until_reset // 60
+            st.caption(f"⏰ Sıfırlanma: {minutes} dakika")
+        
+        if GOOGLE_API_KEYS:
+            st.caption(f"🔑 API Keys: {len(GOOGLE_API_KEYS)}")
         else:
-            st.error("⚠️ API key yok!")
+            st.caption("🔑 API Keys: 0 ⚠️")
         
     return selected_mode
 
@@ -489,39 +492,31 @@ def render_sources(sources: List[Dict]):
 
 def main():
     """Main application flow"""
-    # Render UI components
     render_header()
     selected_mode = render_sidebar()
     
-    # Display chat history
     for message in st.session_state.messages:
         icon = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
         with st.chat_message(message["role"], avatar=icon):
             st.markdown(message["content"])
     
-    # Handle user input
     user_input = st.chat_input("Can Dede'ye sor...")
     
     if user_input:
-        # Validate rate limit
         can_proceed, error_message = validate_rate_limit()
         if not can_proceed:
             st.error(error_message)
             st.stop()
         
-        # Update rate limit counters
         st.session_state.request_count += 1
         st.session_state.last_request_time = time.time()
         
-        # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
         scroll_to_bottom()
         
-        # Search knowledge base
         sources, _ = search_knowledge_base(user_input, st.session_state.db)
         
-        # Generate and display AI response
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
             full_response = ""
@@ -533,11 +528,9 @@ def main():
             
             placeholder.markdown(full_response)
             
-            # Show sources in research mode
             if sources and "Araştırma" in selected_mode:
                 render_sources(sources)
             
-            # Save assistant message
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_response
