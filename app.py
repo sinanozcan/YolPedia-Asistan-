@@ -59,8 +59,26 @@ if not API_KEYS:
 
 # CSS
 st.markdown("""<style>
-.stChatMessage { margin-bottom: 10px; }
-.block-container { padding-top: 2rem; }
+.stChatMessage { 
+    margin-bottom: 10px; 
+}
+.stSpinner > div { 
+    border-top-color: #ff4b4b !important; 
+}
+.block-container { 
+    padding-top: 6rem !important; 
+}
+h1 { 
+    line-height: 1.2 !important; 
+}
+a { 
+    color: #ff4b4b !important; 
+    text-decoration: none; 
+    font-weight: bold; 
+}
+a:hover { 
+    text-decoration: underline; 
+}
 </style>""", unsafe_allow_html=True)
 
 # DATA
@@ -194,11 +212,23 @@ def scroll():
     components.html('<script>window.parent.document.querySelector(".main").scrollTop=100000;</script>', height=0)
 
 def render_header():
-    st.markdown(f'''<div style="text-align:center;margin-bottom:30px;">
-    <img src="{config.YOLPEDIA_ICON}" style="width:60px;"><br>
-    <img src="{config.CAN_DEDE_ICON}" style="width:50px;border-radius:50%;border:2px solid #eee;">
-    <h1 style="font-size:34px;color:#fff;">{config.ASSISTANT_NAME}</h1>
-    <div style="font-style:italic;color:#ccc;">{config.MOTTO}</div></div>''', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 30px;">
+        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+            <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
+        </div>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+            <img src="{config.CAN_DEDE_ICON}" 
+                 style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+            <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
+                {config.ASSISTANT_NAME}
+            </h1>
+        </div>
+        <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+            {config.MOTTO}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 def render_sidebar():
     with st.sidebar:
