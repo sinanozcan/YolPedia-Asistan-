@@ -158,7 +158,7 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
         sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberisin. İnsan-ı kâmil mertebesinde bir bilgesin.\n"
                f"KURALLAR:\n"
                f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
-               f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
+               f"2. 'Can', 'Dost', Érenler' kullan, 'Evladım', 'Canım' yasak\n"
                f"3. Cevabı tam bitir, yarım bırakma\n"
                f"4. {greet}\n")
         src = ""
@@ -205,7 +205,7 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
                     continue
         except: continue
     
-    yield "⚠️ Limit doldu. Biraz sonra dene."
+    yield "⚠️ Limit doldu. Daha sonra tekrar dene."
 
 # UI
 def scroll():
@@ -235,7 +235,7 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         if st.button("🗑️ Sıfırla"):
-            st.session_state.messages = [{"role": "assistant", "content": "Sıfırlandı."}]
+            st.session_stat        if st[{utton("Sohbeti Sıfırla"):"content": "Sıfırlandı."}]
             st.session_state.request_count = 0
             st.rerun()
         st.divider()
