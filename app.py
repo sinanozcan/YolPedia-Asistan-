@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Fixed Model List (Removed Deprecated Models)
+Final Version: Robust Model Fallback, Strict Persona, Multi-language
 """
 
 import streamlit as st
@@ -27,6 +27,7 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
+    # Eşik değeri (Hassas Arama için düşük)
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -49,7 +50,6 @@ class AppConfig:
         "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
     ])
     
-    # HAFIZA İÇİN TAKİP KELİMELERİ
     FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
         "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
         "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
@@ -57,10 +57,14 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÜNCELLEME: Hata veren eski modeller kaldırıldı. Sadece güncel olanlar kaldı.
+            # GÜNCELLEME: Yedekli Model Listesi
+            # 1. En Zeki (Pro 1.5)
+            # 2. Hızlı (Flash 1.5)
+            # 3. Eski Sağlam (Pro 1.0 - Eğer kütüphane eskiyse bu çalışır)
             self.GEMINI_MODELS = [
-                "gemini-1.5-pro",   # En Zeki
-                "gemini-1.5-flash"  # En Kararlı Yedek
+                "gemini-1.5-pro",
+                "gemini-1.5-flash",
+                "gemini-pro" 
             ]
 
 config = AppConfig()
@@ -291,7 +295,7 @@ def generate_ai_response(user_query, sources, mode):
         except Exception as e: last_error = str(e); continue
     
     if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, maalesef teknik bir sorun var."
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu. Lütfen sayfayı yenileyip tekrar dene."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -301,12 +305,8 @@ def scroll_to_bottom():
         function scrollDown() {
             var body = window.parent.document.querySelector(".main");
             var footer = window.parent.document.querySelector("footer");
-            if (body) {
-                body.scrollTop = body.scrollHeight;
-            }
-            if (footer) {
-                footer.scrollIntoView({behavior: "smooth", block: "end"});
-            }
+            if (body) { body.scrollTop = body.scrollHeight; }
+            if (footer) { footer.scrollIntoView({behavior: "smooth", block: "end"}); }
         }
         scrollDown();
         setTimeout(scrollDown, 200);
