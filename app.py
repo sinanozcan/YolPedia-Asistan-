@@ -1,7 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: UPGRADED TO GEMINI 1.5 PRO (High Intelligence Mode)
-Plus: Context Memory, Multi-language, Persona Controls, Auto-Scroll
+Final Version: Gemini 1.5 PRO Fixed (Stable Model Names)
 """
 
 import streamlit as st
@@ -59,11 +58,11 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÜNCELLEME: En akıllı model (PRO) en başa alındı.
+            # GÜNCELLEME: Model isimleri en kararlı sürümlere sabitlendi.
             self.GEMINI_MODELS = [
                 "gemini-1.5-pro",          # EN ZEKİ (Ödeme planı varsa bunu kullanır)
-                "gemini-1.5-pro-latest",   # Alternatif Zeki
-                "gemini-1.5-flash"         # Yedek (Hızlı ama daha az zeki)
+                "gemini-1.5-flash",        # Hızlı Yedek
+                "gemini-pro"               # Eski Sağlam Yedek
             ]
 
 config = AppConfig()
@@ -280,7 +279,6 @@ def generate_ai_response(user_query, sources, mode):
             genai.configure(api_key=key)
             for model_name in config.GEMINI_MODELS:
                 try:
-                    # PRO MODELİ BURADA KULLANILIYOR
                     model = genai.GenerativeModel(model_name)
                     response = model.generate_content(prompt, stream=True, safety_settings=safe_config)
                     has_content = False
