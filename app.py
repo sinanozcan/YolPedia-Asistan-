@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Robust Model Fallback, Strict Persona, Multi-language
+Final Fixed Version: Removed Deprecated 'gemini-pro' to prevent 404 Errors.
 """
 
 import streamlit as st
@@ -27,7 +27,6 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Eşik değeri (Hassas Arama için düşük)
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -57,14 +56,10 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÜNCELLEME: Yedekli Model Listesi
-            # 1. En Zeki (Pro 1.5)
-            # 2. Hızlı (Flash 1.5)
-            # 3. Eski Sağlam (Pro 1.0 - Eğer kütüphane eskiyse bu çalışır)
+            # DÜZELTME: 'gemini-pro' SİLİNDİ. Sadece çalışanlar kaldı.
             self.GEMINI_MODELS = [
-                "gemini-1.5-pro",
-                "gemini-1.5-flash",
-                "gemini-pro" 
+                "gemini-1.5-pro",   # Ana Model
+                "gemini-1.5-flash"  # Yedek Model
             ]
 
 config = AppConfig()
@@ -290,12 +285,12 @@ def generate_ai_response(user_query, sources, mode):
                 except Exception as e:
                     error_msg = str(e)
                     last_error = error_msg
-                    if "429" in error_msg or "quota" in error_msg.lower(): break 
+                    # Hata varsa sıradaki modele/anahtara geç
                     continue 
         except Exception as e: last_error = str(e); continue
     
     if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu. Lütfen sayfayı yenileyip tekrar dene."
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
