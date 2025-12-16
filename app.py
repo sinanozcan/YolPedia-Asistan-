@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Gemini 1.5 PRO Fixed (Stable Model Names)
+Final Version: Fixed Model List (Removed Deprecated Models)
 """
 
 import streamlit as st
@@ -27,7 +27,6 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # PRO model kullandığımız için daha detaylı analiz yapabilir, eşiği 30'da tutuyoruz.
     SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
@@ -58,11 +57,10 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÜNCELLEME: Model isimleri en kararlı sürümlere sabitlendi.
+            # GÜNCELLEME: Hata veren eski modeller kaldırıldı. Sadece güncel olanlar kaldı.
             self.GEMINI_MODELS = [
-                "gemini-1.5-pro",          # EN ZEKİ (Ödeme planı varsa bunu kullanır)
-                "gemini-1.5-flash",        # Hızlı Yedek
-                "gemini-pro"               # Eski Sağlam Yedek
+                "gemini-1.5-pro",   # En Zeki
+                "gemini-1.5-flash"  # En Kararlı Yedek
             ]
 
 config = AppConfig()
