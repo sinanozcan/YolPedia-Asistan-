@@ -98,7 +98,7 @@ def init_session():
     if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba, Can Dost! Sol menüden modunu seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+            "Merhaba Can Dost! Sol menüden mod seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
@@ -155,10 +155,10 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
     
     if "Sohbet" in mode:
-        sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberisin. İnsan-ı kâmil mertebesinde bir bilgesin.\n"
+        sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberi.\n"
                f"KURALLAR:\n"
                f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
-               f"2. 'Can', 'Dost', Érenler' kullan, 'Evladım', 'Canım' yasak\n"
+               f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
                f"3. Cevabı tam bitir, yarım bırakma\n"
                f"4. {greet}\n")
         src = ""
@@ -205,7 +205,7 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
                     continue
         except: continue
     
-    yield "⚠️ Limit doldu. Daha sonra tekrar dene."
+    yield "⚠️ Limit doldu. Biraz sonra dene."
 
 # UI
 def scroll():
@@ -235,11 +235,12 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         if st.button("🗑️ Sıfırla"):
-            st.session_stat        if st[{utton("Sohbeti Sıfırla"):"content": "Sıfırlandı."}]
+            st.session_state.messages = [{"role": "assistant", "content": "Sıfırlandı."}]
             st.session_state.request_count = 0
             st.rerun()
         st.divider()
         st.caption(f"📊 {config.MAX_MESSAGE_LIMIT - st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        st.caption(f"🔑 Keys: {len(API_KEYS)}")
     return mode
 
 def render_sources(srcs):
