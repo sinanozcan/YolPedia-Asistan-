@@ -1,6 +1,7 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Version: Smart Scoring (Length-based Weighting) to prevent False Positives
+Final Version: UPGRADED TO GEMINI 1.5 PRO (High Intelligence Mode)
+Plus: Context Memory, Multi-language, Persona Controls, Auto-Scroll
 """
 
 import streamlit as st
@@ -27,10 +28,8 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # GÜNCELLEME: Barajı 35'e çektik (Güvenli Bölge).
-    # Sadece "Gül" yazan biri 10 puan alır ve elenir.
-    # "Mahsuni" yazan biri 40 puan alır ve geçer.
-    SEARCH_SCORE_THRESHOLD: int = 35
+    # PRO model kullandığımız için daha detaylı analiz yapabilir, eşiği 30'da tutuyoruz.
+    SEARCH_SCORE_THRESHOLD: int = 30
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -60,10 +59,11 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
+            # GÜNCELLEME: En akıllı model (PRO) en başa alındı.
             self.GEMINI_MODELS = [
-                "gemini-1.5-flash",
-                "gemini-1.5-flash-latest",
-                "gemini-2.0-flash-exp"
+                "gemini-1.5-pro",          # EN ZEKİ (Ödeme planı varsa bunu kullanır)
+                "gemini-1.5-pro-latest",   # Alternatif Zeki
+                "gemini-1.5-flash"         # Yedek (Hızlı ama daha az zeki)
             ]
 
 config = AppConfig()
@@ -169,19 +169,15 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     title = normalize_turkish_text(entry.get('baslik', ''))
     content = normalize_turkish_text(entry.get('icerik', ''))
     
-    # Tam eşleşme puanları
     if normalized_query in title: score += 200
     elif normalized_query in content: score += 100
     
-    # GÜNCELLEME: AKILLI PUANLAMA (UZUNLUK AĞIRLIKLI)
     for keyword in keywords:
         if keyword in title: 
             score += 100
         elif keyword in content: 
-            # Eğer kelime uzunsa (Mahsuni) -> Yüksek Puan (40) -> Tek başına barajı geçer (40 > 35)
             if len(keyword) > 3:
                 score += 40
-            # Eğer kelime kısaysa (Gül, Şah) -> Düşük Puan (10) -> Tek başına barajı geçemez (10 < 35)
             else:
                 score += 10
     
@@ -284,6 +280,7 @@ def generate_ai_response(user_query, sources, mode):
             genai.configure(api_key=key)
             for model_name in config.GEMINI_MODELS:
                 try:
+                    # PRO MODELİ BURADA KULLANILIYOR
                     model = genai.GenerativeModel(model_name)
                     response = model.generate_content(prompt, stream=True, safety_settings=safe_config)
                     has_content = False
