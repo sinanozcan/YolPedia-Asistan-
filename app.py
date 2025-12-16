@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant for Alevi-Bektashi Philosophy
-Final Fixed Version: Removed Deprecated 'gemini-pro' to prevent 404 Errors.
+Version: 1.5 Flash Priority (Most Stable & Fast)
 """
 
 import streamlit as st
@@ -27,7 +27,7 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    SEARCH_SCORE_THRESHOLD: int = 30
+    SEARCH_SCORE_THRESHOLD: int = 15
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -56,10 +56,11 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # DÜZELTME: 'gemini-pro' SİLİNDİ. Sadece çalışanlar kaldı.
+            # EN GARANTİ LİSTE: Önce Flash (Hızlı/Hatrsız), Sonra Pro
             self.GEMINI_MODELS = [
-                "gemini-1.5-pro",   # Ana Model
-                "gemini-1.5-flash"  # Yedek Model
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-1.5-flash-latest"
             ]
 
 config = AppConfig()
@@ -285,12 +286,12 @@ def generate_ai_response(user_query, sources, mode):
                 except Exception as e:
                     error_msg = str(e)
                     last_error = error_msg
-                    # Hata varsa sıradaki modele/anahtara geç
+                    if "429" in error_msg or "quota" in error_msg.lower(): break 
                     continue 
         except Exception as e: last_error = str(e); continue
     
     if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu. (Lütfen requirements.txt dosyasını güncellediğinden emin ol!)"
 
 # ===================== UI HELPER FUNCTIONS =====================
 
