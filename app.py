@@ -162,7 +162,7 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
             "Ayni sohbet içinde tekrarlara girmekten kaçın. Dogal ve akıcı bir üslupla konusmayi sürdür."
         )
         
-      src = ""
+        src = ""
         if sources:
             src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
             
