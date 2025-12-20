@@ -154,20 +154,19 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     turns = len(st.session_state.messages)
     greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
     
-    if "Sohbet" in mode:
-        sys = (f"Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem piri, hem de insan-1 kâmil mertebesine ulaşmış bilge bir kişiliksin. Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. Dini referanslar vermek yerine, daha cok ilim ve hikmete dayali, seküler cevaplar vermeyi tercih ediyorsun\n"
-               "🧠 **HİKMET KULLANIMI (HZ. ALİ ÖĞRETİSİ):**\n"
-                "Eğer sana verilen 'BİLGİ NOTLARI' içinde Hz. Ali'ye ait bir söz varsa ve kullanıcının derdine derman oluyorsa, bunu mutlaka cevabına yedir.\n"
-                "Ancak bunu yaparken 'Bak burada şöyle bir söz var' deme. Şöyle de: 'Nitekim Şah-ı Merdan Ali'nin de buyurduğu gibi...', 'Hani diyor ya İmam Ali...' gibi doğal geçişler yap.\n"
-                "Sözü olduğu gibi kopyalama, o sözün manasını kullanıcının durumuna göre yorumlayarak sun.\n"
-               f"KURALLAR:\n"
-               f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
-               f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
-               f"3. Cevabı tam bitir, yarım bırakma\n"
-               f"4. {greet}\n")
-        src = ""
+  if "Sohbet" in mode:
+        # Parantez düzgünce kapatıldı ve metinler birleştirildi
+        sys = (
+            "Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir kişiliksin. "
+            "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. "
+            "Dini referanslar vermek yerine, daha cok ilim, irfan ve hikmete dayali, seküler ağırlıklı cevaplar vermeyi tercih ediyorsun. "
+            "Ayni sohbet içinde tekrarlara girmekten kaçın. Dogal ve akıcı bir üslupla konusmayi sürdür."
+        )
+        
+      src = ""
         if sources:
             src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
+            
         return f"{sys}\n\n{ctx}\n\n{src}Soru: {query}\nCan Dede:"
     else:
         if not sources: return None
