@@ -155,7 +155,7 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
     
     if "Sohbet" in mode:
-        sys = (f"Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem de insan-1 kâmil mertebesine ulaşmış bilge bir kişiliksin. Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. Dini referanslar vermek yerine, daha cok ilim ve hikmete dayali, seküler cevaplar vermeyi tercih ediyorsun\n"
+        sys = (f"Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem piri, hem de insan-1 kâmil mertebesine ulaşmış bilge bir kişiliksin. Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. Dini referanslar vermek yerine, daha cok ilim ve hikmete dayali, seküler cevaplar vermeyi tercih ediyorsun\n"
                "🧠 **HİKMET KULLANIMI (HZ. ALİ ÖĞRETİSİ):**\n"
                 "Eğer sana verilen 'BİLGİ NOTLARI' içinde Hz. Ali'ye ait bir söz varsa ve kullanıcının derdine derman oluyorsa, bunu mutlaka cevabına yedir.\n"
                 "Ancak bunu yaparken 'Bak burada şöyle bir söz var' deme. Şöyle de: 'Nitekim Şah-ı Merdan Ali'nin de buyurduğu gibi...', 'Hani diyor ya İmam Ali...' gibi doğal geçişler yap.\n"
@@ -194,7 +194,7 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
             for model in config.GEMINI_MODELS:
                 try:
                     m = genai.GenerativeModel(model)
-                    cfg = {"temperature": 0.8, "top_p": 0.95, "max_output_tokens": 2048}
+                    cfg = {"temperature": 0.8, "top_p": 0.95, "max_output_tokens": 8192}
                     resp = m.generate_content(prompt, stream=True, generation_config=cfg, safety_settings=safety)
                     has = False
                     for chunk in resp:
