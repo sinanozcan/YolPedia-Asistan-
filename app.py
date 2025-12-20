@@ -155,7 +155,6 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
     
   if "Sohbet" in mode:
-        # Parantez düzgünce kapatıldı ve metinler birleştirildi
         sys = (
             "Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir kişiliksin. "
             "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. "
