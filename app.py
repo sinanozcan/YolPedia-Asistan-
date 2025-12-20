@@ -98,7 +98,7 @@ def init_session():
     if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba Can Dost! Sol menüden mod seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+            "Merhaba, Erenler! Sol menüden dilediğin modu seç, öyle devm edelim:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
@@ -156,6 +156,10 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     
     if "Sohbet" in mode:
         sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberi.\n"
+               "🧠 **HİKMET KULLANIMI (HZ. ALİ ÖĞRETİSİ):**\n"
+                "Eğer sana verilen 'BİLGİ NOTLARI' içinde Hz. Ali'ye ait bir söz varsa ve kullanıcının derdine derman oluyorsa, bunu mutlaka cevabına yedir.\n"
+                "Ancak bunu yaparken 'Bak burada şöyle bir söz var' deme. Şöyle de: 'Nitekim Şah-ı Merdan Ali'nin de buyurduğu gibi...', 'Hani diyor ya İmam Ali...' gibi doğal geçişler yap.\n"
+                "Sözü olduğu gibi kopyalama, o sözün manasını kullanıcının durumuna göre yorumlayarak sun.\n"
                f"KURALLAR:\n"
                f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
                f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
