@@ -98,7 +98,7 @@ def init_session():
     if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba, Erenler! Sol menüden dilediğin modu seç, öyle devm edelim:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+            "Merhaba, Erenler! Sol menüden dilediğin modu seç, öyle devam edelim:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
