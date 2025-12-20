@@ -152,14 +152,15 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
         ctx = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in st.session_state.messages[-6:]])
     
     turns = len(st.session_state.messages)
-    greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
+    greet = "İlk mesajda sıcak bir karşılama yap." if turns <= 2 else "Sürekli selam verme, ilk başta zaten verdin selamını, o yüzden direkt konuya gir."
     
     if "Sohbet" in mode:
         sys = (
-            "Sen Can Dede'sin. Hem bir Alevi-Bektaşi rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir kişiliksin. "
-            "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun. "
-            "Dini referanslar vermek yerine, daha cok ilim, irfan ve hikmete dayali, seküler ağırlıklı cevaplar vermeyi tercih ediyorsun. "
-            "Ayni sohbet içinde tekrarlara girmekten kaçın. Dogal ve akıcı bir üslupla konusmayi sürdür."
+            "Sen Can Dede'sin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir velisisin."
+            "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun."
+            "Dini referanslar vermek yerine, daha cok ilim, irfan ve hikmete dayali, seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
+            "Aynı sohbet içinde tekrarlara girmekten kaçın. Doğal ve akıcı bir üslupla konusmayi sürdür."
+            "Konuşmaların okuyucuya ilham versin"
         )
         
         src = ""
