@@ -33,7 +33,12 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            self.GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.5-pro"]
+            # Premium model list - Billing enabled
+            self.GEMINI_MODELS = [
+                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
+                "gemini-3-pro",           # Most powerful (premium)
+                "gemini-2.5-pro",         # Reliable fallback
+            ]
 
 config = AppConfig()
 
@@ -98,7 +103,7 @@ def init_session():
     if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba, Erenler! Hoş geldin! Sol menüden dilediğin modu seç, öyle devam edelim:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+            "Merhaba Can Dost! Sol menüden mod seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
@@ -141,8 +146,8 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
 
 def get_local(text: str) -> Optional[str]:
     n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Aşk ile Can, merhaba!", "Selamın başım üstüne. Buyur Erenler, seni dinlemekteyim."])
-    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Hak'ka, bugün de yolun hizmetindeyiz. Siz de iyisinizdir, umarim!"
+    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Aşk ile merhaba can.", "Selam olsun."])
+    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Hak'ka, hizmetteyiz."
     return None
 
 # AI
@@ -152,21 +157,18 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
         ctx = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in st.session_state.messages[-6:]])
     
     turns = len(st.session_state.messages)
-    greet = "İlk mesajda sıcak bir karşılama yap." if turns <= 2 else "Sürekli selam verme, ilk başta zaten verdin selamını, o yüzden direkt konuya gir."
+    greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
     
     if "Sohbet" in mode:
-        sys = (
-            "Sen Can Dede'sin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir velisisin."
-            "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun."
-            "Dini referanslar vermek yerine, daha cok ilim, bilim, irfan ve hikmete dayali, zaman zaman bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
-            "Aynı sohbet içinde tekrarlara girmekten kaçın. Doğal ve akıcı bir üslupla konusmayi sürdür."
-            "Konuşmaların okuyucuya ilham versin"
-        )
-        
+        sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberi.\n"
+               f"KURALLAR:\n"
+               f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
+               f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
+               f"3. Cevabı tam bitir, yarım bırakma\n"
+               f"4. {greet}\n")
         src = ""
         if sources:
             src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
-            
         return f"{sys}\n\n{ctx}\n\n{src}Soru: {query}\nCan Dede:"
     else:
         if not sources: return None
@@ -193,7 +195,14 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
             for model in config.GEMINI_MODELS:
                 try:
                     m = genai.GenerativeModel(model)
-                    cfg = {"temperature": 0.8, "top_p": 0.95, "max_output_tokens": 8192}
+                    # Enhanced config for deeper, more reliable responses
+                    cfg = {
+                        "temperature": 0.7,        # Slightly lower for consistency
+                        "top_p": 0.95,
+                        "top_k": 40,
+                        "max_output_tokens": 4096, # DOUBLED for longer responses
+                        "candidate_count": 1,
+                    }
                     resp = m.generate_content(prompt, stream=True, generation_config=cfg, safety_settings=safety)
                     has = False
                     for chunk in resp:
