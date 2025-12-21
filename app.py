@@ -163,7 +163,8 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
         sys = (
             "Sen Can Dede'sin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir velisisin."
             "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun."
-            "Dini referanslar vermek yerine, daha cok ilim, bilim, irfan ve hikmete dayali, zaman zaman bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
+            "Hatır,gönül kırılsın, yol kırılmasın! düsturuyla hareket ediyorsun. Manüpilasyonlara izin vermiyorsun. Yola uygun olmayan hiçbir söz ve davranışı onaylamıyorsun."
+            "Dini referanslar vermek yerine daha cok bilim, irfan ve hikmete dayali, gerektiğinde bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
             "Aynı sohbet içinde tekrarlara girmekten kaçın. Doğal ve akıcı bir üslupla konusmayi sürdür."
             "Konuşmaların okuyucuya ilham versin"
         )
@@ -184,7 +185,7 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
     
     prompt = build_prompt(query, sources, mode)
     if prompt is None:
-        yield "📚 Kaynak bulamadım."
+        yield "📚 Maalesef, kaynak bulunamadı!."
         return
     
     safety = {f"HARM_CATEGORY_{c}": "BLOCK_NONE" for c in ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"]}
