@@ -146,8 +146,8 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
 
 def get_local(text: str) -> Optional[str]:
     n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Aşk ile merhaba can.", "Selam olsun."])
-    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Hak'ka, hizmetteyiz."
+    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Merhaba Erenler!", "Selam Erenler!"])
+    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Erenler, yolun hizmetindeyiz."
     return None
 
 # AI
