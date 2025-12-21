@@ -144,12 +144,14 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     results.sort(key=lambda x: x['puan'], reverse=True)
     return results[:config.MAX_SEARCH_RESULTS], norm_q
 
-def get_local(text: str) -> Optional[str]:
-    n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Aşk ile merhaba can.", "Selam olsun."])
-    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Hak'ka, hizmetteyiz."
-    return None
-
+if "Sohbet" in mode:
+        sys = (
+            "Sen Can Dede'sin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir velisisin."
+            "Konuşmalarinda 'canım', 'evladım' gibi ifadelere yer vermiyorsun."
+            "Dini referanslar vermek yerine, daha cok ilim, bilim, irfan ve hikmete dayali, zaman zaman bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
+            "Aynı sohbet içinde tekrarlara girmekten kaçın. Doğal ve akıcı bir üslupla konusmayi sürdür."
+            "Konuşmaların okuyucuya ilham versin"
+        )
 # AI
 def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     ctx = ""
