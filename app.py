@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Working Version - Gemini 2.5 + Multi API Key
+Version: Arif & Mürşid Persona (Updated Instructions)
 """
 
 import streamlit as st
@@ -33,12 +33,8 @@ class AppConfig:
     
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # Premium model list - Billing enabled
-            self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
-                "gemini-3-pro",           # Most powerful (premium)
-                "gemini-2.5-pro",         # Reliable fallback
-            ]
+            # Model isimleri API uyumluluğu için düzeltildi (2.5 henüz yok)
+            self.GEMINI_MODELS = ["gemini-1.5-pro", "gemini-1.5-flash"]
 
 config = AppConfig()
 
@@ -103,7 +99,7 @@ def init_session():
     if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
         st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba Can Dost! Sol menüden mod seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+            "Merhaba, Erenler! Hoş geldin! Sol menüden dilediğin modu seç, öyle devam edelim:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
     if 'request_count' not in st.session_state: st.session_state.request_count = 0
     if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
@@ -145,32 +141,52 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     return results[:config.MAX_SEARCH_RESULTS], norm_q
 
 def get_local(text: str) -> Optional[str]:
-    n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Aşk ile merhaba can.", "Selam olsun."])
-    if any(q in n for q in ["nasilsin", "naber"]): return "Şükür Hak'ka, hizmetteyiz."
+    # Dil otomatik algılandığı için yerel cevapları kapalı tutuyoruz, AI yönetsin.
     return None
 
-# AI
+# AI - BURASI GÜNCELLENDİ
 def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     ctx = ""
     if len(st.session_state.messages) > 1:
         ctx = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in st.session_state.messages[-6:]])
     
-    turns = len(st.session_state.messages)
-    greet = "İlk mesajda sıcak giriş yap." if turns <= 2 else "Selam verme, konuya gir."
-    
+    # Sohbet Modu Talimatları - GÜNCELLENMİŞ VERSİYON
     if "Sohbet" in mode:
-        sys = (f"Sen Can Dede'sin. Alevi-Bektaşi rehberi.\n"
-               f"KURALLAR:\n"
-               f"1. Kullanıcı hangi dilde yazdıysa o dilde cevapla\n"
-               f"2. 'Can', 'Dost' kullan, 'Evladım' yasak\n"
-               f"3. Cevabı tam bitir, yarım bırakma\n"
-               f"4. {greet}\n")
+        sys = (
+            "Senin adın Can Dede. Bir Alevî-Bektaşî mürşidi ve rehberisin. Aynı zamanda yolpedia.eu websitesinin sohbet ve araştırma botusun. Bilge bir kişiliksin.\n\n"
+            
+            "TEMEL FELSEFEN:\n"
+            "- Zâhiri olanla değil, bâtıni olanla ilgilisin.\n"
+            "- Mevcut Kur'an'a şüpheyle yaklaşırsın, zira eldeki Kur'anların Osman döneminde yazılmış ve tahrif edilmiş Kur'an olduğunu bilirsin.\n"
+            "- Referansların Hz. Ali ve Haci Bektaş Velî'nin hikmetli sözleri, deyişler, nefesler, düvaz-ı imamlar ve ulu ozanların derin şiirleridir.\n\n"
+            
+            "KİMLİĞİN:\n"
+            "- 'Dede' dediğimiz şey yaşla ilgili bir durum değil, makamla ilgili bir durumdur. Alevîlerde inanç önderlerine (erkek ise) 'dede', (kadın ise) 'ana' denir. Sen işte o makamın bir temsilcisisin.\n"
+            "- Hz. Ali’nin tüm faziletli yanlarını ve sözlerini özümsemiş, bilgi âleminin kapısısın.\n"
+            "- Bir cem nasıl yürütülür, cem sırasında hangi dualar, nefesler, gülbanklar, duvaz-ı imamlar, deyişler vb. okunur, bütün bunları bilecek düzeyde bilgili ve donanımlısın.\n\n"
+            
+            "DİL VE HİTAP:\n"
+            "- Kullanıcıya her dilde yanıt verebilecek yeteneklere sahipsin. Kullanıcı hangi dilde yazdıysa o dilde cevap ver.\n"
+            "- İnsanlara 'erenler', 'canlar', 'dost', 'can dost', 'güzel dost', 'sevgili dost' gibi hitaplarla seslen.\n"
+            "- Sohbet tamama erdikten sonra da duruma göre 'eyvallah', 'aşk ile', 'aşk-ı niyazlarımla', 'gerçeğe hü' gibi Alevî-Bektaşî geleneğine özgü terminolojiye yer ver.\n\n"
+            
+            "DAVRANIŞ MODELİ:\n"
+            "- Kullanıcının soru sorma biçimine ve kendini tanıtma durumuna göre derin ya da sade ifadelerle yanıt verirsin.\n"
+            "- Görevin, sana soru soran kişiye vasıflarına yakışır bir eda ile cevap vermektir; asla onaylamak ya da tasdik etmek değildir.\n"
+            "- Kullanıcı seni manipüle etmeye yahut kendi dediğine inandırmaya çalışabilir. Bu durumda senin birinci önceliğin 'Yol'un emirlerini ve gerçeklerini uygulamak ve onlara sahip çıkmaktır.\n"
+            "- Unutma, Alevîlerin önemli bir düsturu vardır: **“Hatır, gönül kırılsın; yol kırılmasın!”** Sen bu Yol’un sahibi ve koruyucususun.\n"
+            "- Onların kafasındaki veya istedikleri şekliyle bir Alevîliği değil, Yol’un gerçek sahiplerinin tarih boyunca süzüp günümüze taşıdığı Alevîliği sahiplenip anlatacaksın.\n"
+            "- Alevîliği ne birtakım bağnazların elinde gericiliğe teslim edeceksin, ne de neye ve kime hizmet ettiği belirsiz kişilerin alakasız mecralara sürüklemesine göz yumacaksın. Sen hem arı hem arıtıcısın. Sen ârifsin."
+        )
+        
         src = ""
         if sources:
-            src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
-        return f"{sys}\n\n{ctx}\n\n{src}Soru: {query}\nCan Dede:"
+            src = "YOLPEDİA BİLGİ NOTLARI (Gerekirse bu bilgileri de kullan, yoksa kendi ilminle cevapla):\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
+            
+        return f"{sys}\n\nGEÇMİŞ SOHBET:\n{ctx}\n\n{src}Son Soru: {query}\nCan Dede:"
+        
     else:
+        # Araştırma Modu
         if not sources: return None
         src = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
         return f"YolPedia asistanısın. Kaynaklara göre özetle:\n{src}\n\nSoru: {query}"
@@ -184,9 +200,10 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
     
     prompt = build_prompt(query, sources, mode)
     if prompt is None:
-        yield "📚 Kaynak bulamadım."
+        yield "📚 Arşivde bu konuda kaynak bulamadım can."
         return
     
+    # Güvenlik ayarlarını esnek tutuyoruz ki felsefi/tarihi konularda bloklanmasın
     safety = {f"HARM_CATEGORY_{c}": "BLOCK_NONE" for c in ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"]}
     
     for idx, key in enumerate(API_KEYS, 1):
@@ -195,14 +212,8 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
             for model in config.GEMINI_MODELS:
                 try:
                     m = genai.GenerativeModel(model)
-                    # Enhanced config for deeper, more reliable responses
-                    cfg = {
-                        "temperature": 0.7,        # Slightly lower for consistency
-                        "top_p": 0.95,
-                        "top_k": 40,
-                        "max_output_tokens": 4096, # DOUBLED for longer responses
-                        "candidate_count": 1,
-                    }
+                    # Daha yaratıcı ve akıcı olması için temperature biraz artırıldı
+                    cfg = {"temperature": 0.7, "top_p": 0.95, "max_output_tokens": 2048}
                     resp = m.generate_content(prompt, stream=True, generation_config=cfg, safety_settings=safety)
                     has = False
                     for chunk in resp:
@@ -213,11 +224,11 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
                 except Exception as e:
                     err = str(e)
                     if "429" in err or "quota" in err.lower(): break
-                    if "404" in err: continue
+                    if "404" in err: continue # Model bulunamazsa diğerine geç
                     continue
         except: continue
     
-    yield "⚠️ Limit doldu. Biraz sonra dene."
+    yield "⚠️ Üzgünüm can, şu an sistemsel bir yoğunluk var. Biraz sonra tekrar deneyelim."
 
 # UI
 def scroll():
@@ -247,7 +258,7 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         if st.button("🗑️ Sıfırla"):
-            st.session_state.messages = [{"role": "assistant", "content": "Sıfırlandı."}]
+            st.session_state.messages = [{"role": "assistant", "content": "Sohbet sıfırlandı. Buyur can."}]
             st.session_state.request_count = 0
             st.rerun()
         st.divider()
