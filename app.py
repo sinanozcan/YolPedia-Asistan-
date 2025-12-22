@@ -118,7 +118,6 @@ def validate_rate() -> Tuple[bool, str]:
         return False, f"🛑 Limit doldu. {mins} dakika sonra dene."
     return True, ""
 
-# SEARCH
 # Geliştirilmiş Arama Algoritması - Can Dede için
 
 from typing import List, Dict, Tuple
