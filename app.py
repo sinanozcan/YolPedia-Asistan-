@@ -21,7 +21,7 @@ class AppConfig:
     RATE_LIMIT_WINDOW: int = 3600
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 50
+    SEARCH_SCORE_THRESHOLD: int = 15
     MAX_SEARCH_RESULTS: int = 5
     DATA_FILE: str = "yolpedia_data.json"
     ASSISTANT_NAME: str = "Can Dede | YolPedia Rehberiniz"
@@ -128,7 +128,7 @@ def calc_score(entry: Dict, query: str, keywords: List[str]) -> int:
     elif query in content: score += 100
     for kw in keywords:
         if kw in title: score += 40
-        elif kw in content: score += 10
+        elif kw in content: score += 20
     return score
 
 def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
