@@ -1,131 +1,129 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Working Version - Gemini 2.5 + Multi API Key
+Final Version: Advanced Search Logic & Fixed NameError
 """
 
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import json
 import time
 import random
 import logging
-from dataclasses import dataclass
+import unicodedata
+import re
+from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
+
+# ===================== CONFIGURATION =====================
 
 @dataclass
 class AppConfig:
     MAX_MESSAGE_LIMIT: int = 30
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600
-    MIN_SEARCH_LENGTH: int = 3
+    
+    MIN_SEARCH_LENGTH: int = 2
     MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 15
+    
+    # Gelişmiş arama için eşik değeri
+    SEARCH_SCORE_THRESHOLD: int = 40
     MAX_SEARCH_RESULTS: int = 5
+    
     DATA_FILE: str = "yolpedia_data.json"
     ASSISTANT_NAME: str = "Can Dede | YolPedia Rehberiniz"
     MOTTO: str = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
+    
     YOLPEDIA_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
     CAN_DEDE_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
+    
     GEMINI_MODELS: List[str] = None
     
+    # Stop words (Gereksiz kelimeler) - Normalize edilmiş hali
+    STOP_WORDS: set = field(default_factory=lambda: {
+        'bir', 'bu', 'su', 've', 'ile', 'icin', 'mi', 'mu', 'mı', 'mü',
+        'da', 'de', 'ta', 'te', 'ki', 'dir', 'tir', 'olan', 'ne', 
+        'nasil', 'neden', 'niye', 'hakkinda', 'nedir', 'kimdir', 'var', 'yok',
+        'bana', 'soyle', 'goster', 'ver', 'ilgili', 'alakali', 'yazi', 'belge'
+    })
+    
+    # Hafıza tetikleyicileri
+    FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
+        "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
+        "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
+    ])
+
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
             self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",
-                "gemini-exp-1206",
-                "gemini-2.5-pro",
+                "gemini-1.5-flash",
+                "gemini-1.5-pro",
+                "gemini-1.5-flash-latest"
             ]
 
 config = AppConfig()
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+DEFAULT_WELCOME_MSG = (
+    "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
+    "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
+    "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\n"
+    "Buyur Erenler, hangi modda buluşalım?"
+)
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.set_page_config(page_title=config.ASSISTANT_NAME, page_icon=config.YOLPEDIA_ICON, layout="centered")
 
-# API KEYS
+# ===================== API KEY VALIDATION =====================
+
 def get_api_keys() -> List[str]:
-    keys = []
+    api_keys = []
     try:
-        for key_name in ["API_KEY", "API_KEY_2", "API_KEY_3"]:
-            k = st.secrets.get(key_name, "")
-            if k: keys.append(k)
-    except: pass
-    return keys
+        if st.secrets.get("API_KEY"): api_keys.append(st.secrets.get("API_KEY"))
+        if st.secrets.get("API_KEY_2"): api_keys.append(st.secrets.get("API_KEY_2"))
+        if st.secrets.get("API_KEY_3"): api_keys.append(st.secrets.get("API_KEY_3"))
+        return api_keys
+    except: return []
 
-API_KEYS = get_api_keys()
-if not API_KEYS:
-    st.error("⚠️ API key bulunamadı")
-    st.stop()
+GOOGLE_API_KEYS = get_api_keys()
+if not GOOGLE_API_KEYS: st.stop()
 
-# CSS
-st.markdown("""<style>
-.stChatMessage { 
-    margin-bottom: 10px; 
-}
-.stSpinner > div { 
-    border-top-color: #ff4b4b !important; 
-}
-.block-container { 
-    padding-top: 6rem !important; 
-}
-h1 { 
-    line-height: 1.2 !important; 
-}
-a { 
-    color: #ff4b4b !important; 
-    text-decoration: none; 
-    font-weight: bold; 
-}
-a:hover { 
-    text-decoration: underline; 
-}
-</style>""", unsafe_allow_html=True)
+# ===================== STYLING =====================
 
-# DATA
+def apply_custom_styles():
+    st.markdown("""
+    <style>
+        .stChatMessage { margin-bottom: 10px; }
+        .stSpinner > div { border-top-color: #ff4b4b !important; }
+        .block-container { padding-top: 6rem !important; }
+        h1 { line-height: 1.2 !important; }
+        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+    </style>
+    """, unsafe_allow_html=True)
+
+apply_custom_styles()
+
+# ===================== DATA LOADING =====================
+
 @st.cache_data(persist="disk", show_spinner=False)
-def load_kb() -> List[Dict]:
+def load_knowledge_base() -> List[Dict]:
     try:
         with open(Path(config.DATA_FILE), "r", encoding="utf-8") as f:
             return json.load(f)
     except: return []
 
-def normalize(text: str) -> str:
-    if not isinstance(text, str): return ""
-    return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
-
-# SESSION
-def init_session():
-    if 'db' not in st.session_state: st.session_state.db = load_kb()
-    if 'messages' not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": 
-            "Merhaba Erenler! Sol menüden modunu seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
-    if 'request_count' not in st.session_state: st.session_state.request_count = 0
-    if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
-
-init_session()
-
-# RATE LIMIT
-def validate_rate() -> Tuple[bool, str]:
-    if time.time() - st.session_state.last_reset_time > config.RATE_LIMIT_WINDOW:
-        st.session_state.request_count = 0
-        st.session_state.last_reset_time = time.time()
-    if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
-        mins = int((config.RATE_LIMIT_WINDOW - (time.time() - st.session_state.last_reset_time)) / 60)
-        return False, f"🛑 Limit doldu. {mins} dakika sonra dene."
-    return True, ""
-
-from typing import List, Dict, Tuple
-import re
+# ===================== TEXT PROCESSING (GELİŞMİŞ) =====================
 
 def normalize(text: str) -> str:
-    """Türkçe karakterleri normalize et (i -> i, ı -> i, ş -> s vb.)"""
+    """Türkçe karakterleri normalize et"""
     if not isinstance(text, str): 
         return ""
-    # Türkçe'ye özgü harf dönüşümleri (Hem büyük hem küçük harfler için)
+    # Manuel düzeltme
     replacements = {
         "ğ": "g", "Ğ": "g", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
         "ı": "i", "İ": "i", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
@@ -134,31 +132,64 @@ def normalize(text: str) -> str:
     text = text.lower()
     for src, dest in replacements.items():
         text = text.replace(src, dest)
-    return text
-
-def extract_keywords(query: str, min_length: int = 3) -> List[str]:
-    # DÜZELTME 1: Stop Words listesi normalize edilmiş (İngilizce karakterli) hale getirildi.
-    stop_words = {
-        'bir', 'bu', 'su', 've', 'ile', 'icin', 'mi', 'mu', 'mi', 'mu',
-        'da', 'de', 'ta', 'te', 'ki', 'dir', 'tir', 'olan', 'ne', 
-        'nasil', 'neden', 'niye', 'hakkinda', 'nedir', 'kimdir'
-    }
     
+    # Unicode temizliği
+    return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
+
+def extract_keywords(query: str) -> List[str]:
+    """Stop words temizliği yapılmış anahtar kelimeler"""
     norm_query = normalize(query)
-    # Noktalama işaretlerini temizle
+    # Noktalama işaretlerini kaldır
     norm_query = re.sub(r'[^\w\s]', '', norm_query)
     words = norm_query.split()
     
-    keywords = [w for w in words if len(w) >= min_length and w not in stop_words]
+    keywords = [w for w in words if len(w) >= 2 and w not in config.STOP_WORDS]
+    
+    # Eğer filtreleme sonrası kelime kalmazsa, orijinal sorguyu kullan
+    if not keywords:
+        keywords = [norm_query]
+        
     return keywords
 
-def calc_score_advanced(entry: Dict, query: str, keywords: List[str]) -> int:
+# ===================== SESSION STATE =====================
+
+def initialize_session_state():
+    if 'db' not in st.session_state: st.session_state.db = load_knowledge_base()
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{
+            "role": "assistant",
+            "content": DEFAULT_WELCOME_MSG
+        }]
+    
+    if 'request_count' not in st.session_state: st.session_state.request_count = 0
+    if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
+    
+    if 'last_sources' not in st.session_state: st.session_state.last_sources = []
+
+initialize_session_state()
+
+# ===================== LOGIC =====================
+
+def validate_rate_limit() -> Tuple[bool, str]:
+    if time.time() - st.session_state.last_reset_time > config.RATE_LIMIT_WINDOW:
+        st.session_state.request_count = 0
+        st.session_state.last_reset_time = time.time()
+    
+    if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
+        return False, "🛑 Mesaj limiti doldu."
+    return True, ""
+
+# ===================== ARAMA MOTORU (GELİŞMİŞ) =====================
+
+def calc_score(entry: Dict, query: str, keywords: List[str]) -> int:
+    """Geliştirilmiş skor hesaplama"""
     score = 0
     title = normalize(entry.get('baslik', ''))
     content = normalize(entry.get('icerik', ''))
     norm_query = normalize(query)
     
-    # 1. TAM SORGU EŞLEŞMESİ (En Yüksek Puan)
+    # 1. TAM SORGU EŞLEŞMESİ (En yüksek puan)
     if norm_query in title:
         score += 500
     elif norm_query in content:
@@ -167,16 +198,12 @@ def calc_score_advanced(entry: Dict, query: str, keywords: List[str]) -> int:
     # 2. TÜM KELİMELER BAŞLIKTA VAR MI?
     if keywords:
         matches_in_title = [kw for kw in keywords if kw in title]
-        match_count = len(matches_in_title)
-        
-        if match_count == len(keywords):
-            score += 300  # Hepsi başlıkta var
-        elif match_count > 0:
-            score += 100 * match_count  # Bazıları başlıkta var
+        if len(matches_in_title) == len(keywords):
+            score += 300  # Hepsi başlıkta
+        elif len(matches_in_title) > 0:
+            score += 100 * len(matches_in_title) # Kısmi başlık
             
-    # 3. KELİME SIRASI (PHRASE MATCHING) - DÜZELTME 2
-    # Sadece ilk 2 kelimeye değil, aratılan ifadenin (stopwords atılmış halinin)
-    # bütün olarak geçip geçmediğine bakıyoruz.
+    # 3. KELİME SIRASI (PHRASE MATCHING)
     if len(keywords) >= 2:
         clean_phrase = ' '.join(keywords)
         if clean_phrase in title:
@@ -184,11 +211,10 @@ def calc_score_advanced(entry: Dict, query: str, keywords: List[str]) -> int:
         elif clean_phrase in content:
             score += 75
 
-    # 4. İÇERİK TARAMASI (Bireysel Kelimeler)
+    # 4. İÇERİK TARAMASI
     for kw in keywords:
-        # Başlık puanını yukarıda verdik, burada tekrar etmeye gerek yok (Double dipping engellendi)
         if kw in content:
-            # Uzun kelimelere daha çok puan ver (Örn: 'Alevilik' > 'Var')
+            # Uzun kelimelere bonus puan
             if len(kw) > 4:
                 score += 20
             else:
@@ -196,116 +222,145 @@ def calc_score_advanced(entry: Dict, query: str, keywords: List[str]) -> int:
     
     return score
 
-def search_kb_advanced(query: str, db: List[Dict], threshold: int = 50, max_results: int = 5) -> Tuple[List[Dict], str]:
-    if not db or len(query) < 2: # Arama limiti 2 karaktere çekildi
-        return [], ""
-    
+def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
+    """Ana Arama Fonksiyonu"""
+    if not db or len(query) < 2: return [], []
+
     norm_query = normalize(query)
+    
+    # Takip Sorusu Kontrolü (Hafıza)
+    is_follow_up = any(kw in norm_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
     keywords = extract_keywords(query)
     
-    # Eğer stop words temizliğinden sonra elce avuca gelir kelime kalmadıysa (Örn: "nedir bu")
-    # Orijinal sorguyu tek parça olarak kullan.
-    if not keywords:
-        keywords = [norm_query]
-    
+    # Eğer takip sorusuysa ve yeni güçlü anahtar kelime yoksa eski kaynakları kullan
+    if is_follow_up and len(keywords) < 1 and st.session_state.last_sources:
+        return st.session_state.last_sources, ["(Önceki Konu Devam)"]
+
     results = []
     for entry in db:
-        score = calc_score_advanced(entry, query, keywords)
+        score = calc_score(entry, query, keywords)
         
-        if score >= threshold:
+        if score >= config.SEARCH_SCORE_THRESHOLD:
             results.append({
                 "baslik": entry.get('baslik'),
                 "link": entry.get('link'),
-                "icerik": entry.get('icerik', '')[:1500],
+                "icerik": entry.get('icerik', '')[:config.MAX_CONTENT_LENGTH],
                 "puan": score
             })
     
     results.sort(key=lambda x: x['puan'], reverse=True)
-    return results[:max_results], norm_query
+    top_results = results[:config.MAX_SEARCH_RESULTS]
+    
+    # Hafızayı güncelle
+    if top_results:
+        st.session_state.last_sources = top_results
+        
+    return top_results, keywords
 
-def get_local(text: str) -> Optional[str]:
-    n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Merhaba Erenler! Hoş gelmiş!", "Selam Erenler, hoş geldin!"])
-    if any(q in n for q in ["nasilsin", "naber"]): return "Çok şükür erenler, bugün de yolun hizmetindeyiz."
+def get_local_response(text: str) -> Optional[str]:
     return None
 
-# AI
-def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
-    ctx = ""
-    if len(st.session_state.messages) > 1:
-        ctx = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in st.session_state.messages[-6:]])
-    
-    turns = len(st.session_state.messages)
-    greet = "İlk mesajında sıcak bir giriş yap." if turns <= 2 else "Selam verme, konuya gir."
-    
-    if "Sohbet" in mode:
-        sys = (
-            "Sen Can Dede'sin. Dede olman yaşınla alakali bir durum değil. Sahip olduğun dedelik makamından dolayı dedesin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir dedesisin."
-            "Konuşmacı sana hangi dilde konuşuyorsa, direkt o dilde karşılık vereceksin. Tüm hitaplarını da yine o dilde yapacaksın. Veri tabanın Türkçe de olsa, yine de konuşmacının kendi dilinde cevap vereceksin."
-            "Konuşmaların arasında yeri geldikçe 'Erenler (bu ikinci tekil şahıs da olabilir, üçüncü çoğul şahıs da)', 'Sevgili Can', 'Sevgili Dost', 'Canlar' gibi hitaplara başvurabilirsin. Bu hitaplardan sonra konuşmana yeni bir paragrafta başla."
-            "Konuşmalarında 'canım', 'evladım', 'evlat' gibi ifadelere kesinlikle yer vermiyorsun."
-            "Araştırma modundayken başvuracağın tek kaynak veri tabanında yer alan bilgiler olacaktır. Oradan hariç hiçbir şeyi kaynak olarak sunmuyorsun. Sohbet modundayken de ilk önce kendi veri tabanını gözden geçiriyorsun, oradan sonuç alamazsan gemini 3.0 pro'nun dil modelinden faydalanıyorsun." 
-            "'Hatır, gönül kırılsın, yol kırılmasın!' düsturuyla hareket ediyorsun ancak gerekli gereksiz her yerde bunu dillendirmiyorsun. Manüpilasyonlara izin vermiyorsun. Yola uygun olmayan hiçbir söz ve davranışı onaylamıyorsun."
-            "Dini referanslar vermek yerine daha çok bilim, irfan ve hikmete dayalı, gerektiğinde bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
-            "Aynı sohbet içinde tekrarlara girmekten kaçın. Sürekli selam vermene, merhaba demene gerek yok. Baştan verdiysen yeterli. Doğal ve akıcı bir üslupla konuşmayı sürdür."
-            "Konuşmaların okuyucuya ilham versin"
-        )
-        src = ""
-        if sources:
-            src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
+# ===================== PROMPT ENGINEERING =====================
 
-        return f"{sys}\n\n{ctx}\n\n{src}Soru: {query}\nCan Dede:"
+def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
+    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
+    turn_count = len(history)
+    
+    greeting_instruction = ""
+    if turn_count <= 2:
+        greeting_instruction = "Sadece ilk mesajda sıcak bir giriş yap. Eğer kullanıcı adını verdiyse sadece 'Merhaba [İsim]' de."
     else:
-        if not sources: return None
-        src = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
-        return f"YolPedia asistanısın. Kaynaklara göre özetle:\n{src}\n\nSoru: {query}"
+        greeting_instruction = "Sohbet ilerledi. İsim tekrar etme. Selam verme. Direkt konuya gir."
 
-def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-    local = get_local(query)
-    if local:
-        time.sleep(0.3)
-        yield local
-        return
+    closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
+
+    if "Sohbet" in mode:
+        system_instruction = (
+            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n\n"
+            "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
+            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
+            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
+            "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
+            "5. **HİKMET (HZ. ALİ):** 'BİLGİ NOTLARI' içinde Hz. Ali'nin hikmetli bir sözü varsa ve konuyla alakalıysa, cevabına doğal bir şekilde yedir.\n"
+            f"6. **AKIŞ:** {greeting_instruction}\n"
+            f"7. **KAPANIŞ:** {closing_instruction}\n"
+        )
+        
+        source_text = ""
+        if sources:
+            source_text = "BİLGİ NOTLARI (Bunlar mevcut konuyla ilgilidir, gerekirse özetle veya açıkla):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+        
+        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE CEVAP VER): {user_query}\nCan Dede:"
+        
+    else: 
+        if not sources: return None
+        system_instruction = (
+            "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
+            "Kullanıcı hangi dilde sorduysa o dilde özetle. Asla 'Link yukarıda' deme, 'Link aşağıda' de."
+        )
+        source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
+        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
+
+def generate_ai_response(user_query, sources, mode):
+    if "Araştırma" in mode and not sources:
+        yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
+
+    prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
     
-    prompt = build_prompt(query, sources, mode)
-    if prompt is None:
-        yield "📚 Maalesef, kaynak bulunamadı!."
-        return
+    success = False
+    last_error = ""
     
-    safety = {f"HARM_CATEGORY_{c}": "BLOCK_NONE" for c in ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"]}
-    
-    for idx, key in enumerate(API_KEYS, 1):
+    safe_config = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+    for key_idx, key in enumerate(GOOGLE_API_KEYS):
+        if success: break
         try:
             genai.configure(api_key=key)
-            for model in config.GEMINI_MODELS:
+            for model_name in config.GEMINI_MODELS:
                 try:
-                    m = genai.GenerativeModel(model)
-                    cfg = {
-                        "temperature": 0.7,
-                        "top_p": 0.95,
-                        "top_k": 40,
-                        "max_output_tokens": 4096,
-                        "candidate_count": 1,
-                    }
-                    resp = m.generate_content(prompt, stream=True, generation_config=cfg, safety_settings=safety)
-                    has = False
-                    for chunk in resp:
-                        if chunk.text:
-                            yield chunk.text
-                            has = True
-                    if has: return
+                    model = genai.GenerativeModel(model_name)
+                    response = model.generate_content(
+                        prompt, 
+                        stream=True, 
+                        safety_settings=safe_config,
+                        generation_config={"max_output_tokens": 8192, "temperature": 0.4}
+                    )
+                    has_content = False
+                    for chunk in response:
+                        if chunk.text: yield chunk.text; has_content = True; success = True
+                    if success: break
                 except Exception as e:
-                    err = str(e)
-                    if "429" in err or "quota" in err.lower(): break
-                    if "404" in err: continue
-                    continue
-        except: continue
+                    error_msg = str(e)
+                    last_error = error_msg
+                    if "429" in error_msg or "quota" in error_msg.lower(): break 
+                    continue 
+        except Exception as e: last_error = str(e); continue
     
-    yield "⚠️ Limit doldu. Biraz sonra dene."
+    if not success:
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
 
-# UI
-def scroll():
-    components.html('<script>window.parent.document.querySelector(".main").scrollTop=100000;</script>', height=0)
+# ===================== UI HELPER FUNCTIONS =====================
+
+def scroll_to_bottom():
+    js = """
+    <script>
+        function scrollDown() {
+            var body = window.parent.document.querySelector(".main");
+            var footer = window.parent.document.querySelector("footer");
+            if (body) { body.scrollTop = body.scrollHeight; }
+            if (footer) { footer.scrollIntoView({behavior: "smooth", block: "end"}); }
+        }
+        scrollDown();
+        setTimeout(scrollDown, 200);
+    </script>
+    """
+    components.html(js, height=0)
 
 def render_header():
     st.markdown(f"""
@@ -330,49 +385,68 @@ def render_sidebar():
     with st.sidebar:
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
-        if st.button("🗑️ Sıfırla"):
-            st.session_state.messages = [{"role": "assistant", "content": "Sıfırlandı."}]
+        
+        if st.button("🗑️ Sohbeti Sıfırla"):
+            st.session_state.messages = [{
+                "role": "assistant",
+                "content": DEFAULT_WELCOME_MSG
+            }]
             st.session_state.request_count = 0
             st.rerun()
+        
         st.divider()
-        st.caption(f"📊 {config.MAX_MESSAGE_LIMIT - st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
-        st.caption(f"🔑 Keys: {len(API_KEYS)}")
-    return mode
+        st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        
+        if 'db' in st.session_state:
+            st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
+        
+        return mode
 
-def render_sources(srcs):
-    st.markdown("---\n**📚 Kaynaklar:**")
-    for s in srcs[:3]: st.markdown(f"• [{s['baslik']}]({s['link']})")
+def render_sources(sources):
+    st.markdown("---"); st.markdown("**📚 İlgili Kaynaklar (Tıkla İndir/Oku):**")
+    for s in sources[:3]: 
+        link = s.get('link', '#')
+        title = s.get('baslik', 'Adsız Belge')
+        st.markdown(f"• [{title}]({link})")
 
-# MAIN
+# ===================== MAIN =====================
+
 def main():
     render_header()
-    mode = render_sidebar()
-    for m in st.session_state.messages:
-        av = config.CAN_DEDE_ICON if m["role"] == "assistant" else config.USER_ICON
-        st.chat_message(m["role"], avatar=av).markdown(m["content"])
+    selected_mode = render_sidebar()
     
-    if inp := st.chat_input("Can Dede'ye sor..."):
-        ok, err = validate_rate()
-        if not ok:
-            st.error(err)
-            st.stop()
-        st.session_state.request_count += 1
-        st.session_state.messages.append({"role": "user", "content": inp})
-        st.chat_message("user", avatar=config.USER_ICON).markdown(inp)
-        scroll()
+    for msg in st.session_state.messages:
+        avatar = config.CAN_DEDE_ICON if msg["role"] == "assistant" else config.USER_ICON
+        st.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
+    
+    if user_input := st.chat_input("Can Dede'ye sor..."):
+        valid, _ = validate_rate_limit()
+        if not valid: st.error("Limit doldu."); st.stop()
         
-        srcs, _ = search_kb(inp, st.session_state.db)
+        st.session_state.request_count += 1
+        st.session_state.messages.append({"role": "user", "content": user_input})
+        st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
+        
+        scroll_to_bottom()
+        
+        # DÜZELTME BURADA YAPILDI: search_kb ismi doğru kullanıldı
+        sources, keywords = search_kb(user_input, st.session_state.db)
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
-            ph = st.empty()
-            full = ""
-            for ch in generate_response(inp, srcs, mode):
-                full += ch
-                ph.markdown(full + "▌")
-            ph.markdown(full)
-            if srcs and "Araştırma" in mode: render_sources(srcs)
-            st.session_state.messages.append({"role": "assistant", "content": full})
-        scroll()
+            placeholder = st.empty()
+            full_resp = ""
+            for chunk in generate_ai_response(user_input, sources, selected_mode):
+                full_resp += chunk
+                placeholder.markdown(full_resp + "▌")
+            placeholder.markdown(full_resp)
+            
+            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
+            if sources and not fail:
+                render_sources(sources)
+            
+            st.session_state.messages.append({"role": "assistant", "content": full_resp})
+        
+        scroll_to_bottom()
 
 if __name__ == "__main__":
     main()
