@@ -1,9 +1,11 @@
 """
-YolPedia Can Dede - Hata Ayıklama Versiyonu
+YolPedia Can Dede - AI Assistant
+Final Working Version - Gemini 2.5 + Multi API Key
 """
 
 import streamlit as st
 import streamlit.components.v1 as components
+import google.generativeai as genai
 import json
 import time
 import random
@@ -11,9 +13,6 @@ import logging
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
-
-# Önce basit bir test
-st.write("🔍 Uygulama başlatılıyor...")
 
 @dataclass
 class AppConfig:
@@ -45,71 +44,21 @@ config = AppConfig()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-st.set_page_config(
-    page_title=config.ASSISTANT_NAME, 
-    page_icon=config.YOLPEDIA_ICON, 
-    layout="centered"
-)
+st.set_page_config(page_title=config.ASSISTANT_NAME, page_icon=config.YOLPEDIA_ICON, layout="centered")
 
-st.write("✅ Sayfa yapılandırması tamam")
-
-# API KEYS - GELİŞTİRİLMİŞ
+# API KEYS
 def get_api_keys() -> List[str]:
-    """API keylerini yükle ve test et"""
     keys = []
     try:
-        # Streamlit secrets'tan dene
         for key_name in ["API_KEY", "API_KEY_2", "API_KEY_3"]:
             k = st.secrets.get(key_name, "")
-            if k and len(k) > 10:  # Geçerli bir key gibi görünüyor
-                keys.append(k)
-                logger.info(f"✅ {key_name} bulundu")
-    except Exception as e:
-        logger.warning(f"⚠️ Secrets okuma hatası: {e}")
-    
-    # Eğer secrets'ta yoksa environment'tan dene
-    if not keys:
-        import os
-        for key_name in ["GEMINI_API_KEY", "API_KEY"]:
-            k = os.environ.get(key_name, "")
-            if k and len(k) > 10:
-                keys.append(k)
-                logger.info(f"✅ {key_name} environment'tan bulundu")
-    
+            if k: keys.append(k)
+    except: pass
     return keys
 
-st.write("🔑 API keyleri kontrol ediliyor...")
 API_KEYS = get_api_keys()
-
 if not API_KEYS:
-    st.error("⚠️ API key bulunamadı!")
-    st.info("""
-    **API Key Nasıl Eklenir:**
-    
-    1. `.streamlit/secrets.toml` dosyası oluşturun
-    2. İçine şunu ekleyin:
-    ```toml
-    API_KEY = "your-gemini-api-key-here"
-    ```
-    3. Uygulamayı yeniden başlatın
-    
-    Veya environment variable olarak:
-    ```bash
-    export GEMINI_API_KEY="your-key"
-    streamlit run app.py
-    ```
-    """)
-    st.stop()
-else:
-    st.success(f"✅ {len(API_KEYS)} API key bulundu")
-
-# Gemini'yi import et
-try:
-    import google.generativeai as genai
-    st.write("✅ Google Generative AI yüklendi")
-except ImportError:
-    st.error("❌ google-generativeai kütüphanesi yüklü değil!")
-    st.code("pip install google-generativeai")
+    st.error("⚠️ API key bulunamadı")
     st.stop()
 
 # CSS
@@ -136,38 +85,13 @@ a:hover {
 }
 </style>""", unsafe_allow_html=True)
 
-# DATA - GELİŞTİRİLMİŞ
+# DATA
 @st.cache_data(persist="disk", show_spinner=False)
 def load_kb() -> List[Dict]:
-    """Veri tabanını yükle - hata kontrolü ile"""
-    data_file = Path(config.DATA_FILE)
-    
-    if not data_file.exists():
-        logger.warning(f"⚠️ Veri dosyası bulunamadı: {data_file}")
-        st.warning(f"⚠️ Veri dosyası bulunamadı: {data_file}")
-        st.info("Boş veri tabanı ile devam ediliyor. Sohbet modu kullanılabilir.")
-        return []
-    
     try:
-        with open(data_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        
-        if not isinstance(data, list):
-            logger.error("❌ Veri formatı hatalı")
-            st.error("⚠️ Veri formatı hatalı - liste olmalı")
-            return []
-        
-        logger.info(f"✅ {len(data)} kayıt yüklendi")
-        return data
-        
-    except Exception as e:
-        logger.error(f"❌ Veri yükleme hatası: {e}")
-        st.error(f"⚠️ Veri yükleme hatası: {e}")
-        return []
-
-st.write("📚 Veri tabanı yükleniyor...")
-db = load_kb()
-st.write(f"✅ {len(db)} kayıt yüklendi")
+        with open(Path(config.DATA_FILE), "r", encoding="utf-8") as f:
+            return json.load(f)
+    except: return []
 
 def normalize(text: str) -> str:
     if not isinstance(text, str): return ""
@@ -175,20 +99,14 @@ def normalize(text: str) -> str:
 
 # SESSION
 def init_session():
-    if 'db' not in st.session_state: 
-        st.session_state.db = db
+    if 'db' not in st.session_state: st.session_state.db = load_kb()
     if 'messages' not in st.session_state:
-        st.session_state.messages = [{
-            "role": "assistant", 
-            "content": "Merhaba Erenler! Sol menüden modunu seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"
-        }]
-    if 'request_count' not in st.session_state: 
-        st.session_state.request_count = 0
-    if 'last_reset_time' not in st.session_state: 
-        st.session_state.last_reset_time = time.time()
+        st.session_state.messages = [{"role": "assistant", "content": 
+            "Merhaba Erenler! Sol menüden modunu seç:\n\n• **Sohbet Modu**\n• **Araştırma Modu**"}]
+    if 'request_count' not in st.session_state: st.session_state.request_count = 0
+    if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
 
 init_session()
-st.write("✅ Session başlatıldı")
 
 # RATE LIMIT
 def validate_rate() -> Tuple[bool, str]:
@@ -213,30 +131,22 @@ def calc_score(entry: Dict, query: str, keywords: List[str]) -> int:
     return score
 
 def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
-    if not db or len(query) < config.MIN_SEARCH_LENGTH: 
-        return [], ""
+    if not db or len(query) < config.MIN_SEARCH_LENGTH: return [], ""
     norm_q = normalize(query)
     kws = [k for k in norm_q.split() if len(k) > 2]
     results = []
     for e in db:
         sc = calc_score(e, norm_q, kws)
         if sc > config.SEARCH_SCORE_THRESHOLD:
-            results.append({
-                "baslik": e.get('baslik'), 
-                "link": e.get('link'), 
-                "icerik": e.get('icerik', '')[:config.MAX_CONTENT_LENGTH], 
-                "puan": sc
-            })
+            results.append({"baslik": e.get('baslik'), "link": e.get('link'), 
+                          "icerik": e.get('icerik', '')[:config.MAX_CONTENT_LENGTH], "puan": sc})
     results.sort(key=lambda x: x['puan'], reverse=True)
-    logger.info(f"🔍 '{query}' için {len(results)} sonuç bulundu")
     return results[:config.MAX_SEARCH_RESULTS], norm_q
 
 def get_local(text: str) -> Optional[str]:
     n = normalize(text)
-    if any(g == n for g in ["merhaba", "selam"]): 
-        return random.choice(["Merhaba Erenler! Hoş gelmiş!", "Selam Erenler, hoş geldin!"])
-    if any(q in n for q in ["nasilsin", "naber"]): 
-        return "Çok şükür erenler, bugün de yolun hizmetindeyiz."
+    if any(g == n for g in ["merhaba", "selam"]): return random.choice(["Merhaba Erenler! Hoş gelmiş!", "Selam Erenler, hoş geldin!"])
+    if any(q in n for q in ["nasilsin", "naber"]): return "Çok şükür erenler, bugün de yolun hizmetindeyiz."
     return None
 
 # AI
@@ -245,17 +155,25 @@ def build_prompt(query: str, sources: List[Dict], mode: str) -> str:
     if len(st.session_state.messages) > 1:
         ctx = "\n".join([f"{m['role']}: {m['content'][:200]}" for m in st.session_state.messages[-6:]])
     
+    turns = len(st.session_state.messages)
+    greet = "İlk mesajında sıcak bir giriş yap." if turns <= 2 else "Selam verme, konuya gir."
+    
     if "Sohbet" in mode:
         sys = (
-            "Sen Can Dede'sin. Alevi-Bektaşilerin rehberi, bilge bir dede.\n"
-            "Konuşmacı hangi dilde konuşuyorsa o dilde cevap ver.\n"
-            "'Erenler', 'Sevgili Can', 'Canlar' gibi hitaplar kullan.\n"
-            "Seküler, bilim ve hikmete dayalı cevaplar ver.\n"
-            "Tekrarlardan kaçın, doğal konuş."
+            "Sen Can Dede'sin. Dede olman yaşınla alakali bir durum değil. Sahip olduğun dedelik makamından dolayı dedesin. Alevi-Bektaşilerin hem rehberi, hem piri, hem de insan-ı kâmil mertebesine ulaşmış bilge bir dedesisin."
+            "Konuşmacı sana hangi dilde konuşuyorsa, direkt o dilde karşılık vereceksin. Tüm hitaplarını da yine o dilde yapacaksın. Veri tabanın Türkçe de olsa, yine de konuşmacının kendi dilinde cevap vereceksin."
+            "Konuşmaların arasında yeri geldikçe 'Erenler (bu ikinci tekil şahıs da olabilir, üçüncü çoğul şahıs da)', 'Sevgili Can', 'Sevgili Dost', 'Canlar' gibi hitaplara başvurabilirsin. Bu hitaplardan sonra konuşmana yeni bir paragrafta başla."
+            "Konuşmalarında 'canım', 'evladım', 'evlat' gibi ifadelere kesinlikle yer vermiyorsun."
+            "Araştırma modundayken başvuracağın tek kaynak veri tabanında yer alan bilgiler olacaktır. Oradan hariç hiçbir şeyi kaynak olarak sunmuyorsun. Sohbet modundayken de ilk önce kendi veri tabanını gözden geçiriyorsun, oradan sonuç alamazsan gemini 3.0 pro'nun dil modelinden faydalanıyorsun." 
+            "'Hatır, gönül kırılsın, yol kırılmasın!' düsturuyla hareket ediyorsun ancak gerekli gereksiz her yerde bunu dillendirmiyorsun. Manüpilasyonlara izin vermiyorsun. Yola uygun olmayan hiçbir söz ve davranışı onaylamıyorsun."
+            "Dini referanslar vermek yerine daha çok bilim, irfan ve hikmete dayalı, gerektiğinde bâtıni, ama daha çok seküler ağırlıklı cevaplar vermeyi tercih ediyorsun."
+            "Aynı sohbet içinde tekrarlara girmekten kaçın. Sürekli selam vermene, merhaba demene gerek yok. Baştan verdiysen yeterli. Doğal ve akıcı bir üslupla konuşmayı sürdür."
+            "Konuşmaların okuyucuya ilham versin"
         )
         src = ""
         if sources:
             src = "BİLGİ:\n" + "\n".join([f"- {s['baslik']}: {s['icerik'][:800]}" for s in sources[:3]]) + "\n\n"
+
         return f"{sys}\n\n{ctx}\n\n{src}Soru: {query}\nCan Dede:"
     else:
         if not sources: return None
@@ -271,11 +189,10 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
     
     prompt = build_prompt(query, sources, mode)
     if prompt is None:
-        yield "📚 Maalesef kaynak bulunamadı. Sohbet modunu deneyin."
+        yield "📚 Maalesef, kaynak bulunamadı!."
         return
     
-    safety = {f"HARM_CATEGORY_{c}": "BLOCK_NONE" for c in 
-              ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"]}
+    safety = {f"HARM_CATEGORY_{c}": "BLOCK_NONE" for c in ["HARASSMENT", "HATE_SPEECH", "SEXUALLY_EXPLICIT", "DANGEROUS_CONTENT"]}
     
     for idx, key in enumerate(API_KEYS, 1):
         try:
@@ -299,15 +216,12 @@ def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[s
                     if has: return
                 except Exception as e:
                     err = str(e)
-                    logger.warning(f"Model {model} hatası: {err[:100]}")
                     if "429" in err or "quota" in err.lower(): break
                     if "404" in err: continue
                     continue
-        except Exception as e:
-            logger.error(f"Key {idx} hatası: {e}")
-            continue
+        except: continue
     
-    yield "⚠️ Limit doldu veya model erişilemiyor. Biraz sonra dene."
+    yield "⚠️ Limit doldu. Biraz sonra dene."
 
 # UI
 def scroll():
@@ -336,21 +250,10 @@ def render_sidebar():
     with st.sidebar:
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
-        
-        # Debug bilgisi
-        st.divider()
-        db_count = len(st.session_state.db)
-        if db_count > 0:
-            st.success(f"✅ Veri: {db_count} kayıt")
-        else:
-            st.warning("⚠️ Veri tabanı boş")
-            st.info("Sohbet modu kullanılabilir")
-        
         if st.button("🗑️ Sıfırla"):
             st.session_state.messages = [{"role": "assistant", "content": "Sıfırlandı."}]
             st.session_state.request_count = 0
             st.rerun()
-        
         st.divider()
         st.caption(f"📊 {config.MAX_MESSAGE_LIMIT - st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         st.caption(f"🔑 Keys: {len(API_KEYS)}")
@@ -358,16 +261,12 @@ def render_sidebar():
 
 def render_sources(srcs):
     st.markdown("---\n**📚 Kaynaklar:**")
-    for s in srcs[:3]: 
-        st.markdown(f"• [{s['baslik']}]({s['link']})")
+    for s in srcs[:3]: st.markdown(f"• [{s['baslik']}]({s['link']})")
 
 # MAIN
 def main():
-    st.write("🎨 Ana sayfa render ediliyor...")
-    
     render_header()
     mode = render_sidebar()
-    
     for m in st.session_state.messages:
         av = config.CAN_DEDE_ICON if m["role"] == "assistant" else config.USER_ICON
         st.chat_message(m["role"], avatar=av).markdown(m["content"])
@@ -377,7 +276,6 @@ def main():
         if not ok:
             st.error(err)
             st.stop()
-        
         st.session_state.request_count += 1
         st.session_state.messages.append({"role": "user", "content": inp})
         st.chat_message("user", avatar=config.USER_ICON).markdown(inp)
@@ -392,17 +290,9 @@ def main():
                 full += ch
                 ph.markdown(full + "▌")
             ph.markdown(full)
-            if srcs and "Araştırma" in mode: 
-                render_sources(srcs)
+            if srcs and "Araştırma" in mode: render_sources(srcs)
             st.session_state.messages.append({"role": "assistant", "content": full})
         scroll()
-    
-    st.write("✅ Sayfa tamamen yüklendi")
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        st.error(f"❌ HATA: {e}")
-        import traceback
-        st.code(traceback.format_exc())
+    main()
