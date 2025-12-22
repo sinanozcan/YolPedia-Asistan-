@@ -400,7 +400,7 @@ def main():
             placeholder.markdown(full_resp)
             
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            if sources and not fail:
+            if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
