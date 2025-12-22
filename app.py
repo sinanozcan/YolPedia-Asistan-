@@ -118,104 +118,93 @@ def validate_rate() -> Tuple[bool, str]:
         return False, f"🛑 Limit doldu. {mins} dakika sonra dene."
     return True, ""
 
-# Geliştirilmiş Arama Algoritması - Can Dede için
-
 from typing import List, Dict, Tuple
 import re
 
 def normalize(text: str) -> str:
-    """Türkçe karakterleri normalize et"""
+    """Türkçe karakterleri normalize et (i -> i, ı -> i, ş -> s vb.)"""
     if not isinstance(text, str): 
         return ""
-    return text.translate(str.maketrans("ğĞüÜşŞıİöÖçÇ", "gGuUsSiIoOcC")).lower()
+    # Türkçe'ye özgü harf dönüşümleri (Hem büyük hem küçük harfler için)
+    replacements = {
+        "ğ": "g", "Ğ": "g", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
+        "ı": "i", "İ": "i", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
+        "â": "a", "î": "i", "û": "u"
+    }
+    text = text.lower()
+    for src, dest in replacements.items():
+        text = text.replace(src, dest)
+    return text
 
 def extract_keywords(query: str, min_length: int = 3) -> List[str]:
-    """
-    Daha akıllı keyword çıkarma
-    - Stop words'leri filtrele
-    - Minimum uzunluk kontrolü
-    """
-    # Türkçe stop words
+    # DÜZELTME 1: Stop Words listesi normalize edilmiş (İngilizce karakterli) hale getirildi.
     stop_words = {
-        'bir', 'bu', 'şu', 've', 'ile', 'için', 'mi', 'mu', 'mı', 'mü',
-        'da', 'de', 'ta', 'te', 'ki', 'dır', 'dir', 'tir', 'tır',
-        'olan', 'olan', 'ne', 'nasıl', 'neden', 'niye', 'hakkında'
+        'bir', 'bu', 'su', 've', 'ile', 'icin', 'mi', 'mu', 'mi', 'mu',
+        'da', 'de', 'ta', 'te', 'ki', 'dir', 'tir', 'olan', 'ne', 
+        'nasil', 'neden', 'niye', 'hakkinda', 'nedir', 'kimdir'
     }
     
     norm_query = normalize(query)
+    # Noktalama işaretlerini temizle
+    norm_query = re.sub(r'[^\w\s]', '', norm_query)
     words = norm_query.split()
     
-    # Stop words ve kısa kelimeleri filtrele
     keywords = [w for w in words if len(w) >= min_length and w not in stop_words]
-    
     return keywords
 
 def calc_score_advanced(entry: Dict, query: str, keywords: List[str]) -> int:
-    """
-    Geliştirilmiş skor hesaplama
-    - Tam eşleşmeye daha yüksek puan
-    - Kelime sırasına önem ver
-    - Başlıkta birden fazla kelime varsa bonus
-    """
     score = 0
     title = normalize(entry.get('baslik', ''))
     content = normalize(entry.get('icerik', ''))
     norm_query = normalize(query)
     
-    # 1. TAM SORGU EŞLEŞMESİ (en yüksek öncelik)
+    # 1. TAM SORGU EŞLEŞMESİ (En Yüksek Puan)
     if norm_query in title:
-        score += 500  # Çok yüksek puan
+        score += 500
     elif norm_query in content:
         score += 250
     
-    # 2. TÜM KELİMELER BAŞLIKTA VAR MI? (çok önemli)
+    # 2. TÜM KELİMELER BAŞLIKTA VAR MI?
     if keywords:
-        title_word_count = sum(1 for kw in keywords if kw in title)
-        if title_word_count == len(keywords):
-            score += 300  # Tüm kelimeler başlıkta
-        elif title_word_count > 0:
-            score += 100 * title_word_count  # Kısmi eşleşme
-    
-    # 3. KELİME SIRASI KORUNUYOR MU? (yakınlık bonusu)
+        matches_in_title = [kw for kw in keywords if kw in title]
+        match_count = len(matches_in_title)
+        
+        if match_count == len(keywords):
+            score += 300  # Hepsi başlıkta var
+        elif match_count > 0:
+            score += 100 * match_count  # Bazıları başlıkta var
+            
+    # 3. KELİME SIRASI (PHRASE MATCHING) - DÜZELTME 2
+    # Sadece ilk 2 kelimeye değil, aratılan ifadenin (stopwords atılmış halinin)
+    # bütün olarak geçip geçmediğine bakıyoruz.
     if len(keywords) >= 2:
-        # İlk iki kelimenin ardışık olup olmadığını kontrol et
-        phrase = ' '.join(keywords[:2])
-        if phrase in title:
-            score += 150  # Kelimeler yan yana
-        elif phrase in content:
+        clean_phrase = ' '.join(keywords)
+        if clean_phrase in title:
+            score += 150
+        elif clean_phrase in content:
             score += 75
-    
-    # 4. BİREYSEL KELİME EŞLEŞMELERİ (düşük puan)
+
+    # 4. İÇERİK TARAMASI (Bireysel Kelimeler)
     for kw in keywords:
-        if kw in title:
-            score += 30  # Azaltıldı (önceden 40)
-        elif kw in content:
-            score += 10  # Azaltıldı (önceden 20)
+        # Başlık puanını yukarıda verdik, burada tekrar etmeye gerek yok (Double dipping engellendi)
+        if kw in content:
+            # Uzun kelimelere daha çok puan ver (Örn: 'Alevilik' > 'Var')
+            if len(kw) > 4:
+                score += 20
+            else:
+                score += 10
     
     return score
 
-def search_kb_advanced(query: str, db: List[Dict], 
-                       threshold: int = 50,  # Eşik artırıldı
-                       max_results: int = 5) -> Tuple[List[Dict], str]:
-    """
-    Geliştirilmiş arama fonksiyonu
-    
-    Args:
-        query: Kullanıcı sorgusu
-        db: Veri tabanı
-        threshold: Minimum skor eşiği (artırıldı: 15 → 50)
-        max_results: Maksimum sonuç sayısı
-    
-    Returns:
-        (sonuçlar, normalize edilmiş sorgu)
-    """
-    if not db or len(query) < 3:
+def search_kb_advanced(query: str, db: List[Dict], threshold: int = 50, max_results: int = 5) -> Tuple[List[Dict], str]:
+    if not db or len(query) < 2: # Arama limiti 2 karaktere çekildi
         return [], ""
     
     norm_query = normalize(query)
     keywords = extract_keywords(query)
     
-    # Hiç keyword yoksa, sorguyu tek keyword olarak kullan
+    # Eğer stop words temizliğinden sonra elce avuca gelir kelime kalmadıysa (Örn: "nedir bu")
+    # Orijinal sorguyu tek parça olarak kullan.
     if not keywords:
         keywords = [norm_query]
     
@@ -231,78 +220,8 @@ def search_kb_advanced(query: str, db: List[Dict],
                 "puan": score
             })
     
-    # Puana göre sırala
     results.sort(key=lambda x: x['puan'], reverse=True)
-    
     return results[:max_results], norm_query
-
-
-# =====================================================
-# KULLANIM ÖRNEĞİ - TEST
-# =====================================================
-
-if __name__ == "__main__":
-    # Test veri seti
-    test_db = [
-        {
-            "baslik": "Malatya Katliamı (1978)",
-            "link": "https://yolpedia.eu/malatya-katliami",
-            "icerik": "1978 yılında Malatya'da gerçekleşen katliam..."
-        },
-        {
-            "baslik": "Maraş Katliamı",
-            "link": "https://yolpedia.eu/maras-katliami",
-            "icerik": "Kahramanmaraş'ta yaşanan olaylar..."
-        },
-        {
-            "baslik": "Pir Sultan Abdal - Malatya'da Doğan Ermiş",
-            "link": "https://yolpedia.eu/pir-sultan",
-            "icerik": "Malatya yöresinde yaşayan Pir Sultan..."
-        },
-        {
-            "baslik": "Çorum Katliamı",
-            "link": "https://yolpedia.eu/corum",
-            "icerik": "1980 yılında Çorum'da yaşanan olaylar..."
-        }
-    ]
-    
-    # Test sorguları
-    queries = [
-        "Malatya Katliamı",
-        "Malatya katliamı nedir",
-        "1978 olayları"
-    ]
-    
-    print("=" * 60)
-    print("ARAMA SONUÇLARI TESTİ")
-    print("=" * 60)
-    
-    for query in queries:
-        print(f"\n📍 Sorgu: '{query}'")
-        print("-" * 60)
-        
-        results, _ = search_kb_advanced(query, test_db, threshold=50)
-        
-        if results:
-            for i, r in enumerate(results, 1):
-                print(f"{i}. [{r['puan']} puan] {r['baslik']}")
-        else:
-            print("❌ Sonuç bulunamadı")
-    
-    print("\n" + "=" * 60)
-    print("SKOR DETAYLARI")
-    print("=" * 60)
-    
-    # Detaylı skor analizi
-    query = "Malatya Katliamı"
-    keywords = extract_keywords(query)
-    print(f"\nSorgu: '{query}'")
-    print(f"Keywords: {keywords}")
-    print("\nHer kayıt için skor:")
-    
-    for entry in test_db:
-        score = calc_score_advanced(entry, query, keywords)
-        print(f"  • {entry['baslik']}: {score} puan")
 
 def get_local(text: str) -> Optional[str]:
     n = normalize(text)
