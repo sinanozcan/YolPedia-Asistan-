@@ -263,7 +263,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
 
 def generate_ai_response(user_query, sources, mode):
     if "Araştırma" in mode and not sources:
-        yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
+        yield "📚 Arşivde bu konuda kaynak bulamadım, sevgili can."; return
 
     prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
     
@@ -302,7 +302,7 @@ def generate_ai_response(user_query, sources, mode):
         except Exception as e: last_error = str(e); continue
     
     if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nÜzgünüm sevgili can, teknik bir sorun oluştu."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
