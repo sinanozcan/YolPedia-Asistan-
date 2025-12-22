@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Version: Advanced Search Logic & Fixed NameError
+Final Version: User Requested Models (Gemini 2.0/3.0/2.5) + All Fixes
 """
 
 import streamlit as st
@@ -12,7 +12,6 @@ import time
 import random
 import logging
 import unicodedata
-import re
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -25,11 +24,11 @@ class AppConfig:
     MIN_TIME_DELAY: int = 1
     RATE_LIMIT_WINDOW: int = 3600
     
-    MIN_SEARCH_LENGTH: int = 2
+    MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Gelişmiş arama için eşik değeri
-    SEARCH_SCORE_THRESHOLD: int = 40
+    # Hassas Arama (Baraj 15)
+    SEARCH_SCORE_THRESHOLD: int = 15
     MAX_SEARCH_RESULTS: int = 5
     
     DATA_FILE: str = "yolpedia_data.json"
@@ -42,15 +41,15 @@ class AppConfig:
     
     GEMINI_MODELS: List[str] = None
     
-    # Stop words (Gereksiz kelimeler) - Normalize edilmiş hali
-    STOP_WORDS: set = field(default_factory=lambda: {
-        'bir', 'bu', 'su', 've', 'ile', 'icin', 'mi', 'mu', 'mı', 'mü',
-        'da', 'de', 'ta', 'te', 'ki', 'dir', 'tir', 'olan', 'ne', 
-        'nasil', 'neden', 'niye', 'hakkinda', 'nedir', 'kimdir', 'var', 'yok',
-        'bana', 'soyle', 'goster', 'ver', 'ilgili', 'alakali', 'yazi', 'belge'
-    })
+    STOP_WORDS: List[str] = field(default_factory=lambda: [
+        "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
+        "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
+        "ne", "var", "mi", "mu", "bana", "soyle", "goster", "ver", 
+        "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
+        "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
+        "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
+    ])
     
-    # Hafıza tetikleyicileri
     FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
         "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
         "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
@@ -58,10 +57,11 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
+            # GÖRSELDEKİ LİSTENİN AYNISI
             self.GEMINI_MODELS = [
-                "gemini-1.5-flash",
-                "gemini-1.5-pro",
-                "gemini-1.5-flash-latest"
+                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
+                "gemini-3-pro",           # Most powerful (premium)
+                "gemini-2.5-pro",         # Reliable fallback
             ]
 
 config = AppConfig()
@@ -113,43 +113,25 @@ apply_custom_styles()
 @st.cache_data(persist="disk", show_spinner=False)
 def load_knowledge_base() -> List[Dict]:
     try:
-        with open(Path(config.DATA_FILE), "r", encoding="utf-8") as f:
-            return json.load(f)
+        file_path = Path(config.DATA_FILE)
+        if not file_path.exists(): return []
+        with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
 
-# ===================== TEXT PROCESSING (GELİŞMİŞ) =====================
+# ===================== TEXT PROCESSING =====================
 
-def normalize(text: str) -> str:
-    """Türkçe karakterleri normalize et"""
-    if not isinstance(text, str): 
-        return ""
-    # Manuel düzeltme
-    replacements = {
-        "ğ": "g", "Ğ": "g", "ü": "u", "Ü": "u", "ş": "s", "Ş": "s",
-        "ı": "i", "İ": "i", "ö": "o", "Ö": "o", "ç": "c", "Ç": "c",
-        "â": "a", "î": "i", "û": "u"
-    }
+def normalize_turkish_text(text: str) -> str:
+    if not isinstance(text, str): return ""
     text = text.lower()
-    for src, dest in replacements.items():
-        text = text.replace(src, dest)
-    
-    # Unicode temizliği
-    return unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('utf-8')
-
-def extract_keywords(query: str) -> List[str]:
-    """Stop words temizliği yapılmış anahtar kelimeler"""
-    norm_query = normalize(query)
-    # Noktalama işaretlerini kaldır
-    norm_query = re.sub(r'[^\w\s]', '', norm_query)
-    words = norm_query.split()
-    
-    keywords = [w for w in words if len(w) >= 2 and w not in config.STOP_WORDS]
-    
-    # Eğer filtreleme sonrası kelime kalmazsa, orijinal sorguyu kullan
-    if not keywords:
-        keywords = [norm_query]
-        
-    return keywords
+    replacements = {
+        "I": "i", "ı": "i", "İ": "i", "i": "i", "Ğ": "g", "ğ": "g",
+        "Ü": "u", "ü": "u", "Ş": "s", "ş": "s", "Ö": "o", "ö": "o",
+        "Ç": "c", "ç": "c", "Â": "a", "â": "a", "Î": "i", "î": "i",
+        "Û": "u", "û": "u"
+    }
+    output = []
+    for char in text: output.append(replacements.get(char, char))
+    return "".join(output).lower().encode('ASCII', 'ignore').decode('utf-8')
 
 # ===================== SESSION STATE =====================
 
@@ -180,67 +162,42 @@ def validate_rate_limit() -> Tuple[bool, str]:
         return False, "🛑 Mesaj limiti doldu."
     return True, ""
 
-# ===================== ARAMA MOTORU (GELİŞMİŞ) =====================
-
-def calc_score(entry: Dict, query: str, keywords: List[str]) -> int:
-    """Geliştirilmiş skor hesaplama"""
+def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List[str]) -> int:
     score = 0
-    title = normalize(entry.get('baslik', ''))
-    content = normalize(entry.get('icerik', ''))
-    norm_query = normalize(query)
+    title = normalize_turkish_text(entry.get('baslik', ''))
+    content = normalize_turkish_text(entry.get('icerik', ''))
     
-    # 1. TAM SORGU EŞLEŞMESİ (En yüksek puan)
-    if norm_query in title:
-        score += 500
-    elif norm_query in content:
-        score += 250
+    if normalized_query in title: score += 200
+    elif normalized_query in content: score += 100
     
-    # 2. TÜM KELİMELER BAŞLIKTA VAR MI?
-    if keywords:
-        matches_in_title = [kw for kw in keywords if kw in title]
-        if len(matches_in_title) == len(keywords):
-            score += 300  # Hepsi başlıkta
-        elif len(matches_in_title) > 0:
-            score += 100 * len(matches_in_title) # Kısmi başlık
-            
-    # 3. KELİME SIRASI (PHRASE MATCHING)
-    if len(keywords) >= 2:
-        clean_phrase = ' '.join(keywords)
-        if clean_phrase in title:
-            score += 150
-        elif clean_phrase in content:
-            score += 75
-
-    # 4. İÇERİK TARAMASI
-    for kw in keywords:
-        if kw in content:
-            # Uzun kelimelere bonus puan
-            if len(kw) > 4:
-                score += 20
+    for keyword in keywords:
+        if keyword in title: 
+            score += 100
+        elif keyword in content: 
+            if len(keyword) > 3:
+                score += 40
             else:
                 score += 10
     
     return score
 
-def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
-    """Ana Arama Fonksiyonu"""
-    if not db or len(query) < 2: return [], []
-
-    norm_query = normalize(query)
+# FONKSİYON İSMİ DÜZELTİLDİ: search_knowledge_base
+def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
+    normalized_query = normalize_turkish_text(query)
+    keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
     
-    # Takip Sorusu Kontrolü (Hafıza)
-    is_follow_up = any(kw in norm_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
-    keywords = extract_keywords(query)
+    is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
+    has_strong_keywords = len(keywords) > 0
     
-    # Eğer takip sorusuysa ve yeni güçlü anahtar kelime yoksa eski kaynakları kullan
-    if is_follow_up and len(keywords) < 1 and st.session_state.last_sources:
+    if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
         return st.session_state.last_sources, ["(Önceki Konu Devam)"]
 
+    if not keywords and len(normalized_query) < 3: return [], []
+    
     results = []
     for entry in db:
-        score = calc_score(entry, query, keywords)
-        
-        if score >= config.SEARCH_SCORE_THRESHOLD:
+        score = calculate_relevance_score(entry, normalized_query, keywords)
+        if score > config.SEARCH_SCORE_THRESHOLD:
             results.append({
                 "baslik": entry.get('baslik'),
                 "link": entry.get('link'),
@@ -251,7 +208,6 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     results.sort(key=lambda x: x['puan'], reverse=True)
     top_results = results[:config.MAX_SEARCH_RESULTS]
     
-    # Hafızayı güncelle
     if top_results:
         st.session_state.last_sources = top_results
         
@@ -275,6 +231,7 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
     closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
 
     if "Sohbet" in mode:
+        # SENİN İSTEDİĞİN SERT PERSONA TALİMATLARI
         system_instruction = (
             "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n\n"
             "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
@@ -338,7 +295,7 @@ def generate_ai_response(user_query, sources, mode):
                 except Exception as e:
                     error_msg = str(e)
                     last_error = error_msg
-                    if "429" in error_msg or "quota" in error_msg.lower(): break 
+                    # Hata varsa (örn 404), sessizce diğer modele geç
                     continue 
         except Exception as e: last_error = str(e); continue
     
@@ -429,8 +386,8 @@ def main():
         
         scroll_to_bottom()
         
-        # DÜZELTME BURADA YAPILDI: search_kb ismi doğru kullanıldı
-        sources, keywords = search_kb(user_input, st.session_state.db)
+        # DÜZELTME: Fonksiyon adı `search_knowledge_base` olarak sabitlendi
+        sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
