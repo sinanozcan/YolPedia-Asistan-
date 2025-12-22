@@ -345,7 +345,7 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         
-        if st.button("🗑️ Sohbeti Sıfırla"):
+        if st.button("Yeni Bir Sohbet Başlat"):
             st.session_state.messages = [{
                 "role": "assistant",
                 "content": DEFAULT_WELCOME_MSG
