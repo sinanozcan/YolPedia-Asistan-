@@ -12,6 +12,7 @@ import time
 import random
 import logging
 import unicodedata
+import YolPedia_updater
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -358,6 +359,32 @@ def render_sidebar():
         
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
+            # === GÜNCELLEME BUTONU BAŞLANGIÇ ===
+        st.markdown("---")
+        if st.button("🔄 Veritabanını Güncelle"):
+            status_box = st.empty()
+            status_box.info("📡 YolPedia'ya bağlanılıyor...")
+            
+            try:
+                # Updater dosyasındaki sınıfı çağırıyoruz
+                updater = YolPedia_updater.YolPediaAPI()
+                
+                with st.spinner("Yazılar çekiliyor ve işleniyor... Lütfen bekleyiniz."):
+                    # 2500 yazıya kadar çek (Sitenin büyüklüğüne göre artırabilirsin)
+                    new_posts = updater.get_all_posts(max_posts=2500)
+                    updater.export_to_json(new_posts, config.DATA_FILE)
+                
+                # Can Dede'nin hafızasını (Session State) anında yenile
+                st.cache_data.clear() # Cache'i temizle ki eskiyi okumasın
+                st.session_state.db = load_knowledge_base()
+                
+                status_box.success(f"✅ Tamamlandı! {len(new_posts)} kaynak başarıyla yüklendi.")
+                time.sleep(2)
+                st.rerun() # Sayfayı yenile
+                
+            except Exception as e:
+                status_box.error(f"❌ Güncelleme Hatası: {str(e)}")
+        # === GÜNCELLEME BUTONU BİTİŞ ===
         
         return mode
 
