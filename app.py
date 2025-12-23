@@ -363,14 +363,16 @@ def render_sidebar():
             # === GÜNCELLEME BUTONU BAŞLANGIÇ ===
             
         # === GÜVENLİ GÜNCELLEME BUTONU ===
+        # === GÜVENLİ GÜNCELLEME BUTONU (DÜZELTİLMİŞ) ===
         st.markdown("---")
         
-        # Sadece şifreyi bilen butonu görebilir
         with st.expander("🔐 Yönetici Paneli"):
-            admin_pass = st.text_input("Yönetici Şifresi:", type="password", key="admin_pass")
+            # .strip() ekledik: Başta/sonda boşluk kalsa bile kabul eder
+            admin_pass = st.text_input("Yönetici Şifresi:", type="password", key="admin_pass").strip()
             
-            # BURAYA KENDİ BELİRLEDİĞİN ŞİFREYİ YAZ (Örn: 'CanDede2025')
             if admin_pass == "CanDede2025": 
+                st.success("Giriş Onaylandı ✅") # Şifre doğruysa bunu görürsün
+                
                 if st.button("🔄 Veritabanını Güncelle"):
                     status_box = st.empty()
                     status_box.info("📡 YolPedia'ya bağlanılıyor...")
@@ -381,7 +383,8 @@ def render_sidebar():
                         updater = YolPedia_updater.YolPediaAPI()
                         
                         with st.spinner("Yazılar çekiliyor..."):
-                            new_posts = updater.get_all_posts(max_posts=2500)
+                            # Max post sayısını ihtiyaç duyarsan artırabilirsin
+                            new_posts = updater.get_all_posts(max_posts=3000)
                             updater.export_to_json(new_posts, config.DATA_FILE)
                         
                         st.cache_data.clear()
@@ -393,8 +396,9 @@ def render_sidebar():
                         
                     except Exception as e:
                         status_box.error(f"❌ Hata: {str(e)}")
-            elif admin_pass:
-                st.error("Şifre yanlış!")
+            
+            elif admin_pass: # Şifre dolu ama yanlışsa
+                st.error("⛔ Şifre yanlış! (Büyük/küçük harfe dikkat)")
         # === GÜNCELLEME BUTONU BİTİŞ ===
         
         return mode
