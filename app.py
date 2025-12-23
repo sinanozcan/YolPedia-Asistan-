@@ -359,31 +359,42 @@ def render_sidebar():
         
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
-            # === GÜNCELLEME BUTONU BAŞLANGIÇ ===
-        st.markdown("---")
-        if st.button("🔄 Veritabanını Güncelle"):
-            status_box = st.empty()
-            status_box.info("📡 YolPedia'ya bağlanılıyor...")
             
-            try:
-                # Updater dosyasındaki sınıfı çağırıyoruz
-                updater = YolPedia_updater.YolPediaAPI()
-                
-                with st.spinner("Yazılar çekiliyor ve işleniyor... Lütfen bekleyiniz."):
-                    # 2500 yazıya kadar çek (Sitenin büyüklüğüne göre artırabilirsin)
-                    new_posts = updater.get_all_posts(max_posts=2500)
-                    updater.export_to_json(new_posts, config.DATA_FILE)
-                
-                # Can Dede'nin hafızasını (Session State) anında yenile
-                st.cache_data.clear() # Cache'i temizle ki eskiyi okumasın
-                st.session_state.db = load_knowledge_base()
-                
-                status_box.success(f"✅ Tamamlandı! {len(new_posts)} kaynak başarıyla yüklendi.")
-                time.sleep(2)
-                st.rerun() # Sayfayı yenile
-                
-            except Exception as e:
-                status_box.error(f"❌ Güncelleme Hatası: {str(e)}")
+            # === GÜNCELLEME BUTONU BAŞLANGIÇ ===
+            
+        # === GÜVENLİ GÜNCELLEME BUTONU ===
+        st.markdown("---")
+        
+        # Sadece şifreyi bilen butonu görebilir
+        with st.expander("🔐 Yönetici Paneli"):
+            admin_pass = st.text_input("Yönetici Şifresi:", type="password", key="admin_pass")
+            
+            # BURAYA KENDİ BELİRLEDİĞİN ŞİFREYİ YAZ (Örn: 'CanDede2025')
+            if admin_pass == "CanDede2025": 
+                if st.button("🔄 Veritabanını Güncelle"):
+                    status_box = st.empty()
+                    status_box.info("📡 YolPedia'ya bağlanılıyor...")
+                    
+                    try:
+                        # Updater dosyasındaki sınıfı çağırıyoruz
+                        import YolPedia_updater
+                        updater = YolPedia_updater.YolPediaAPI()
+                        
+                        with st.spinner("Yazılar çekiliyor..."):
+                            new_posts = updater.get_all_posts(max_posts=2500)
+                            updater.export_to_json(new_posts, config.DATA_FILE)
+                        
+                        st.cache_data.clear()
+                        st.session_state.db = load_knowledge_base()
+                        
+                        status_box.success(f"✅ Tamamlandı! {len(new_posts)} kaynak yüklendi.")
+                        time.sleep(2)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        status_box.error(f"❌ Hata: {str(e)}")
+            elif admin_pass:
+                st.error("Şifre yanlış!")
         # === GÜNCELLEME BUTONU BİTİŞ ===
         
         return mode
