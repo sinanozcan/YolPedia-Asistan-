@@ -212,6 +212,16 @@ def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[
     return top_results, keywords
 
 def get_local_response(text: str) -> Optional[str]:
+    # Girdiyi standart hale getir (küçük harf vs.)
+    norm = normalize_turkish_text(text)
+    
+    # Yakalanacak kelimeler
+    greetings = ["merhaba", "selam", "slm", "nasilsin", "nasil gidiyor", "ne var ne yok", "naber", "gunaydin", "iyi aksamlar"]
+    
+    # Eğer bunlardan biri varsa o standart cevabı ver
+    if any(g in norm for g in greetings):
+        return "Teşekkür ederim, erenler. Çok şükür, bugün de yolun ve sizlerin hizmetindeyim. Buyur sevgili can, ne üzerine muhabbet edelim?"
+        
     return None
 
 # ===================== PROMPT ENGINEERING =====================
