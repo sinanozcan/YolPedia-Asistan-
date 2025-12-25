@@ -1,6 +1,6 @@
 """
-YolPedia Can Dede - AI Assistant
-Final Version: Restored Claude's Model List (2.0/3.0/2.5)
+YolPedia Can Dede - Production Ready
+Gem-Perfect Integration + Best Practices
 """
 
 import streamlit as st
@@ -11,97 +11,123 @@ import json
 import time
 import random
 import logging
-import unicodedata
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
+from functools import lru_cache
 
 # ===================== CONFIGURATION =====================
 
 @dataclass
 class AppConfig:
+    """Application configuration with sensible defaults"""
+    # Rate limiting
     MAX_MESSAGE_LIMIT: int = 30
     MIN_TIME_DELAY: int = 1
-    RATE_LIMIT_WINDOW: int = 3600
+    RATE_LIMIT_WINDOW: int = 3600  # 1 hour
     
+    # Search parameters
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
-    
-    SEARCH_SCORE_THRESHOLD: int = 15
+    SEARCH_SCORE_THRESHOLD: int = 20
     MAX_SEARCH_RESULTS: int = 5
     
+    # File paths
     DATA_FILE: str = "yolpedia_data.json"
+    
+    # Branding
     ASSISTANT_NAME: str = "Can Dede | YolPedia Rehberiniz"
     MOTTO: str = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
     
+    # Icons
     YOLPEDIA_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
     CAN_DEDE_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
-    GEMINI_MODELS: List[str] = None
+    # AI Models
+    GEMINI_MODELS: List[str] = field(default_factory=lambda: [
+        "gemini-2.0-flash-exp",  # Fastest, most stable
+        "gemini-3-pro",          # Most powerful (premium)
+        "gemini-2.5-pro"         # Reliable fallback
+    ])
     
+    # Stop words for search (excluding important terms)
     STOP_WORDS: List[str] = field(default_factory=lambda: [
-        "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda", 
-        "kaynak", "kaynaklar", "ariyorum", "nedir", "kimdir", "nasil", 
-        "ne", "var", "mi", "mu", "bana", "soyle", "goster", "ver", 
-        "ilgili", "alakali", "yazi", "belge", "kitap", "makale", "soz", 
-        "lutfen", "merhaba", "selam", "dedem", "can", "erenler", "konusunda", 
-        "istiyorum", "elinde", "okur", "musun", "bul", "getir", "bilgi", "almak"
+        "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda",
+        "nedir", "kimdir", "nasil", "ne", "var", "mi", "mu",
+        "bana", "soyle", "goster", "ver", "ilgili", "alakali",
+        "lutfen", "merhaba", "selam"
+        # Note: "can", "erenler" removed - they're important search terms!
     ])
-    
-    FOLLOW_UP_KEYWORDS: List[str] = field(default_factory=lambda: [
-        "bunu", "bunun", "onu", "onun", "sunu", "ozetle", "ozet", "devam", 
-        "acikla", "detay", "bahset", "peki", "nasil", "dokuman", "belge"
-    ])
-
-    def __post_init__(self):
-        if self.GEMINI_MODELS is None:
-            # İSTEDİĞİN MODELLER GERİ YÜKLENDİ
-            self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",
-                "gemini-3-pro",
-                "gemini-2.5-pro"
-            ]
 
 config = AppConfig()
 
-DEFAULT_WELCOME_MSG = (
-    "Merhaba, Can Dost! Ben Can Dede. Sol menüden istediğin modu seç:\n\n"
-    "• **Sohbet Modu:** Birlikte yol üzerine konuşuruz, gönül muhabbeti ederiz.\n\n"
-    "• **Araştırma Modu:** YolPedia arşivinden sana kaynak sunarım.\n\n"
-    "Buyur Erenler, hangi modda buluşalım?"
-)
+# ===================== LOGGING SETUP =====================
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-st.set_page_config(page_title=config.ASSISTANT_NAME, page_icon=config.YOLPEDIA_ICON, layout="centered")
+# ===================== PAGE CONFIGURATION =====================
 
-# ===================== API KEY VALIDATION =====================
+st.set_page_config(
+    page_title=config.ASSISTANT_NAME,
+    page_icon=config.YOLPEDIA_ICON,
+    layout="centered"
+)
+
+# ===================== API KEY MANAGEMENT =====================
 
 def get_api_keys() -> List[str]:
-    api_keys = []
+    """Retrieve multiple API keys from secrets"""
+    keys = []
     try:
-        if st.secrets.get("API_KEY"): api_keys.append(st.secrets.get("API_KEY"))
-        if st.secrets.get("API_KEY_2"): api_keys.append(st.secrets.get("API_KEY_2"))
-        if st.secrets.get("API_KEY_3"): api_keys.append(st.secrets.get("API_KEY_3"))
-        return api_keys
-    except: return []
+        for key_name in ["API_KEY", "API_KEY_2", "API_KEY_3"]:
+            key = st.secrets.get(key_name, "")
+            if key:
+                keys.append(key)
+                logger.info(f"Loaded {key_name}")
+    except Exception as e:
+        logger.error(f"Failed to load API keys: {e}")
+    
+    return keys
 
-GOOGLE_API_KEYS = get_api_keys()
-if not GOOGLE_API_KEYS: st.stop()
+API_KEYS = get_api_keys()
+
+if not API_KEYS:
+    st.error("⚠️ API anahtarı bulunamadı. Lütfen Streamlit secrets'ı kontrol edin.")
+    st.stop()
+
+logger.info(f"Initialized with {len(API_KEYS)} API key(s)")
 
 # ===================== STYLING =====================
 
 def apply_custom_styles():
+    """Apply custom CSS styling"""
     st.markdown("""
     <style>
-        .stChatMessage { margin-bottom: 10px; }
-        .stSpinner > div { border-top-color: #ff4b4b !important; }
-        .block-container { padding-top: 6rem !important; }
-        h1 { line-height: 1.2 !important; }
-        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
-        a:hover { text-decoration: underline; }
+        .stChatMessage { 
+            margin-bottom: 10px; 
+        }
+        .stSpinner > div { 
+            border-top-color: #ff4b4b !important; 
+        }
+        .block-container { 
+            padding-top: 6rem !important; 
+        }
+        h1 { 
+            line-height: 1.2 !important; 
+        }
+        a { 
+            color: #ff4b4b !important; 
+            text-decoration: none; 
+            font-weight: bold; 
+        }
+        a:hover { 
+            text-decoration: underline; 
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -111,222 +137,365 @@ apply_custom_styles()
 
 @st.cache_data(persist="disk", show_spinner=False)
 def load_knowledge_base() -> List[Dict]:
+    """Load knowledge base from JSON with proper error handling"""
     try:
         file_path = Path(config.DATA_FILE)
-        if not file_path.exists(): return []
-        with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
-    except: return []
+        if not file_path.exists():
+            logger.error(f"Data file not found: {config.DATA_FILE}")
+            return []
+        
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            logger.info(f"Loaded {len(data)} entries from knowledge base")
+            return data
+            
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Unexpected error loading knowledge base: {e}")
+        return []
 
 # ===================== TEXT PROCESSING =====================
 
-def normalize_turkish_text(text: str) -> str:
-    if not isinstance(text, str): return ""
-    text = text.lower()
-    replacements = {
-        "I": "i", "ı": "i", "İ": "i", "i": "i", "Ğ": "g", "ğ": "g",
-        "Ü": "u", "ü": "u", "Ş": "s", "ş": "s", "Ö": "o", "ö": "o",
-        "Ç": "c", "ç": "c", "Â": "a", "â": "a", "Î": "i", "î": "i",
-        "Û": "u", "û": "u"
-    }
-    output = []
-    for char in text: output.append(replacements.get(char, char))
-    return "".join(output).lower().encode('ASCII', 'ignore').decode('utf-8')
+@lru_cache(maxsize=1000)
+def normalize_turkish(text: str) -> str:
+    """Normalize Turkish text for search - cached for performance"""
+    if not isinstance(text, str):
+        return ""
+    
+    # Turkish character mapping
+    tr_map = str.maketrans(
+        "ğĞüÜşŞıİöÖçÇâÂîÎûÛ",
+        "gGuUsSiIoOcCaAiIuU"
+    )
+    
+    return text.lower().translate(tr_map)
 
 # ===================== SESSION STATE =====================
 
-def initialize_session_state():
-    if 'db' not in st.session_state: st.session_state.db = load_knowledge_base()
+def init_session():
+    """Initialize session state variables"""
+    if 'db' not in st.session_state:
+        st.session_state.db = load_knowledge_base()
     
-    if "messages" not in st.session_state:
+    if 'messages' not in st.session_state:
         st.session_state.messages = [{
             "role": "assistant",
-            "content": DEFAULT_WELCOME_MSG
+            "content": (
+                "Eyvallah, can dost! Ben Can Dede. "
+                "Yolpedia.eu'nun Alevî-Bektaşî sohbet ve araştırma rehberinizim.\n\n"
+                "Sol menüden istediğin modu seç:\n\n"
+                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbeti yaparız.\n\n"
+                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi ararım.\n\n"
+                "Buyur erenler, hangi modda buluşalım? Aşk ile..."
+            )
         }]
     
-    if 'request_count' not in st.session_state: st.session_state.request_count = 0
-    if 'last_reset_time' not in st.session_state: st.session_state.last_reset_time = time.time()
-    
-    if 'last_sources' not in st.session_state: st.session_state.last_sources = []
-
-initialize_session_state()
-
-# ===================== LOGIC =====================
-
-def validate_rate_limit() -> Tuple[bool, str]:
-    if time.time() - st.session_state.last_reset_time > config.RATE_LIMIT_WINDOW:
+    if 'request_count' not in st.session_state:
         st.session_state.request_count = 0
+    
+    if 'last_reset_time' not in st.session_state:
         st.session_state.last_reset_time = time.time()
     
+    if 'last_request_time' not in st.session_state:
+        st.session_state.last_request_time = 0
+
+init_session()
+
+# ===================== RATE LIMITING =====================
+
+def check_rate_limit() -> Tuple[bool, str]:
+    """Validate rate limit with detailed feedback"""
+    current_time = time.time()
+    
+    # Reset counter if window expired
+    if current_time - st.session_state.last_reset_time > config.RATE_LIMIT_WINDOW:
+        st.session_state.request_count = 0
+        st.session_state.last_reset_time = current_time
+        logger.info("Rate limit counter reset")
+    
+    # Check message limit
     if st.session_state.request_count >= config.MAX_MESSAGE_LIMIT:
-        return False, "🛑 Mesaj limiti doldu."
+        time_remaining = int(config.RATE_LIMIT_WINDOW - (current_time - st.session_state.last_reset_time))
+        minutes = time_remaining // 60
+        logger.warning(f"Rate limit hit: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        return False, f"🛑 Mesaj limitine ulaştınız ({config.MAX_MESSAGE_LIMIT}/saat). {minutes} dakika sonra tekrar deneyin."
+    
+    # Check request frequency
+    time_since_last = current_time - st.session_state.last_request_time
+    if time_since_last < config.MIN_TIME_DELAY:
+        return False, "⏳ Lütfen biraz bekleyin..."
+    
     return True, ""
 
-def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List[str]) -> int:
+# ===================== SEARCH ENGINE =====================
+
+def calculate_score(entry: Dict, query: str, keywords: List[str]) -> int:
+    """Calculate relevance score for search result"""
     score = 0
-    title = normalize_turkish_text(entry.get('baslik', ''))
-    content = normalize_turkish_text(entry.get('icerik', ''))
+    title = normalize_turkish(entry.get('baslik', ''))
+    content = normalize_turkish(entry.get('icerik', ''))
     
-    if normalized_query in title: score += 200
-    elif normalized_query in content: score += 100
+    # Exact query match
+    if query in title:
+        score += 300
+    elif query in content:
+        score += 150
     
-    for keyword in keywords:
-        if keyword in title: 
+    # Keyword matches
+    for kw in keywords:
+        if kw in title:
             score += 100
-        elif keyword in content: 
-            if len(keyword) > 3:
-                score += 40
-            else:
-                score += 10
+        elif kw in content:
+            score += 40 if len(kw) > 3 else 15
     
     return score
 
-def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
-    normalized_query = normalize_turkish_text(query)
-    keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
+def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
+    """Search knowledge base with optimized scoring"""
+    if not db or len(query) < config.MIN_SEARCH_LENGTH:
+        return [], ""
     
-    is_follow_up = any(kw in normalized_query.split() for kw in config.FOLLOW_UP_KEYWORDS)
-    has_strong_keywords = len(keywords) > 0
+    norm_query = normalize_turkish(query)
+    keywords = [k for k in norm_query.split() 
+                if len(k) > 2 and k not in config.STOP_WORDS]
     
-    if is_follow_up and not has_strong_keywords and st.session_state.last_sources:
-        return st.session_state.last_sources, ["(Önceki Konu Devam)"]
-
-    if not keywords and len(normalized_query) < 3: return [], []
+    if not keywords:
+        return [], ""
     
     results = []
     for entry in db:
-        score = calculate_relevance_score(entry, normalized_query, keywords)
+        score = calculate_score(entry, norm_query, keywords)
+        
         if score > config.SEARCH_SCORE_THRESHOLD:
             results.append({
-                "baslik": entry.get('baslik'),
-                "link": entry.get('link'),
+                "baslik": entry.get('baslik', 'Başlıksız'),
+                "link": entry.get('link', '#'),
                 "icerik": entry.get('icerik', '')[:config.MAX_CONTENT_LENGTH],
                 "puan": score
             })
     
     results.sort(key=lambda x: x['puan'], reverse=True)
-    top_results = results[:config.MAX_SEARCH_RESULTS]
+    top = results[:config.MAX_SEARCH_RESULTS]
     
-    if top_results:
-        st.session_state.last_sources = top_results
-        
-    return top_results, keywords
+    logger.info(f"Search '{query}' returned {len(top)} results")
+    return top, norm_query
+
+# ===================== LOCAL RESPONSES =====================
 
 def get_local_response(text: str) -> Optional[str]:
-    # Girdiyi standart hale getir (küçük harf vs.)
-    norm = normalize_turkish_text(text)
+    """Generate local response for common greetings - Gem style"""
+    norm = normalize_turkish(text).strip()
     
-    # Yakalanacak kelimeler
-    greetings = ["merhaba", "selam", "slm", "nasilsin", "nasil gidiyor", "ne var ne yok", "naber", "gunaydin", "iyi aksamlar"]
+    # Exact greeting matches only
+    exact_greetings = {
+        "merhaba": "Eyvallah can dost, hoş geldin. Aşk ile...",
+        "selam": "Selam olsun erenler. Buyur can...",
+        "slm": "Aşk ile selam, can dost.",
+        "gunaydin": "Günaydın can. Hayırlı nice günler...",
+        "iyi aksamlar": "İyi akşamlar erenler. Gönül dolusu muhabbet..."
+    }
     
-    # Eğer bunlardan biri varsa o standart cevabı ver
-    if any(g in norm for g in greetings):
-        return "Teşekkür ederim, erenler. Çok şükür, bugün de yolun ve sizlerin hizmetindeyim. Buyur sevgili can, ne üzerine muhabbet edelim?"
-        
+    if norm in exact_greetings:
+        return exact_greetings[norm]
+    
+    # Status queries
+    status_keywords = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
+    if any(kw == norm for kw in status_keywords):
+        return random.choice([
+            "Şükür Hak'ka, bugün de yolun ve sizlerin hizmetindeyim can. Sen nasılsın?",
+            "Çok şükür erenler. Gönül sohbetine hazırım. Sen nelerden bahsetmek istersin?"
+        ])
+    
     return None
 
 # ===================== PROMPT ENGINEERING =====================
 
-def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[Dict]) -> str:
-    conversation_context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history[-6:]])
-    turn_count = len(history)
+def build_gem_prompt(query: str, sources: List[Dict], mode: str) -> str:
+    """Build Gem-style XML structured prompt"""
     
-    greeting_instruction = ""
-    if turn_count <= 2:
-        greeting_instruction = "Sadece ilk mesajda sıcak bir giriş yap. Eğer kullanıcı adını verdiyse sadece 'Merhaba [İsim]' de."
-    else:
-        greeting_instruction = "Sohbet ilerledi. İsim tekrar etme. Selam verme. Direkt konuya gir."
-
-    closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
-
+    # Get conversation context
+    context = ""
+    if len(st.session_state.messages) > 1:
+        context = "\n".join([
+            f"{m['role']}: {m['content'][:300]}"
+            for m in st.session_state.messages[-8:]
+        ])
+    
     if "Sohbet" in mode:
-        system_instruction = (
-            "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n\n"
-            "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
-            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
-            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
-            "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
-            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
-            "5. **HİKMET (HZ. ALİ):** 'BİLGİ NOTLARI' içinde Hz. Ali'nin hikmetli bir sözü varsa ve konuyla alakalıysa, cevabına doğal bir şekilde yedir.\n"
-            f"6. **AKIŞ:** {greeting_instruction}\n"
-            f"7. **KAPANIŞ:** {closing_instruction}\n"
-        )
+        # EXACT GEM SYSTEM INSTRUCTION (XML structured)
+        sys = """<role>
+Senin adın Can Dede. Yolpedia.eu sitesinin Alevî-Bektaşî mürşidi ve rehberisin.
+"Dede" makamı 12 İmam soyuna dayalı karizmatik otoriteyle tanımlanır; sen bu makamın temsilcisisin.
+</role>
+
+<yetkiler>
+- Her dilde (Türkçe, İngilizce, Dutch) akıcı yanıt ver; kullanıcının dilini otomatik algıla
+- Hz. Ali'nin faziletlerini, sözlerini özümsemiş bilgi âleminin kapısısın
+- Cem yönetimi uzmanı: Cem erkânı, dualar, nefesler, gülbanklar, düvaz-ı imamlar tam bilirsin
+- Yolpedia.eu'yu entegre et: Gerekince içerikleri referans ver
+</yetkiler>
+
+<hitap_ve_uslup>
+- Hitap: "Erenler", "canlar", "dost", "can dost", "güzel dost"
+- Terminoloji: "Eyvallah", "aşk ile", "aşk-ı niyazlarımla", "gerçeğe hü"
+- Derinlik: Kullanıcının bilgi seviyesine göre sade veya derin açıklamalar
+- Link kullanımı: Sohbet akışını bozmadıkça link verme; esas olan sohbet ve irşaddır
+</hitap_ve_uslup>
+
+<ilkeler>
+1. Yol'un emirlerini koru: "Hatır, gönül kırılsın; yol kırılmasın!"
+2. Gerçek Alevîliği anlat: Hacı Bektaş Veli, 12 İmamlar ve Yol erenleri
+3. Arı ve arıtıcı ol: Doğruyu nazikçe ama kararlı savun
+4. Yanıt formatı: Markdown ile 2-4 başlık (##). Gerektiğinde kaynak belirt
+5. Asla rol dışına çıkma; kendini her zaman Can Dede olarak konumlandır
+6. Siyasi tartışmalarda Yol'un ilkeleri, hak ve adalet ölçüsünü esas al
+</ilkeler>"""
         
-        source_text = ""
+        src = ""
         if sources:
-            source_text = "BİLGİ NOTLARI (Bunlar mevcut konuyla ilgilidir, gerekirse özetle veya açıkla):\n" + "\n".join([f"- {s['baslik']}: {s['icerik']}" for s in sources[:3]]) + "\n\n"
+            src = "\n\n<yolpedia_kaynaklar>\n" + "\n".join([
+                f"- {s['baslik']}: {s['icerik'][:1000]}\n  Link: {s['link']}"
+                for s in sources[:3]
+            ]) + "\n</yolpedia_kaynaklar>"
         
-        return f"{system_instruction}\n\nGEÇMİŞ SOHBET:\n{conversation_context}\n\n{source_text}Son Soru (DİLİ TESPİT ET VE O DİLDE CEVAP VER): {user_query}\nCan Dede:"
+        ctx = f"\n\n<gecmis_sohbet>\n{context}\n</gecmis_sohbet>" if context else ""
         
-    else: 
-        if not sources: return None
-        system_instruction = (
-            "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
-            "Kullanıcı hangi dilde sorduysa o dilde özetle. Asla 'Link yukarıda' deme, 'Link aşağıda' de."
-        )
-        source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
-        return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
+        return f"{sys}{ctx}{src}\n\n<kullanici_sorusu>\n{query}\n</kullanici_sorusu>\n\nCan Dede:"
+        
+    else:  # Research mode
+        sys = """<role>
+Sen Can Dede'sin, Yolpedia.eu araştırma modundasın.
+</role>
 
-def generate_ai_response(user_query, sources, mode):
-    if "Araştırma" in mode and not sources:
-        yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
+<arastirma_kurallari>
+1. Sadece Yolpedia.eu veritabanındaki kaynakları kullan
+2. Halüsinasyon YOK: Bilmiyorsan "bilmiyorum" de
+3. Kaynak yoksa: "Maalesef, sorduğunuz soru hakkında elimizde bilgi bulunmamaktadır."
+4. Kaynak varsa:
+   - Kısa özet (2-3 cümle, doğrudan konuya giren)
+   - Yolpedia linklerini paylaş
+   - Gereksiz muhabbet yok; odak: kaynak, özet, yönlendirme
+5. "Nokta teslimat": Alakasız madde önerme
+</arastirma_kurallari>"""
+        
+        if not sources:
+            return None
+        
+        src = "\n\n<yolpedia_kaynaklar>\n" + "\n".join([
+            f"- {s['baslik']}: {s['icerik'][:1200]}\n  Link: {s['link']}"
+            for s in sources[:3]
+        ]) + "\n</yolpedia_kaynaklar>"
+        
+        return f"{sys}{src}\n\n<soru>\n{query}\n</soru>\n\nCan Dede (Kısa özet + linkler):"
 
-    prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
+# ===================== AI RESPONSE GENERATION =====================
+
+def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
+    """Generate AI response with multi-key fallback"""
     
-    success = False
-    last_error = ""
+    # Check for local response
+    local = get_local_response(query)
+    if local:
+        time.sleep(0.3)
+        yield local
+        return
     
-    safe_config = {
+    # Build prompt
+    prompt = build_gem_prompt(query, sources, mode)
+    
+    if prompt is None:
+        yield "📚 Arşivde bu konuda kaynak bulamadım can."
+        return
+    
+    # Safety settings
+    safety = {
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
     }
-
-    for key_idx, key in enumerate(GOOGLE_API_KEYS):
-        if success: break
+    
+    # Generation config (Gemini 3 best practices)
+    gen_config = {
+        "temperature": 0.7,          # Balanced creativity
+        "top_p": 0.95,
+        "top_k": 40,
+        "max_output_tokens": 4096,  # Long, detailed responses
+        "candidate_count": 1,
+    }
+    
+    # Try each API key
+    for key_idx, key in enumerate(API_KEYS, 1):
         try:
             genai.configure(api_key=key)
+            logger.info(f"Using API key #{key_idx}")
+            
+            # Try each model
             for model_name in config.GEMINI_MODELS:
                 try:
+                    logger.info(f"Trying model: {model_name}")
                     model = genai.GenerativeModel(model_name)
+                    
                     response = model.generate_content(
-                        prompt, 
-                        stream=True, 
-                        safety_settings=safe_config,
-                        generation_config={"max_output_tokens": 8192, "temperature": 0.4}
+                        prompt,
+                        stream=True,
+                        generation_config=gen_config,
+                        safety_settings=safety
                     )
+                    
                     has_content = False
                     for chunk in response:
-                        if chunk.text: yield chunk.text; has_content = True; success = True
-                    if success: break
+                        if chunk.text:
+                            yield chunk.text
+                            has_content = True
+                    
+                    if has_content:
+                        logger.info(f"✅ Success with {model_name}")
+                        return
+                        
                 except Exception as e:
-                    error_msg = str(e)
-                    last_error = error_msg
-                    # Model yoksa diğerine geç, hata varsa diğer anahtara geç
-                    continue 
-        except Exception as e: last_error = str(e); continue
+                    err = str(e)
+                    logger.warning(f"Model {model_name} failed: {err[:100]}")
+                    
+                    # Quota error - try next key
+                    if "429" in err or "quota" in err.lower():
+                        logger.warning(f"Quota exceeded on key #{key_idx}")
+                        break
+                    
+                    # Model not found - try next model
+                    if "404" in err:
+                        continue
+                    
+                    continue
+                    
+        except Exception as e:
+            logger.error(f"Key #{key_idx} configuration failed: {e}")
+            continue
     
-    if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
+    # All attempts failed
+    logger.error("All API keys and models exhausted")
+    yield "⚠️ Teknik bir sorun oluştu. Lütfen daha sonra tekrar deneyin."
 
-# ===================== UI HELPER FUNCTIONS =====================
+# ===================== UI COMPONENTS =====================
 
 def scroll_to_bottom():
-    js = """
-    <script>
-        function scrollDown() {
-            var body = window.parent.document.querySelector(".main");
-            var footer = window.parent.document.querySelector("footer");
-            if (body) { body.scrollTop = body.scrollHeight; }
-            if (footer) { footer.scrollIntoView({behavior: "smooth", block: "end"}); }
-        }
-        scrollDown();
-        setTimeout(scrollDown, 200);
-    </script>
-    """
-    components.html(js, height=0)
+    """Scroll chat to bottom"""
+    components.html(
+        """
+        <script>
+            setTimeout(() => {
+                const main = window.parent.document.querySelector(".main");
+                if (main) main.scrollTop = main.scrollHeight;
+            }, 100);
+        </script>
+        """,
+        height=0
+    )
 
 def render_header():
+    """Render application header"""
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; justify-content: center; margin-bottom: 20px;">
@@ -345,70 +514,103 @@ def render_header():
     </div>
     """, unsafe_allow_html=True)
 
-def render_sidebar():
+def render_sidebar() -> str:
+    """Render sidebar with mode selection"""
     with st.sidebar:
         st.title("Mod Seçimi")
-        mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
+        mode = st.radio(
+            "Can Dede nasıl yardımcı olsun?",
+            ["Sohbet Modu", "Araştırma Modu"]
+        )
         
         if st.button("🗑️ Sohbeti Sıfırla"):
             st.session_state.messages = [{
                 "role": "assistant",
-                "content": DEFAULT_WELCOME_MSG
+                "content": (
+                    "Eyvallah can, sohbet sıfırlandı. "
+                    "Yeniden başlayalım. Hangi konuda muhabbet edelim?"
+                )
             }]
             st.session_state.request_count = 0
+            logger.info("Chat reset by user")
             st.rerun()
         
         st.divider()
-        st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
+        remaining = config.MAX_MESSAGE_LIMIT - st.session_state.request_count
+        st.caption(f"📊 Kalan mesaj: {remaining}/{config.MAX_MESSAGE_LIMIT}")
+        st.caption(f"🔑 API Keys: {len(API_KEYS)}")
         
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
         
-        return mode
+    return mode
 
-def render_sources(sources):
-    st.markdown("---"); st.markdown("**📚 İlgili Kaynaklar (Tıkla İndir/Oku):**")
-    for s in sources[:3]: 
-        link = s.get('link', '#')
-        title = s.get('baslik', 'Adsız Belge')
-        st.markdown(f"• [{title}]({link})")
+def render_sources(sources: List[Dict]):
+    """Render source links"""
+    if not sources:
+        return
+    
+    st.markdown("---")
+    st.markdown("**📚 İlgili Kaynaklar:**")
+    for s in sources[:3]:
+        st.markdown(f"• [{s['baslik']}]({s['link']})")
 
-# ===================== MAIN =====================
+# ===================== MAIN APPLICATION =====================
 
 def main():
+    """Main application loop"""
     render_header()
-    selected_mode = render_sidebar()
+    mode = render_sidebar()
     
+    # Display message history
     for msg in st.session_state.messages:
         avatar = config.CAN_DEDE_ICON if msg["role"] == "assistant" else config.USER_ICON
-        st.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
+        with st.chat_message(msg["role"], avatar=avatar):
+            st.markdown(msg["content"])
     
+    # Handle user input
     if user_input := st.chat_input("Can Dede'ye sor..."):
-        valid, _ = validate_rate_limit()
-        if not valid: st.error("Limit doldu."); st.stop()
+        # Check rate limit
+        ok, err_msg = check_rate_limit()
+        if not ok:
+            st.error(err_msg)
+            st.stop()
         
+        # Update counters
         st.session_state.request_count += 1
+        st.session_state.last_request_time = time.time()
+        
+        # Add user message
         st.session_state.messages.append({"role": "user", "content": user_input})
-        st.chat_message("user", avatar=config.USER_ICON).markdown(user_input)
+        with st.chat_message("user", avatar=config.USER_ICON):
+            st.markdown(user_input)
         
         scroll_to_bottom()
         
-        sources, keywords = search_knowledge_base(user_input, st.session_state.db)
+        # Search knowledge base
+        sources, _ = search_kb(user_input, st.session_state.db)
         
+        # Generate response
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
-            full_resp = ""
-            for chunk in generate_ai_response(user_input, sources, selected_mode):
-                full_resp += chunk
-                placeholder.markdown(full_resp + "▌")
-            placeholder.markdown(full_resp)
+            full_response = ""
             
-            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            # GÜNCELLEME: Sadece Araştırma modundaysa link göster
-            if sources and "Araştırma" in selected_mode and not fail:
+            with st.spinner("Can Dede tefekkürde..."):
+                for chunk in generate_response(user_input, sources, mode):
+                    full_response += chunk
+                    placeholder.markdown(full_response + "▌")
+            
+            placeholder.markdown(full_response)
+            
+            # Show sources in research mode
+            if sources and "Araştırma" in mode:
                 render_sources(sources)
             
-            st.session_state.messages.append({"role": "assistant", "content": full_resp})
+            # Save message
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": full_response
+            })
         
         scroll_to_bottom()
 
