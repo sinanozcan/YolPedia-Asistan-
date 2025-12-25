@@ -288,21 +288,28 @@ def get_local_response(text: str) -> Optional[str]:
     """Generate local response for common greetings - Gem style"""
     norm = normalize_turkish(text).strip()
     
-    # Exact greeting matches only
-    exact_greetings = {
-        "merhaba": "Eyvallah can dost, hoş geldin. Aşk ile...",
-        "selam": "Selam olsun erenler. Buyur can...",
-        "slm": "Aşk ile selam, can dost.",
-        "gunaydin": "Günaydın can. Hayırlı nice günler...",
-        "iyi aksamlar": "İyi akşamlar erenler. Gönül dolusu muhabbet..."
-    }
+    # Greeting keywords (partial match)
+    greeting_keywords = ["merhaba", "selam", "slm", "selamun aleykum"]
+    status_keywords = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
+    time_greetings = ["gunaydin", "iyi aksamlar", "iyi gunler", "iyi geceler"]
     
-    if norm in exact_greetings:
-        return exact_greetings[norm]
+    # Check if any greeting keyword is in the text
+    if any(kw in norm for kw in greeting_keywords):
+        return random.choice([
+            "Eyvallah can dost, hoş geldin. Aşk ile...",
+            "Selam olsun erenler. Buyur can...",
+            "Aşk ile selam, güzel dost. Ne üzerine muhabbet edelim?"
+        ])
+    
+    # Time-based greetings
+    if any(kw in norm for kw in time_greetings):
+        return random.choice([
+            "Hayırlı nice günler can. Gönül dolusu muhabbet...",
+            "Günaydın erenler. Bugün de yolun hizmetindeyiz."
+        ])
     
     # Status queries
-    status_keywords = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
-    if any(kw == norm for kw in status_keywords):
+    if any(kw in norm for kw in status_keywords):
         return random.choice([
             "Şükür Hak'ka, bugün de yolun ve sizlerin hizmetindeyim can. Sen nasılsın?",
             "Çok şükür erenler. Gönül sohbetine hazırım. Sen nelerden bahsetmek istersin?"
