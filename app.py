@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Stable Version: Manual Upload Mode (No Auto-Update Button)
+Final Clean Version: No Debug Info, No Extra Buttons, Pure UI
 """
 
 import streamlit as st
@@ -27,7 +27,6 @@ class AppConfig:
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
     
-    # Hassas Arama (Baraj 15)
     SEARCH_SCORE_THRESHOLD: int = 15
     MAX_SEARCH_RESULTS: int = 5
     
@@ -108,13 +107,14 @@ apply_custom_styles()
 
 # ===================== DATA LOADING =====================
 
-@st.cache_data(show_spinner=False)  # persist="disk" kaldırıldı
+@st.cache_data(persist="disk", show_spinner=False)
 def load_knowledge_base() -> List[Dict]:
     try:
         file_path = Path(config.DATA_FILE)
         if not file_path.exists(): return []
         with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
+
 # ===================== TEXT PROCESSING =====================
 
 def normalize_turkish_text(text: str) -> str:
@@ -346,16 +346,10 @@ def render_sidebar():
             st.session_state.request_count = 0
             st.rerun()
         
-        # YENİ: Önbelleği temizleme butonu
-        if st.button("🔄 Veritabanını Yenile"):
-            st.cache_data.clear()
-            st.session_state.db = load_knowledge_base()
-            st.success("Veritabanı güncellendi!")
-            st.rerun()
-        
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
+        # Sade Kaynak Sayısı
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
         
@@ -372,34 +366,15 @@ def render_sources(sources):
 
 def main():
     render_header()
-    selected_mode = render_sidebar()  # Bir kere çağır
+    selected_mode = render_sidebar()
     
-    # Debug bilgisi ekle (geçici)
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 🔍 Debug Bilgisi")
-        
-        try:
-            with open(config.DATA_FILE, 'r', encoding='utf-8') as f:
-                direct_data = json.load(f)
-                st.success(f"JSON dosyasında: {len(direct_data)} kaynak")
-        except Exception as e:
-            st.error(f"JSON okunamadı: {e}")
-        
-        if 'db' in st.session_state:
-            st.info(f"Bellekte: {len(st.session_state.db)} kaynak")
-    
-    # Chat mesajlarını göster
     for msg in st.session_state.messages:
         avatar = config.CAN_DEDE_ICON if msg["role"] == "assistant" else config.USER_ICON
         st.chat_message(msg["role"], avatar=avatar).markdown(msg["content"])
     
-    # Kullanıcı inputu
     if user_input := st.chat_input("Can Dede'ye sor..."):
         valid, _ = validate_rate_limit()
-        if not valid: 
-            st.error("Limit doldu.")
-            st.stop()
+        if not valid: st.error("Limit doldu."); st.stop()
         
         st.session_state.request_count += 1
         st.session_state.messages.append({"role": "user", "content": user_input})
@@ -418,25 +393,8 @@ def main():
             placeholder.markdown(full_resp)
             
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            if sources and not fail:
-                render_sources(sources)
-            
-            st.session_state.messages.append({"role": "assistant", "content": full_resp})
-        
-        scroll_to_bottom()
-        
-        sources, keywords = search_knowledge_base(user_input, st.session_state.db)
-        
-        with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
-            placeholder = st.empty()
-            full_resp = ""
-            for chunk in generate_ai_response(user_input, sources, selected_mode):
-                full_resp += chunk
-                placeholder.markdown(full_resp + "▌")
-            placeholder.markdown(full_resp)
-            
-            fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            if sources and not fail:
+            # GÜNCELLEME: Sadece Araştırma modundaysa link göster
+            if sources and "Araştırma" in selected_mode and not fail:
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
