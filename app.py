@@ -108,14 +108,13 @@ apply_custom_styles()
 
 # ===================== DATA LOADING =====================
 
-@st.cache_data(persist="disk", show_spinner=False)
+@st.cache_data(show_spinner=False)  # persist="disk" kaldırıldı
 def load_knowledge_base() -> List[Dict]:
     try:
         file_path = Path(config.DATA_FILE)
         if not file_path.exists(): return []
         with open(file_path, "r", encoding="utf-8") as f: return json.load(f)
     except: return []
-
 # ===================== TEXT PROCESSING =====================
 
 def normalize_turkish_text(text: str) -> str:
@@ -345,6 +344,13 @@ def render_sidebar():
                 "content": DEFAULT_WELCOME_MSG
             }]
             st.session_state.request_count = 0
+            st.rerun()
+        
+        # YENİ: Önbelleği temizleme butonu
+        if st.button("🔄 Veritabanını Yenile"):
+            st.cache_data.clear()
+            st.session_state.db = load_knowledge_base()
+            st.success("Veritabanı güncellendi!")
             st.rerun()
         
         st.divider()
