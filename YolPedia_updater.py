@@ -1,6 +1,6 @@
 """
-YolPedia.eu Canlı Veri Çekici ve GitHub Güncelleyici
-Versiyon: Hata Ayıklama Modu (Debug Mode)
+YolPedia.eu Akıllı Veri Çekici
+Özellikler: Retry (Tekrar Deneme), Anti-Ban Bekleme, Veri Koruma
 """
 
 import requests
@@ -9,6 +9,8 @@ import time
 import urllib3
 from github import Github
 import re
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # SSL Uyarılarını Sustur
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -17,60 +19,64 @@ class YolPediaAPI:
     def __init__(self):
         self.base_url = "https://yolpedia.eu/wp-json/wp/v2"
         self.session = requests.Session()
-        # Tarayıcı taklidi (Mac/Chrome)
+        
+        # 1. BAĞLANTIYI GÜÇLENDİR (Koparsa 3 kere daha dene)
+        retries = Retry(total=5, backoff_factor=2, status_forcelist=[500, 502, 503, 504, 429])
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+        
+        # 2. GERÇEKÇİ TARAYICI KİMLİĞİ
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
             'Accept': 'application/json',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
             'Connection': 'keep-alive',
-            'Referer': 'https://google.com/' # Referans Google gibi görünsün
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'no-cache'
         })
     
     def get_all_posts_formatted(self, max_posts=3000):
-        """Tüm yazıları çeker ve formatlar"""
         all_posts = []
         page = 1
+        per_page = 100
+        consecutive_errors = 0
         
-        print("📡 Bağlantı testi yapılıyor...")
+        print("📡 YolPedia'ya sızılıyor...")
         
-        # 1. ÖNCE BAĞLANTIYI TEST ET (Hata varsa direkt patlasın ki görelim)
-        try:
-            test_endpoint = f"{self.base_url}/posts"
-            test_resp = self.session.get(test_endpoint, params={'per_page': 1}, timeout=20, verify=False)
-            
-            if test_resp.status_code == 403:
-                raise Exception("⛔ ERİŞİM ENGELLENDİ (403)! Sitenin güvenlik duvarı Streamlit IP'sini engelliyor.")
-            elif test_resp.status_code != 200:
-                raise Exception(f"⚠️ Site Hatası! Kod: {test_resp.status_code} - Mesaj: {test_resp.text[:100]}")
-                
-        except Exception as e:
-            # Bağlantı hatasını direkt yukarı fırlat
-            raise Exception(f"Bağlantı Kurulamadı: {str(e)}")
-
-        print("📡 Veri çekimi başlıyor...")
-        
-        # 2. VERİLERİ ÇEK (Yavaş Mod)
         while len(all_posts) < max_posts:
             try:
                 endpoint = f"{self.base_url}/posts"
-                # _embed=1 bazen sunucuyu yorar, onu kaldırdım daha hafif olsun diye
                 params = {
-                    'per_page': min(50, max_posts - len(all_posts)), # Sayfa başı isteği 50'ye düşürdüm (Daha az dikkat çeker)
-                    'page': page
+                    'per_page': per_page,
+                    'page': page,
+                    '_embed': 1
                 }
                 
-                response = self.session.get(endpoint, params=params, timeout=20, verify=False)
+                # verify=False ile SSL hatasını aş
+                response = self.session.get(endpoint, params=params, timeout=30, verify=False)
                 
-                if response.status_code != 200: 
-                    print(f"Sayfa {page} alınamadı. Durdu.")
+                # Eğer yasaklandıysak (403/401)
+                if response.status_code in [403, 401, 406]:
+                    print(f"⚠️ Engel Yedik (Kod: {response.status_code}). 5 saniye bekleyip tekrar deniyoruz...")
+                    time.sleep(5)
+                    consecutive_errors += 1
+                    if consecutive_errors > 3: 
+                        print("❌ Çok fazla engel, durduruluyor.")
+                        break
+                    continue
+                
+                if response.status_code != 200:
+                    print(f"⚠️ Hata: {response.status_code}")
                     break
                 
                 posts = response.json()
-                if not posts: break
+                if not posts:
+                    print("✅ Veri bitti (Sayfa boş).")
+                    break
                 
+                # Verileri İşle
                 for post in posts:
-                    # HTML Temizliği
                     raw_content = post.get('content', {}).get('rendered', '')
-                    clean_content = re.sub('<[^<]+?>', '', raw_content)
+                    clean_content = re.sub('<[^<]+?>', '', raw_content) # HTML temizle
                     clean_content = re.sub(r'\s+', ' ', clean_content).strip()
                     
                     all_posts.append({
@@ -80,19 +86,35 @@ class YolPediaAPI:
                         'tarih': post.get('date', '')
                     })
                 
-                print(f"✅ Sayfa {page} alındı. Toplam: {len(all_posts)}")
+                print(f"  ✅ Sayfa {page} alındı. (Toplam: {len(all_posts)})")
+                
+                # Başarılı olunca hata sayacını sıfırla
+                consecutive_errors = 0
                 page += 1
-                time.sleep(1.5) # Bekleme süresini artırdım (Güvenlik duvarını kızdırmamak için)
+                
+                # Güvenlik duvarını uyandırmamak için bekleme
+                time.sleep(1) 
                 
             except Exception as e:
-                # Döngü içinde hata olursa eldeki veriyi kurtar
-                print(f"Hata oluştu, çekilen verilerle devam ediliyor: {e}")
+                print(f"❌ Kritik Hata: {e}")
                 break
-                
+        
+        # === KRİTİK GÜVENLİK ÖNLEMİ ===
+        # Eğer çekilen veri 100'den azsa (bir hata olduysa),
+        # BOŞ LİSTE DÖNDÜR Kİ ESKİ VERİTABANI SİLİNMESİN.
+        if len(all_posts) < 50: 
+            print("⚠️ Çekilen veri çok az! Güvenlik nedeniyle işlem iptal ediliyor.")
+            return [] # Boş döndür
+            
         return all_posts
 
     def update_github_repo(self, new_data, github_token, repo_name="sinanozcan/YolPedia-Asistan-"):
         """Veriyi GitHub'a kalıcı olarak yazar"""
+        
+        # EKSTRA KORUMA: Eğer veri boşsa işlem yapma
+        if not new_data or len(new_data) < 50:
+            return False, "⚠️ Yetersiz veri çekildi. Mevcut veritabanı silinmemesi için işlem durduruldu."
+
         try:
             g = Github(github_token)
             repo = g.get_repo(repo_name)
@@ -102,12 +124,12 @@ class YolPediaAPI:
                 contents = repo.get_contents(file_path)
                 sha = contents.sha
             except:
-                sha = None # Dosya yoksa ilk kez oluştur
+                sha = None
             
             json_content = json.dumps(new_data, ensure_ascii=False, indent=2)
             
             if sha:
-                repo.update_file(file_path, "🤖 Otomatik Güncelleme", json_content, sha)
+                repo.update_file(file_path, f"🤖 Güncelleme: {len(new_data)} Yazı", json_content, sha)
             else:
                 repo.create_file(file_path, "🤖 İlk Yükleme", json_content)
                 
