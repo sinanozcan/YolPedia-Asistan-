@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Clean Version: No Debug Info, No Extra Buttons, Pure UI
+Final Version: Restored Claude's Model List (2.0/3.0/2.5)
 """
 
 import streamlit as st
@@ -56,10 +56,11 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
+            # İSTEDİĞİN MODELLER GERİ YÜKLENDİ
             self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
-                "gemini-3-pro",           # Most powerful (premium)
-                "gemini-2.5-pro",         # Reliable fallback
+                "gemini-2.0-flash-exp",
+                "gemini-3-pro",
+                "gemini-2.5-pro"
             ]
 
 config = AppConfig()
@@ -291,7 +292,7 @@ def generate_ai_response(user_query, sources, mode):
                 except Exception as e:
                     error_msg = str(e)
                     last_error = error_msg
-                    if "429" in error_msg or "quota" in error_msg.lower(): break 
+                    # Model yoksa diğerine geç, hata varsa diğer anahtara geç
                     continue 
         except Exception as e: last_error = str(e); continue
     
@@ -350,7 +351,6 @@ def render_sidebar():
         st.divider()
         st.caption(f"📊 Mesaj: {st.session_state.request_count}/{config.MAX_MESSAGE_LIMIT}")
         
-        # Sade Kaynak Sayısı
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
         
