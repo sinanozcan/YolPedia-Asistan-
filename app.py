@@ -1,6 +1,6 @@
 """
 YolPedia Can Dede - AI Assistant
-Final Version: User Requested Models (Gemini 2.0/3.0/2.5) + All Fixes
+Final Stable Version: Manual Upload Mode (No Auto-Update Button)
 """
 
 import streamlit as st
@@ -12,7 +12,6 @@ import time
 import random
 import logging
 import unicodedata
-import YolPedia_updater
 from dataclasses import dataclass, field
 from typing import List, Dict, Tuple, Optional, Generator
 from pathlib import Path
@@ -58,11 +57,9 @@ class AppConfig:
 
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
-            # GÖRSELDEKİ LİSTENİN AYNISI
             self.GEMINI_MODELS = [
-                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
-                "gemini-3-pro",           # Most powerful (premium)
-                "gemini-2.5-pro",         # Reliable fallback
+                "gemini-1.5-pro",
+                "gemini-1.5-flash"
             ]
 
 config = AppConfig()
@@ -182,7 +179,6 @@ def calculate_relevance_score(entry: Dict, normalized_query: str, keywords: List
     
     return score
 
-# FONKSİYON İSMİ DÜZELTİLDİ: search_knowledge_base
 def search_knowledge_base(query: str, db: List[Dict]) -> Tuple[List[Dict], List[str]]:
     normalized_query = normalize_turkish_text(query)
     keywords = [k for k in normalized_query.split() if len(k) > 2 and k not in config.STOP_WORDS]
@@ -232,19 +228,16 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
     closing_instruction = "Cevabın sonuna, kullanıcının dilinde çok kısa ve nazik bir iyi dilek ekle. Uzatma."
 
     if "Sohbet" in mode:
-        # SENİN İSTEDİĞİN SERT PERSONA TALİMATLARI
         system_instruction = (
             "Sen 'Can Dede'sin. Alevi-Bektaşi felsefesini benimsemiş, bilge bir rehbersin.\n\n"
             "🔴 **KIRMIZI ÇİZGİLER VE KURALLAR:**\n"
-            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı hangi dilde yazıyorsa o dilde cevap ver. Veritabanı Türkçe olsa bile sen çevir.\n"
-            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Sevgili Can', 'Güzel Dost', 'Erenler' gibi saygın ifadeler kullan. Aynı kullanıcıya sadece başlangıçta selam ver, sonraki sorularinda selam vermeyi bırak. direkt konuya gir \n"
+            "1. **DİL AYNASI (ZORUNLU):** Kullanıcı Hollandaca yazdıysa CEVAP %100 HOLLANDACA OLACAK. İngilizce ise İngilizce. Veritabanı Türkçe olsa bile sen çevir.\n"
+            "2. **ÜSLUP:** 'Evladım', 'Yavrum', 'Çocuğum' gibi ifadeler KESİNLİKLE YASAK. 'Can', 'Dost', 'Erenler' gibi saygın ifadeler kullan.\n"
             "3. **EMPATİ:** Kullanıcı 'Nasılsın?' diyorsa, ona Alevilik dersi verme. İnsan gibi halini sor.\n"
-            "4. **SOFRA ADABI:** Aleviler yemek yerken birbirlerine 'afiyet olsun' demezler. Onun yerine 'Yarasın' ya da 'Helal-i hoş olsun' derler.\n"
-            "5. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
-            "6. **HİKMET (HZ. ALİ):** 'BİLGİ NOTLARI' içinde Hz. Ali'nin hikmetli bir sözü varsa ve konuyla alakalıysa, cevabına doğal bir şekilde yedir.\n"
-            "7. **SOHBET MODU:** Sohbet modundayken kullanıcı istemedikçe asla kaynak belirtme.\n"
-            f"8. **AKIŞ:** {greeting_instruction}\n"
-            f"9. **KAPANIŞ:** {closing_instruction}\n"
+            "4. **KAYNAK KULLANIMI:** Aşağıdaki 'BİLGİ NOTLARI'nı sadece kullanıcı o konuda soru sorarsa kullan. **Eğer kullanıcı 'Bunu özetle' derse, bu notları özetle.**\n"
+            "5. **HİKMET (HZ. ALİ):** 'BİLGİ NOTLARI' içinde Hz. Ali'nin hikmetli bir sözü varsa ve konuyla alakalıysa, cevabına doğal bir şekilde yedir.\n"
+            f"6. **AKIŞ:** {greeting_instruction}\n"
+            f"7. **KAPANIŞ:** {closing_instruction}\n"
         )
         
         source_text = ""
@@ -257,14 +250,14 @@ def build_prompt(user_query: str, sources: List[Dict], mode: str, history: List[
         if not sources: return None
         system_instruction = (
             "Sen YolPedia araştırma asistanısın. Görevin sadece verilen kaynakları özetleyerek sunmaktır.\n"
-            "Kullanıcı hangi dilde sorduysa o dilde özetle. Asla 'Linki yukarıda' deme, 'Linki aşağıda' de."
+            "Kullanıcı hangi dilde sorduysa o dilde özetle. Asla 'Link yukarıda' deme, 'Link aşağıda' de."
         )
         source_text = "\n".join([f"- {s['baslik']}: {s['icerik'][:1200]}" for s in sources[:3]])
         return f"{system_instruction}\n\nKAYNAKLAR:\n{source_text}\n\nSoru (BU DİLDE CEVAPLA): {user_query}"
 
 def generate_ai_response(user_query, sources, mode):
     if "Araştırma" in mode and not sources:
-        yield "📚 Arşivde bu konuda kaynak bulamadım, sevgili can."; return
+        yield "📚 Arşivde bu konuda kaynak bulamadım can."; return
 
     prompt = build_prompt(user_query, sources, mode, st.session_state.messages)
     
@@ -298,12 +291,12 @@ def generate_ai_response(user_query, sources, mode):
                 except Exception as e:
                     error_msg = str(e)
                     last_error = error_msg
-                    # Hata varsa (örn 404), sessizce diğer modele geç
+                    if "429" in error_msg or "quota" in error_msg.lower(): break 
                     continue 
         except Exception as e: last_error = str(e); continue
     
     if not success:
-        yield f"⚠️ **Hata Detayı:** {last_error}\n\nÜzgünüm sevgili can, teknik bir sorun oluştu."
+        yield f"⚠️ **Hata Detayı:** {last_error}\n\nCan dost, teknik bir sorun oluştu."
 
 # ===================== UI HELPER FUNCTIONS =====================
 
@@ -346,7 +339,7 @@ def render_sidebar():
         st.title("Mod Seçimi")
         mode = st.radio("Seçim", ["Sohbet Modu", "Araştırma Modu"])
         
-        if st.button("Yeni Bir Sohbet Başlat"):
+        if st.button("🗑️ Sohbeti Sıfırla"):
             st.session_state.messages = [{
                 "role": "assistant",
                 "content": DEFAULT_WELCOME_MSG
@@ -359,57 +352,7 @@ def render_sidebar():
         
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
-                        
-       # === GÜVENLİ GÜNCELLEME BUTONU (GITHUB ENTEGRELİ) ===
-        st.markdown("---")
         
-        with st.expander("🔐 Yönetici Paneli"):
-            admin_pass = st.text_input("Yönetici Şifresi:", type="password", key="admin_pass").strip()
-            
-            if admin_pass == "CanDede2025": 
-                st.success("Giriş Onaylandı ✅")
-                
-                if st.button("🔄 Veritabanını Güncelle ve Kaydet"):
-                    status_box = st.empty()
-                    status_box.info("📡 YolPedia taranıyor...")
-                    
-                    try:
-                        import YolPedia_updater
-                        # Token'ı secret'tan al
-                        github_token = st.secrets.get("GITHUB_TOKEN")
-                        
-                        if not github_token:
-                            status_box.error("❌ Hata: GITHUB_TOKEN secrets dosyasında bulunamadı!")
-                            st.stop()
-
-                        updater = YolPedia_updater.YolPediaAPI()
-                        
-                        with st.spinner("Veriler çekiliyor ve GitHub'a işleniyor (Bu işlem 1-2 dk sürebilir)..."):
-                            # 1. Veriyi Siteden Çek
-                            new_posts = updater.get_all_posts_formatted(max_posts=3000)
-                            
-                            if not new_posts:
-                                status_box.error("❌ Siteden veri çekilemedi (0 kayıt).")
-                                st.stop()
-                            
-                            # 2. GitHub'a Kaydet
-                            success, msg = updater.update_github_repo(new_posts, github_token)
-                        
-                        if success:
-                            # 3. Anlık Hafızayı da Yenile
-                            st.cache_data.clear()
-                            st.session_state.db = new_posts
-                            status_box.success(f"✅ {msg}")
-                            time.sleep(2)
-                            st.rerun()
-                        else:
-                            status_box.error(f"❌ {msg}")
-                        
-                    except Exception as e:
-                        status_box.error(f"❌ Kritik Hata: {str(e)}")
-            
-            elif admin_pass:
-                st.error("⛔ Şifre yanlış!")
         return mode
 
 def render_sources(sources):
@@ -439,7 +382,6 @@ def main():
         
         scroll_to_bottom()
         
-        # DÜZELTME: Fonksiyon adı `search_knowledge_base` olarak sabitlendi
         sources, keywords = search_knowledge_base(user_input, st.session_state.db)
         
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
@@ -451,7 +393,7 @@ def main():
             placeholder.markdown(full_resp)
             
             fail = any(x in full_resp.lower() for x in ["bulamadım", "yoktur", "üzgünüm", "hata detayı"])
-            if sources and "Araştırma" in selected_mode and not fail:
+            if sources and not fail:
                 render_sources(sources)
             
             st.session_state.messages.append({"role": "assistant", "content": full_resp})
