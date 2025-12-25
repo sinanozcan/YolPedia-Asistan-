@@ -57,8 +57,9 @@ class AppConfig:
     def __post_init__(self):
         if self.GEMINI_MODELS is None:
             self.GEMINI_MODELS = [
-                "gemini-1.5-pro",
-                "gemini-1.5-flash"
+                "gemini-2.0-flash-exp",   # Fastest (try first for speed)
+                "gemini-3-pro",           # Most powerful (premium)
+                "gemini-2.5-pro",         # Reliable fallback
             ]
 
 config = AppConfig()
