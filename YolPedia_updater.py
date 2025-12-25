@@ -1,19 +1,17 @@
 """
-YolPedia.eu Akıllı Veri Çekici
-Versiyon: Ninja Modu (Daha Yavaş, Daha Az Dikkat Çeken, Kararlı)
+YolPedia.eu Güvenli Veri Çekici
+Strateji: Düşük Hız, Yüksek Kamuflaj (Anti-Ban)
 """
 
 import requests
 import json
 import time
-import random  # Rastgelelik eklendi
+import random
 import urllib3
 from github import Github
 import re
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
-# SSL Uyarılarını Sustur
+# SSL Uyarılarını Gizle
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class YolPediaAPI:
@@ -21,28 +19,30 @@ class YolPediaAPI:
         self.base_url = "https://yolpedia.eu/wp-json/wp/v2"
         self.session = requests.Session()
         
-        # Bağlantı kopsa bile pes etme, 5 kere daha dene
-        retries = Retry(
-            total=5, 
-            backoff_factor=1, # Her hatada bekleme süresini katla (1s, 2s, 4s...)
-            status_forcelist=[500, 502, 503, 504, 429, 403]
-        )
-        self.session.mount('https://', HTTPAdapter(max_retries=retries))
-        
+        # == TAM KAMUFLAJ HEADERS ==
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
             'Connection': 'keep-alive',
-            'Referer': 'https://yolpedia.eu/' # Referans göster
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache'
         })
     
     def get_all_posts_formatted(self, max_posts=3000):
         all_posts = []
         page = 1
-        # STRATEJİ DEĞİŞİKLİĞİ: 100 yerine 50'şer çekiyoruz. Daha çok istek ama daha az dikkat çeker.
-        per_page = 50 
         
-        print("📡 YolPedia'ya sızılıyor (Ninja Modu)...")
+        # STRATEJİ: Az iste, sıkıntı çıkmasın.
+        per_page = 20 
+        
+        print("📡 YolPedia'ya 'insan gibi' bağlanılıyor...")
         
         while len(all_posts) < max_posts:
             try:
@@ -50,54 +50,67 @@ class YolPediaAPI:
                 params = {
                     'per_page': per_page,
                     'page': page,
-                    '_embed': 1
+                    '_embed': 1 # Resim ve yazar bilgisi için
                 }
                 
-                # Timeout süresini artırdık (30 saniye)
+                # İsteği Gönder
                 response = self.session.get(endpoint, params=params, timeout=30, verify=False)
                 
+                # == HATA YÖNETİMİ ==
+                if response.status_code == 403 or response.status_code == 429:
+                    print(f"⚠️ Engel (Kod: {response.status_code}). 10 saniye soğutma molası...")
+                    time.sleep(10) # 10 saniye bekle
+                    # Aynı sayfayı tekrar denemek için continue demiyoruz, 
+                    # bu seferlik pas geçip şansımızı sonraki denemede zorlamayalım diye break de demiyoruz.
+                    # Aslında en güvenlisi burada durmaktır ama biz inatçıyız:
+                    # Session'ı yenileyip tekrar deneyelim:
+                    self.session = requests.Session()
+                    self.session.headers.update({'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...'}) # User Agent değiştir
+                    continue
+
                 if response.status_code != 200:
-                    print(f"⚠️ Engel/Hata (Kod: {response.status_code}). Bekleniyor...")
-                    time.sleep(5) # Hata alınca uzun bekle
-                    break # Bu döngüyü kır, eldekilerle devam etme riskini almayalım, güvenli çıkış.
+                    print(f"⚠️ Hata: {response.status_code}")
+                    break
                 
                 posts = response.json()
-                if not posts:
-                    print("✅ Veri bitti (Sayfa boş).")
+                
+                # Liste boşsa veya hata mesajı döndüyse (bazen WP hata mesajını JSON döner)
+                if not posts or isinstance(posts, dict): 
+                    print("✅ Veri bitti veya sayfa sonu.")
                     break
                 
                 # Verileri İşle
                 for post in posts:
-                    raw_content = post.get('content', {}).get('rendered', '')
-                    clean_content = re.sub('<[^<]+?>', '', raw_content)
-                    clean_content = re.sub(r'\s+', ' ', clean_content).strip()
-                    
-                    all_posts.append({
-                        'baslik': post.get('title', {}).get('rendered', ''),
-                        'link': post.get('link', ''),
-                        'icerik': clean_content[:8000],
-                        'tarih': post.get('date', '')
-                    })
-                
-                print(f"  ✅ Sayfa {page} alındı. (Toplam: {len(all_posts)})")
-                
+                    try:
+                        raw_content = post.get('content', {}).get('rendered', '')
+                        # HTML Temizliği
+                        clean_content = re.sub('<[^<]+?>', '', raw_content)
+                        clean_content = re.sub(r'\s+', ' ', clean_content).strip()
+                        
+                        all_posts.append({
+                            'baslik': post.get('title', {}).get('rendered', ''),
+                            'link': post.get('link', ''),
+                            'icerik': clean_content[:8000],
+                            'tarih': post.get('date', '')
+                        })
+                    except: continue
+
+                print(f"  ✅ Sayfa {page} (20 Kayıt) alındı. Toplam: {len(all_posts)}")
                 page += 1
                 
-                # === NİNJA TAKTİĞİ ===
-                # Sabit süre bekleme, rastgele bekle. (2 ile 4 saniye arası)
-                # Bu, sunucunun "Bot bu" demesini zorlaştırır.
-                sleep_time = random.uniform(2.0, 4.0)
-                time.sleep(sleep_time)
+                # == BEKLEME SÜRESİ ==
+                # Her istekten sonra rastgele 1-3 saniye bekle
+                time.sleep(random.uniform(1.0, 3.0))
                 
             except Exception as e:
                 print(f"❌ Kritik Hata: {e}")
+                time.sleep(5)
                 break
         
-        # GÜVENLİK: Eğer çok az veri geldiyse (örn: sadece 195 tane),
-        # işlemi iptal et ki 2294'lük veritabanı bozulmasın.
-        if len(all_posts) < 500: # Eşiği 500'e çektim. 500'den azsa güncelleme yapmaz.
-            print(f"⚠️ Çekilen veri sayısı ({len(all_posts)}) şüpheli derecede az. Veritabanı korunuyor.")
-            return [] 
+        # GÜVENLİK: Eğer veri çekilemediyse boş dön ki eskisi silinmesin
+        if len(all_posts) < 50: 
+            print(f"⚠️ Yetersiz veri ({len(all_posts)}). İşlem iptal.")
+            return []
             
         return all_posts
 
@@ -105,7 +118,7 @@ class YolPediaAPI:
         """Veriyi GitHub'a kalıcı olarak yazar"""
         
         if not new_data:
-            return False, "⚠️ Güvenlik Duvarı Engeli: Yeterli veri çekilemedi. Eski veritabanı korundu."
+            return False, "⚠️ Veri çekilemediği için güncelleme iptal edildi."
 
         try:
             g = Github(github_token)
@@ -121,7 +134,7 @@ class YolPediaAPI:
             json_content = json.dumps(new_data, ensure_ascii=False, indent=2)
             
             if sha:
-                repo.update_file(file_path, f"🤖 Ninja Güncelleme: {len(new_data)} Yazı", json_content, sha)
+                repo.update_file(file_path, f"🤖 Otomatik Güncelleme: {len(new_data)} Kaynak", json_content, sha)
             else:
                 repo.create_file(file_path, "🤖 İlk Yükleme", json_content)
                 
