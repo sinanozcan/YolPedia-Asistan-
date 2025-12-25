@@ -359,48 +359,57 @@ def render_sidebar():
         
         if 'db' in st.session_state:
             st.caption(f"💾 Arşiv: {len(st.session_state.db)} kaynak")
-            
-            # === GÜNCELLEME BUTONU BAŞLANGIÇ ===
-            
-        # === GÜVENLİ GÜNCELLEME BUTONU ===
-        # === GÜVENLİ GÜNCELLEME BUTONU (DÜZELTİLMİŞ) ===
+                        
+       # === GÜVENLİ GÜNCELLEME BUTONU (GITHUB ENTEGRELİ) ===
         st.markdown("---")
         
         with st.expander("🔐 Yönetici Paneli"):
-            # .strip() ekledik: Başta/sonda boşluk kalsa bile kabul eder
             admin_pass = st.text_input("Yönetici Şifresi:", type="password", key="admin_pass").strip()
             
             if admin_pass == "CanDede2025": 
-                st.success("Giriş Onaylandı ✅") # Şifre doğruysa bunu görürsün
+                st.success("Giriş Onaylandı ✅")
                 
-                if st.button("🔄 Veritabanını Güncelle"):
+                if st.button("🔄 Veritabanını Güncelle ve Kaydet"):
                     status_box = st.empty()
-                    status_box.info("📡 YolPedia'ya bağlanılıyor...")
+                    status_box.info("📡 YolPedia taranıyor...")
                     
                     try:
-                        # Updater dosyasındaki sınıfı çağırıyoruz
                         import YolPedia_updater
+                        # Token'ı secret'tan al
+                        github_token = st.secrets.get("GITHUB_TOKEN")
+                        
+                        if not github_token:
+                            status_box.error("❌ Hata: GITHUB_TOKEN secrets dosyasında bulunamadı!")
+                            st.stop()
+
                         updater = YolPedia_updater.YolPediaAPI()
                         
-                        with st.spinner("Yazılar çekiliyor..."):
-                            # Max post sayısını ihtiyaç duyarsan artırabilirsin
-                            new_posts = updater.get_all_posts(max_posts=3000)
-                            updater.export_to_json(new_posts, config.DATA_FILE)
+                        with st.spinner("Veriler çekiliyor ve GitHub'a işleniyor (Bu işlem 1-2 dk sürebilir)..."):
+                            # 1. Veriyi Siteden Çek
+                            new_posts = updater.get_all_posts_formatted(max_posts=3000)
+                            
+                            if not new_posts:
+                                status_box.error("❌ Siteden veri çekilemedi (0 kayıt).")
+                                st.stop()
+                            
+                            # 2. GitHub'a Kaydet
+                            success, msg = updater.update_github_repo(new_posts, github_token)
                         
-                        st.cache_data.clear()
-                        st.session_state.db = load_knowledge_base()
-                        
-                        status_box.success(f"✅ Tamamlandı! {len(new_posts)} kaynak yüklendi.")
-                        time.sleep(2)
-                        st.rerun()
+                        if success:
+                            # 3. Anlık Hafızayı da Yenile
+                            st.cache_data.clear()
+                            st.session_state.db = new_posts
+                            status_box.success(f"✅ {msg}")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            status_box.error(f"❌ {msg}")
                         
                     except Exception as e:
-                        status_box.error(f"❌ Hata: {str(e)}")
+                        status_box.error(f"❌ Kritik Hata: {str(e)}")
             
-            elif admin_pass: # Şifre dolu ama yanlışsa
-                st.error("⛔ Şifre yanlış! (Büyük/küçük harfe dikkat)")
-        # === GÜNCELLEME BUTONU BİTİŞ ===
-        
+            elif admin_pass:
+                st.error("⛔ Şifre yanlış!")
         return mode
 
 def render_sources(sources):
