@@ -284,6 +284,40 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
 
 # ===================== LOCAL RESPONSES =====================
 
+def is_meaningful_query(text: str) -> bool:
+    """Check if query is meaningful enough to search knowledge base"""
+    norm = normalize_turkish(text).strip()
+    words = norm.split()
+    
+    # Too short queries
+    if len(words) < 2:
+        return False
+    
+    # Greeting-only queries (no substance)
+    greeting_only = ["merhaba", "selam", "slm", "gunaydin", "iyi aksamlar", 
+                     "nasilsin", "naber", "hosgeldin", "selamun aleykum"]
+    
+    # Remove common address terms
+    address_terms = ["dedem", "can", "dede", "abi", "hocam", "efendi"]
+    
+    # Filter out greetings and address terms
+    meaningful_words = [w for w in words 
+                       if w not in greeting_only and w not in address_terms 
+                       and len(w) > 2]
+    
+    # If less than 2 meaningful words, not a real query
+    if len(meaningful_words) < 2:
+        return False
+    
+    # Check for question indicators
+    question_words = ["nedir", "kimdir", "nasil", "neden", "nicin", "ne", "kim", 
+                     "anlat", "acikla", "ogren", "bilgi", "sor"]
+    
+    has_question = any(qw in norm for qw in question_words)
+    
+    # If it has question words OR multiple meaningful words, it's a query
+    return has_question or len(meaningful_words) >= 3
+
 def get_local_response(text: str) -> Optional[str]:
     """Generate local response for common greetings - Gem style"""
     norm = normalize_turkish(text).strip()
@@ -594,8 +628,14 @@ def main():
         
         scroll_to_bottom()
         
-        # Search knowledge base
-        sources, _ = search_kb(user_input, st.session_state.db)
+        # SMART QUERY ANALYSIS
+        # Only search if it's a meaningful query, not just greetings
+        sources = []
+        if is_meaningful_query(user_input):
+            sources, _ = search_kb(user_input, st.session_state.db)
+            logger.info(f"Query analyzed as meaningful, found {len(sources)} sources")
+        else:
+            logger.info(f"Query analyzed as greeting/casual, skipping search")
         
         # Generate response
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
@@ -609,8 +649,8 @@ def main():
             
             placeholder.markdown(full_response)
             
-            # Show sources in research mode
-            if sources and "Araştırma" in mode:
+            # Show sources in research mode ONLY if sources exist and it's not an error
+            if sources and "Araştırma" in mode and "bulamadım" not in full_response.lower():
                 render_sources(sources)
             
             # Save message
