@@ -371,6 +371,28 @@ def render_sources(sources):
 # ===================== MAIN =====================
 
 def main():
+    # DEBUG: Kaynak sayısını kontrol et
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🔍 Debug Bilgisi")
+    
+    # JSON dosyasını direkt oku
+    try:
+        with open(config.DATA_FILE, 'r', encoding='utf-8') as f:
+            direct_data = json.load(f)
+            st.sidebar.success(f"JSON dosyasında: {len(direct_data)} kaynak")
+    except Exception as e:
+        st.sidebar.error(f"JSON okunamadı: {e}")
+    
+    # Session state'teki veriyi kontrol et
+    if 'db' in st.session_state:
+        st.sidebar.info(f"Bellekte: {len(st.session_state.db)} kaynak")
+    
+    st.sidebar.markdown("---")
+    
+    # Geri kalan kodunuz...
+    render_header()
+    selected_mode = render_sidebar()
+    # ... devamı
     render_header()
     selected_mode = render_sidebar()
     
