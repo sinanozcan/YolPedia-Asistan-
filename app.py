@@ -1055,7 +1055,7 @@ def main():
         
         /* Chat mesajları */
         .stChatMessage {
-            background-color: #2d2d44 !important;
+            background-color: #222222 !important;
             border: 1px solid #3d3d5c !important;
             border-radius: 10px;
             padding: 1rem;
