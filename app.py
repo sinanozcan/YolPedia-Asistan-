@@ -971,13 +971,23 @@ class UIComponents:
         </div>
         """, unsafe_allow_html=True)
     
-    @staticmethod
+        @staticmethod
     def render_sidebar() -> Tuple[str, bool]:
-        """Render enhanced sidebar"""
+        """Render enhanced sidebar with fixed colors"""
         with st.sidebar:
-            st.title("Kontrol Paneli")
+            # Sidebar arkaplanı
+            st.markdown("""
+            <style>
+            section[data-testid="stSidebar"] {
+                background-color: #16213e !important;
+                border-right: 2px solid #B31F2E !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             
-            # Mode selection
+            st.title("🔧 Kontrol Paneli")
+            
+            # Mode selection with custom styling
             mode = st.radio(
                 "Çalışma Modu",
                 ["Sohbet Modu", "Araştırma Modu"],
@@ -985,6 +995,8 @@ class UIComponents:
             )
             
             st.divider()
+            
+            # ... kalan sidebar kodu aynı kalacak ...
             
             # Admin panel
             with st.expander("Sistem Bilgileri"):
@@ -1039,16 +1051,32 @@ class UIComponents:
             
             return mode, export_chat
     
-    @staticmethod
+        @staticmethod
     def render_message(message: Dict):
-        """Render a message with enhanced formatting"""
+        """Render a message with fixed colors"""
         avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
         timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
         
         with st.chat_message(message["role"], avatar=avatar):
-            st.markdown(message["content"])
-            st.caption(timestamp, help="Mesaj zamanı")
-    
+            # Message bubble styling
+            st.markdown(f"""
+            <div style="
+                padding: 0.8rem;
+                border-radius: 10px;
+                background: {'rgba(179, 31, 46, 0.1)' if message['role'] == 'assistant' else 'rgba(45, 45, 68, 0.7)'};
+                border-left: 4px solid {'#B31F2E' if message['role'] == 'assistant' else '#3d3d5c'};
+            ">
+                {message['content']}
+            </div>
+            <div style="
+                text-align: right;
+                font-size: 0.8rem;
+                color: #888;
+                margin-top: 0.3rem;
+            ">
+                {timestamp}
+            </div>
+            """, unsafe_allow_html=True)
     @staticmethod
     def render_sources(sources: List[Dict]):
         """Render source links with snippets"""
@@ -1082,37 +1110,202 @@ def main():
         st.warning("Oturum süreniz doldu. Lütfen sayfayı yenileyin.")
         st.stop()
     
-    # Apply styles
+    # ========== SABİT TEMA CSS ==========
+    
     st.markdown("""
     <style>
-        .stChatMessage { 
-            margin-bottom: 10px; 
-            border-radius: 10px;
-            padding: 10px;
+        /* SABİT TEMA - Her zaman aynı renkler */
+        
+        /* Ana arkaplan */
+        .stApp, .main {
+            background-color: #1a1a2e !important;
+            color: #e6e6e6 !important;
         }
-        .stSpinner > div { 
-            border-top-color: #ff4b4b !important; 
-        }
-        .block-container { 
-            padding-top: 6rem !important;
+        
+        /* Container */
+        .block-container {
+            padding-top: 2rem !important;
             max-width: 900px;
+            background-color: #1a1a2e !important;
         }
+        
+        /* Tüm metinler */
+        .stMarkdown, p, div, span, h1, h2, h3, h4, h5, h6 {
+            color: #e6e6e6 !important;
+        }
+        
+        /* Chat mesajları */
+        .stChatMessage {
+            background-color: #2d2d44 !important;
+            border: 1px solid #3d3d5c !important;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #16213e !important;
+        }
+        
+        section[data-testid="stSidebar"] * {
+            color: #e6e6e6 !important;
+        }
+        
+        /* Radio butonlar */
+        .stRadio label {
+            color: #e6e6e6 !important;
+        }
+        
+        /* Butonlar */
         .stButton button {
-            background-color: #B31F2E;
-            color: white;
+            background-color: #B31F2E !important;
+            color: white !important;
             border: none;
             border-radius: 5px;
             padding: 0.5rem 1rem;
         }
+        
         .stButton button:hover {
-            background-color: #ff3333;
+            background-color: #ff3333 !important;
+        }
+        
+        /* Input alanı */
+        .stChatInputContainer input {
+            background-color: #2d2d44 !important;
+            color: #e6e6e6 !important;
+            border: 1px solid #3d3d5c !important;
+        }
+        
+        /* Linkler */
+        a {
+            color: #ff6b6b !important;
+        }
+        
+        a:hover {
+            color: #ff5252 !important;
+        }
+        
+        /* Spinner */
+        .stSpinner > div {
+            border-top-color: #B31F2E !important;
+        }
+        
+        /* Progress bar */
+        .stProgress > div > div > div {
+            background-color: #B31F2E !important;
+        }
+        
+        /* Divider */
+        hr {
+            border-color: #3d3d5c !important;
+        }
+        
+        /* Expander */
+        .streamlit-expanderHeader {
+            background-color: #2d2d44 !important;
+            color: #e6e6e6 !important;
+            border: 1px solid #3d3d5c !important;
+        }
+        
+        /* Streamlit'in tema kontrolünü devre dışı bırak */
+        [data-theme="light"], [data-theme="dark"] {
+            background-color: #1a1a2e !important;
+            color: #e6e6e6 !important;
+        }
+        
+        /* Header için özel stil - HER ZAMAN BEYAZ YAZI */
+        .header-container, .header-container * {
+            color: white !important;
         }
     </style>
     """, unsafe_allow_html=True)
     
     # Render UI
-    UIComponents.render_header()
-    mode, export_chat = UIComponents.render_sidebar()
+    class UIComponents:
+    """Enhanced UI components"""
+    
+    @staticmethod
+    def render_header():
+        """Render application header with fixed colors"""
+        st.markdown(f"""
+        <div style="
+            text-align: center; 
+            margin-bottom: 30px;
+            padding: 2.5rem;
+            background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%);
+            border-radius: 15px;
+            border: 2px solid #B31F2E;
+            box-shadow: 0 8px 32px rgba(179, 31, 46, 0.2);
+        ">
+            <div style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+                <img src="{config.YOLPEDIA_ICON}" 
+                     style="
+                         width: 80px; 
+                         height: 80px; 
+                         border-radius: 50%; 
+                         border: 3px solid #B31F2E;
+                         padding: 8px;
+                         background: rgba(255,255,255,0.1);
+                     ">
+            </div>
+            
+            <div style="
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                gap: 20px; 
+                margin-bottom: 1rem;
+            ">
+                <img src="{config.CAN_DEDE_ICON}" 
+                     style="
+                         width: 70px; 
+                         height: 70px; 
+                         border-radius: 50%; 
+                         object-fit: cover; 
+                         border: 3px solid #B31F2E;
+                     ">
+                <h1 style="
+                    margin: 0; 
+                    font-size: 2.8rem; 
+                    font-weight: 800; 
+                    color: white !important;
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+                ">
+                    {config.ASSISTANT_NAME}
+                </h1>
+            </div>
+            
+            <div style="
+                font-size: 1.3rem; 
+                font-style: italic; 
+                color: rgba(255,255,255,0.9) !important; 
+                font-family: 'Georgia', serif;
+                margin-top: 1rem;
+                padding: 0.8rem;
+                background: rgba(179, 31, 46, 0.2);
+                border-radius: 10px;
+                border-left: 4px solid #B31F2E;
+            ">
+                {config.MOTTO}
+            </div>
+            
+            <div style="
+                margin-top: 1.5rem;
+                font-size: 1rem;
+                color: rgba(255,255,255,0.7);
+                display: flex;
+                justify-content: center;
+                gap: 20px;
+            ">
+                <span>🔮 Yolpedia.eu</span>
+                <span>•</span>
+                <span>🕊️ Alevî-Bektaşî Rehberi</span>
+                <span>•</span>
+                <span>📚 Araştırma & Sohbet</span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Display messages
     for message in st.session_state.messages:
