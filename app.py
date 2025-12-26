@@ -14,6 +14,32 @@ import logging
 import hashlib
 import html
 import sqlite3
+
+# Sayfanın EN BAŞINDA, tüm import'lardan SONRA ekle:
+
+import streamlit as st
+
+# ===================== CUSTOM PAGE CONFIG =====================
+
+st.set_page_config(
+    page_title="Can Dede | YolPedia Rehberiniz",  # Sekmede görünecek
+    page_icon="🧿",  # Sekmedeki favicon (emoji veya yolpedia icon URL'i)
+    layout="centered",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://yolpedia.eu/yardim',
+        'Report a bug': 'https://yolpedia.eu/iletisim',
+        'About': '''
+        ## YolPedia Can Dede
+        
+        **Alevî-Bektaşî Sohbet ve Araştırma Asistanı**
+        
+        📚 yolpedia.eu
+        
+        "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
+        '''
+    }
+)
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple, Optional, Generator, Any, Set
