@@ -14,6 +14,27 @@ import logging
 import hashlib
 import html
 import sqlite3
+# ===================== CUSTOM PAGE CONFIG =====================
+
+st.set_page_config(
+    page_title="Can Dede | YolPedia Rehberiniz",  # Sekmede görünecek
+    page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",  # Sekmedeki favicon (emoji veya yolpedia icon URL'i)
+    layout="centered",
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://yolpedia.eu/yardim',
+        'Report a bug': 'https://yolpedia.eu/iletisim',
+        'About': '''
+        ## YolPedia Can Dede
+        
+        **Alevî-Bektaşî Sohbet ve Araştırma Asistanı**
+        
+        📚 yolpedia.eu
+        
+        "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
+        '''
+    }
+)
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple, Optional, Generator, Any, Set
@@ -713,10 +734,6 @@ def init_session():
     
     if 'user_tier' not in st.session_state:
         st.session_state.user_tier = "free"
-    
-    # Initialize mode
-    if 'mode' not in st.session_state:
-        st.session_state.mode = "Sohbet Modu"
 
 # ===================== PROMPT ENGINEERING =====================
 
@@ -742,7 +759,7 @@ Sen Can Dede'sin, Yolpedia.eu'nun Alevî-Bektaşî mürşidi ve rehberisin.
 <hitap_ve_uslup>
 - Hitap: "Erenler", "canlar", "dost", "can dost", "güzel dost"
 - Terminoloji: "Eyvallah", "aşk ile", "aşk-ı niyazlarımla", "gerçeğe hü"
-- Derinlik: Kullanıcının bilgi seviyesine göre ayarla
+- Derinnik: Kullanıcının bilgi seviyesine göre ayarla
 </hitap_ve_uslup>
 
 <ilkeler>
@@ -933,82 +950,21 @@ class UIComponents:
     
     @staticmethod
     def render_header():
-        """Render application header with fixed colors"""
+        """Render application header"""
         st.markdown(f"""
-        <div style="
-            text-align: center; 
-            margin-bottom: 30px;
-            padding: 2.5rem;
-            background: linear-gradient(135deg, #0f3460 0%, #1a1a2e 100%);
-            border-radius: 15px;
-            border: 2px solid #B31F2E;
-            box-shadow: 0 8px 32px rgba(179, 31, 46, 0.2);
-        ">
-            <div style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
-                <img src="{config.YOLPEDIA_ICON}" 
-                     style="
-                         width: 80px; 
-                         height: 80px; 
-                         border-radius: 50%; 
-                         border: 3px solid #B31F2E;
-                         padding: 8px;
-                         background: rgba(255,255,255,0.1);
-                     ">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+                <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
             </div>
-            
-            <div style="
-                display: flex; 
-                align-items: center; 
-                justify-content: center; 
-                gap: 20px; 
-                margin-bottom: 1rem;
-            ">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
                 <img src="{config.CAN_DEDE_ICON}" 
-                     style="
-                         width: 70px; 
-                         height: 70px; 
-                         border-radius: 50%; 
-                         object-fit: cover; 
-                         border: 3px solid #B31F2E;
-                     ">
-                <h1 style="
-                    margin: 0; 
-                    font-size: 2.8rem; 
-                    font-weight: 800; 
-                    color: white !important;
-                    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-                ">
+                     style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
                     {config.ASSISTANT_NAME}
                 </h1>
             </div>
-            
-            <div style="
-                font-size: 1.3rem; 
-                font-style: italic; 
-                color: rgba(255,255,255,0.9) !important; 
-                font-family: 'Georgia', serif;
-                margin-top: 1rem;
-                padding: 0.8rem;
-                background: rgba(179, 31, 46, 0.2);
-                border-radius: 10px;
-                border-left: 4px solid #B31F2E;
-            ">
+            <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
                 {config.MOTTO}
-            </div>
-            
-            <div style="
-                margin-top: 1.5rem;
-                font-size: 1rem;
-                color: rgba(255,255,255,0.7);
-                display: flex;
-                justify-content: center;
-                gap: 20px;
-            ">
-                <span>🔮 Yolpedia.eu</span>
-                <span>•</span>
-                <span>🕊️ Alevî-Bektaşî Rehberi</span>
-                <span>•</span>
-                <span>📚 Araştırma & Sohbet</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1184,8 +1140,6 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    # ========== PAGE LAYOUT ==========
-    
     # Sidebar for mode selection
     with st.sidebar:
         st.image(config.YOLPEDIA_ICON, width=80)
@@ -1195,10 +1149,9 @@ def main():
         mode = st.radio(
             "**Mod Seçin:**",
             ["Sohbet Modu", "Araştırma Modu"],
-            index=0 if st.session_state.mode == "Sohbet Modu" else 1,
-            key="mode_selector"
+            index=0,
+            key="mode"
         )
-        st.session_state.mode = mode
         
         st.markdown("---")
         
@@ -1211,10 +1164,6 @@ def main():
             if 'cache' in st.session_state:
                 cache_stats = st.session_state.cache.get_stats()
                 st.metric("Önbellek Başarı", cache_stats["hit_rate"])
-            
-            if 'api_manager' in st.session_state:
-                api_stats = st.session_state.api_manager.get_stats()
-                st.metric("API Başarı Oranı", api_stats["success_rate"])
         
         # Export option
         export_chat = st.checkbox("💾 Sohbeti dışa aktar", value=False)
@@ -1311,14 +1260,14 @@ def main():
                     st.session_state.cache
                 )
                 
-                for chunk in generator.generate(user_input, sources, st.session_state.mode):
+                for chunk in generator.generate(user_input, sources, mode):
                     full_response += chunk
                     placeholder.markdown(full_response + "▌")
             
             placeholder.markdown(full_response)
             
             # Show sources in research mode
-            if sources and st.session_state.mode == "Araştırma Modu":
+            if sources and mode == "Araştırma Modu":
                 UIComponents.render_sources(sources)
             
             # Save assistant message
