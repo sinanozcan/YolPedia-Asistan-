@@ -1142,7 +1142,7 @@ def main():
     
     # Sidebar for mode selection
     with st.sidebar:
-        st.image(config.YOLPEDIA_ICON, width=80)
+        st.image(config.YOLPEDIA_ICON, width=60)
         st.markdown("---")
         
         # Mode selection
