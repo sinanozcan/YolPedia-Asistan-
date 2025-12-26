@@ -14,6 +14,15 @@ import logging
 import hashlib
 import html
 import sqlite3
+from datetime import datetime
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Tuple, Optional, Generator, Any, Set
+from pathlib import Path
+from functools import lru_cache
+from contextlib import contextmanager
+import threading
+from collections import deque, defaultdict
+import secrets
 import streamlit as st
 
 # ===================== CUSTOM PAGE CONFIG =====================
@@ -37,15 +46,6 @@ st.set_page_config(
         '''
     }
 )
-from datetime import datetime
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Tuple, Optional, Generator, Any, Set
-from pathlib import Path
-from functools import lru_cache
-from contextlib import contextmanager
-import threading
-from collections import deque, defaultdict
-import secrets
 
 # ===================== CONFIGURATION =====================
 
@@ -1085,20 +1085,60 @@ def main():
     # Apply styles
     st.markdown("""
     <style>
-        .stChatMessage { 
-            margin-bottom: 10px; 
-            border-radius: 10px;
-            padding: 10px;
+        /* MAIN FIX FOR LIGHT MODE */
+        .stApp, .main .block-container, .stChatMessage,
+        section[data-testid="stSidebar"], .stMarkdown,
+        .stRadio, .stButton, .stExpander {
+            color: #31333F !important;
         }
+        
+        /* All text elements */
+        p, div, span, h1, h2, h3, h4, h5, h6, label, strong, em {
+            color: #31333F !important;
+        }
+        
+        /* Chat specific */
+        .stChatMessage {
+            background-color: #FFFFFF !important;
+            border: 1px solid #E0E0E0 !important;
+            margin-bottom: 10px !important;
+            border-radius: 10px !important;
+            padding: 10px !important;
+        }
+        
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #F8F9FA !important;
+        }
+        
+        section[data-testid="stSidebar"] * {
+            color: #31333F !important;
+        }
+        
+        /* Spinner */
         .stSpinner > div { 
             border-top-color: #ff4b4b !important; 
         }
+        
+        /* Container */
         .block-container { 
             padding-top: 6rem !important;
             max-width: 900px;
         }
+        
+        /* Links */
+        a { 
+            color: #ff4b4b !important; 
+            text-decoration: none; 
+            font-weight: bold; 
+        }
+        a:hover { 
+            text-decoration: underline; 
+        }
+        
+        /* Buttons */
         .stButton button {
-            background-color: #B31F2E;
+            background-color: #ff4b4b;
             color: white;
             border: none;
             border-radius: 5px;
@@ -1106,6 +1146,52 @@ def main():
         }
         .stButton button:hover {
             background-color: #ff3333;
+        }
+        
+        /* Radio buttons */
+        .stRadio label {
+            color: #31333F !important;
+        }
+        
+        /* Input fields */
+        .stChatInputContainer input,
+        .stTextInput input {
+            color: #31333F !important;
+            background-color: #FFFFFF !important;
+            border: 1px solid #E0E0E0 !important;
+        }
+        
+        /* Dark mode compatibility */
+        @media (prefers-color-scheme: dark) {
+            .stApp, .main .block-container, .stChatMessage,
+            section[data-testid="stSidebar"], .stMarkdown,
+            .stRadio, .stButton, .stExpander {
+                color: #FFFFFF !important;
+            }
+            
+            .stChatMessage {
+                background-color: #1E1E1E !important;
+                border: 1px solid #444444 !important;
+            }
+            
+            section[data-testid="stSidebar"] {
+                background-color: #262730 !important;
+            }
+            
+            section[data-testid="stSidebar"] * {
+                color: #FFFFFF !important;
+            }
+            
+            .stRadio label {
+                color: #FFFFFF !important;
+            }
+            
+            .stChatInputContainer input,
+            .stTextInput input {
+                color: #FFFFFF !important;
+                background-color: #1E1E1E !important;
+                border: 1px solid #444444 !important;
+            }
         }
     </style>
     """, unsafe_allow_html=True)
