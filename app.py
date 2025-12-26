@@ -2,18 +2,7 @@
 YolPedia Can Dede - Enhanced Production Version
 With SQLite, Redis, Monitoring, and Advanced Features
 """
-import sys
-import traceback
 
-def handle_exceptions(exc_type, exc_value, exc_traceback):
-    """Custom exception handler"""
-    print("\n" + "="*50)
-    print("STREAMLIT HATASI:")
-    print("="*50)
-    traceback.print_exception(exc_type, exc_value, exc_traceback)
-    print("="*50 + "\n")
-
-sys.excepthook = handle_exceptions
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
@@ -25,15 +14,6 @@ import logging
 import hashlib
 import html
 import sqlite3
-from datetime import datetime
-from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Tuple, Optional, Generator, Any, Set
-from pathlib import Path
-from functools import lru_cache
-from contextlib import contextmanager
-import threading
-from collections import deque, defaultdict
-import secrets
 import streamlit as st
 
 # ===================== CUSTOM PAGE CONFIG =====================
@@ -57,6 +37,15 @@ st.set_page_config(
         '''
     }
 )
+from datetime import datetime
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Tuple, Optional, Generator, Any, Set
+from pathlib import Path
+from functools import lru_cache
+from contextlib import contextmanager
+import threading
+from collections import deque, defaultdict
+import secrets
 
 # ===================== CONFIGURATION =====================
 
@@ -1096,117 +1085,21 @@ def main():
     # Apply styles
     st.markdown("""
     <style>
-        /* SYSTEM THEME VARIABLES */
-        :root {
-            --light-text: #31333F;
-            --light-bg: #FFFFFF;
-            --light-border: #E0E0E0;
-            --light-sidebar: #F8F9FA;
-            --dark-text: #FFFFFF;
-            --dark-bg: #0E1117;
-            --dark-border: #444444;
-            --dark-sidebar: #262730;
+        .stChatMessage { 
+            margin-bottom: 10px; 
+            border-radius: 10px;
+            padding: 10px;
         }
-        
-        /* AUTO-THEME DETECTION */
-        /* Default (Light theme) */
-        .stApp,
-        .main .block-container,
-        .stMarkdown,
-        .stChatMessage,
-        section[data-testid="stSidebar"],
-        .stRadio,
-        .stButton,
-        .stExpander {
-            color: var(--light-text) !important;
-        }
-        
-        .stChatMessage {
-            background-color: var(--light-bg) !important;
-            border: 1px solid var(--light-border) !important;
-            margin-bottom: 10px !important;
-            border-radius: 10px !important;
-            padding: 10px !important;
-        }
-        
-        section[data-testid="stSidebar"] {
-            background-color: var(--light-sidebar) !important;
-        }
-        
-        section[data-testid="stSidebar"] * {
-            color: var(--light-text) !important;
-        }
-        
-        .stRadio label {
-            color: var(--light-text) !important;
-        }
-        
-        .stChatInputContainer input,
-        .stTextInput input {
-            color: var(--light-text) !important;
-            background-color: var(--light-bg) !important;
-            border: 1px solid var(--light-border) !important;
-        }
-        
-        /* Streamlit Dark Theme Detection */
-        [data-testid="stAppViewContainer"][data-theme="dark"],
-        [data-theme="dark"] .stApp,
-        [data-theme="dark"] .main .block-container,
-        [data-theme="dark"] .stMarkdown,
-        [data-theme="dark"] .stChatMessage,
-        [data-theme="dark"] section[data-testid="stSidebar"],
-        [data-theme="dark"] .stRadio,
-        [data-theme="dark"] .stButton,
-        [data-theme="dark"] .stExpander {
-            color: var(--dark-text) !important;
-        }
-        
-        [data-theme="dark"] .stChatMessage {
-            background-color: #1E1E1E !important;
-            border: 1px solid var(--dark-border) !important;
-        }
-        
-        [data-theme="dark"] section[data-testid="stSidebar"] {
-            background-color: var(--dark-sidebar) !important;
-        }
-        
-        [data-theme="dark"] section[data-testid="stSidebar"] * {
-            color: var(--dark-text) !important;
-        }
-        
-        [data-theme="dark"] .stRadio label {
-            color: var(--dark-text) !important;
-        }
-        
-        [data-theme="dark"] .stChatInputContainer input,
-        [data-theme="dark"] .stTextInput input {
-            color: var(--dark-text) !important;
-            background-color: #1E1E1E !important;
-            border: 1px solid var(--dark-border) !important;
-        }
-        
-        /* Common styles (always apply) */
         .stSpinner > div { 
             border-top-color: #ff4b4b !important; 
         }
-        
         .block-container { 
-            padding-top: 2rem !important;
+            padding-top: 6rem !important;
             max-width: 900px;
         }
-        
-        a { 
-            color: #ff4b4b !important; 
-            text-decoration: none; 
-            font-weight: bold; 
-        }
-        a:hover { 
-            text-decoration: underline; 
-        }
-        
         .stButton button {
-            background-color: #ff4b4b;
-            color: white !important;
+            background-color: #B31F2E;
+            color: white;
             border: none;
             border-radius: 5px;
             padding: 0.5rem 1rem;
@@ -1214,44 +1107,12 @@ def main():
         .stButton button:hover {
             background-color: #ff3333;
         }
-        
-        /* Custom header - always visible */
-        .custom-header h1,
-        .custom-header .motto {
-            color: white !important;
-        }
     </style>
     """, unsafe_allow_html=True)
     
     # Render UI
-    
-def render_header():
-    """Render application header - theme fixed"""
-    st.markdown(f"""
-    <div style="text-align: center; margin-bottom: 30px; padding: 2rem; 
-                background: linear-gradient(135deg, #ff4b4b 0%, #ff6b6b 100%); 
-                border-radius: 15px; color: white !important;">
-        <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-            <img src="{config.YOLPEDIA_ICON}" 
-                 style="width: 70px; height: 70px; border-radius: 50%; 
-                        border: 3px solid white; padding: 5px; 
-                        background: rgba(255,255,255,0.1);">
-        </div>
-        <div style="display: flex; align-items: center; justify-content: center; 
-                    gap: 15px; margin-bottom: 10px;">
-            <img src="{config.CAN_DEDE_ICON}" 
-                 style="width: 60px; height: 60px; border-radius: 50%; 
-                        object-fit: cover; border: 2px solid white;">
-            <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: white !important;">
-                {config.ASSISTANT_NAME}
-            </h1>
-        </div>
-        <div style="font-size: 18px; font-style: italic; color: rgba(255,255,255,0.9) !important; 
-                    font-family: 'Georgia', serif; margin-top: 10px;">
-            {config.MOTTO}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    UIComponents.render_header()
+    mode, export_chat = UIComponents.render_sidebar()
     
     # Display messages
     for message in st.session_state.messages:
