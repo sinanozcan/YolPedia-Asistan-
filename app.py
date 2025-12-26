@@ -952,7 +952,7 @@ class UIComponents:
     def render_sidebar() -> Tuple[str, bool]:
         """Render enhanced sidebar"""
         with st.sidebar:
-            st.title("🔧 Kontrol Paneli")
+            st.title("Kontrol Paneli")
             
             # Mode selection
             mode = st.radio(
@@ -964,12 +964,12 @@ class UIComponents:
             st.divider()
             
             # Admin panel
-            with st.expander("⚙️ Sistem Bilgileri"):
-                if st.button("🔄 Veritabanını Yenile"):
+            with st.expander("Sistem Bilgileri"):
+                if st.button("Veritabanını Yenile"):
                     count = st.session_state.kb.load_from_json()
                     st.success(f"{count} kayıt yüklendi")
                 
-                if st.button("📊 İstatistikleri Göster"):
+                if st.button("İstatistikleri Göster"):
                     # Show stats in a nice format
                     stats = st.session_state.kb.get_stats()
                     cache_stats = st.session_state.cache.get_stats()
@@ -989,18 +989,18 @@ class UIComponents:
             # Chat controls
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("🗑️ Sohbeti Temizle", use_container_width=True):
+                if st.button("Sohbeti Temizle", use_container_width=True):
                     st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": "Sohbet temizlendi. Yeniden başlayalım can dost...",
+                        "content": "Sohbet temizlendi. Yeni bir sohbet başlatalım mi, can dost?..",
                         "timestamp": time.time()
                     })
                     logger.info("Chat cleared by user")
                     st.rerun()
             
             with col2:
-                export_chat = st.button("💾 Sohbeti Dışa Aktar", use_container_width=True)
+                export_chat = st.button("Sohbeti Dışa Aktar", use_container_width=True)
             
             st.divider()
             
@@ -1011,8 +1011,8 @@ class UIComponents:
             
             st.progress(remaining / limit, text=f"{tier.upper()} - {remaining}/{limit}")
             
-            st.caption(f"💾 Cache: {st.session_state.cache.get_stats()['size']} kayıt")
-            st.caption(f"🗂️ Veritabanı: {st.session_state.kb.get_stats()['total_entries']} kaynak")
+            st.caption(f"Cache: {st.session_state.cache.get_stats()['size']} kayıt")
+            st.caption(f"Veritabanı: {st.session_state.kb.get_stats()['total_entries']} kaynak")
             
             return mode, export_chat
     
@@ -1033,7 +1033,7 @@ class UIComponents:
             return
         
         st.markdown("---")
-        st.markdown("### 📚 İlgili Kaynaklar")
+        st.markdown("###İlgili Kaynaklar")
         
         for i, source in enumerate(sources[:3], 1):
             with st.container():
@@ -1075,7 +1075,7 @@ def main():
             max-width: 900px;
         }
         .stButton button {
-            background-color: #ff4b4b;
+            background-color: #C72334;
             color: white;
             border: none;
             border-radius: 5px;
