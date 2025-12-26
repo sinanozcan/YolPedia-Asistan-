@@ -1037,7 +1037,7 @@ def main():
         
         /* Ana arkaplan */
         .stApp, .main {
-            background-color: #000 !important;
+            background-color: #020212 !important;
             color: #e6e6e6 !important;
         }
         
