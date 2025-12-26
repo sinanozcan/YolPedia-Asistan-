@@ -88,15 +88,15 @@ class AppConfig:
     
     # AI Models
     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-1.5-flash",
-        "gemini-1.5-pro",
-        "gemini-2.0-flash-exp"
-    ])
-    
-    MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-1.5-flash": 1.0,
-        "gemini-1.5-pro": 0.8,
-        "gemini-2.0-flash-exp": 0.6
+        "gemini-1.5-flash-latest",  # veya "gemini-1.5-flash-001"
+    "gemini-1.5-pro-latest",    # veya "gemini-1.5-pro-001"
+    "gemini-2.0-flash-exp",     # experimental
+])
+
+MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
+    "gemini-1.5-flash-latest": 1.0,
+    "gemini-1.5-pro-latest": 0.8,
+    "gemini-2.0-flash-exp": 0.6
     })
     
     # Stop words
