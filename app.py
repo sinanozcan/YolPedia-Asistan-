@@ -971,7 +971,7 @@ class UIComponents:
         </div>
         """, unsafe_allow_html=True)
     
-        @staticmethod
+    @staticmethod
     def render_message(message: Dict):
         """Render a message with fixed colors"""
         avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
