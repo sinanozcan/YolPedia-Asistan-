@@ -1141,9 +1141,9 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    # Render UI
-    class UIComponents:
-        """Enhanced UI components"""
+# Render UI
+class UIComponents:
+    """Enhanced UI components"""
     
     @staticmethod
     def render_header():
