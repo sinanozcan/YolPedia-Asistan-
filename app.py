@@ -1148,15 +1148,14 @@ def main():
     """, unsafe_allow_html=True)
     
     # Sidebar for mode selection
-    with st.sidebar:
-        # Logo için container
+    with st.sidebar: # Ana blok (En başta)
+        # Alttaki her şey sağa kaymış (içeride) olmalı:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image(config.YOLPEDIA_ICON, width=40)
         
-        st.markdown("---")
+        st.markdown("---") # Bu artık sidebar bloğunun içinde
     
-        # Mode selection (Bunlar da girintili olmalı)
         mode = st.radio(
             "**Mod Seçin:**",
             ["Sohbet Modu", "Araştırma Modu"],
@@ -1164,7 +1163,7 @@ def main():
             key="mode"
         )
         
-        st.markdown("---")
+        st.markdown("---") # Bu da sidebar bloğunun içinde
         
         # Statistics
         with st.expander("İstatistikler"):
