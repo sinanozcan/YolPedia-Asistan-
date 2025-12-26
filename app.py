@@ -1037,7 +1037,7 @@ def main():
         
         /* Ana arkaplan */
         .stApp, .main {
-            background-color: #oooooo !important;
+            background-color: #1a1a2e !important;
             color: #e6e6e6 !important;
         }
         
@@ -1064,7 +1064,7 @@ def main():
         
         /* Sidebar */
         section[data-testid="stSidebar"] {
-            background-color: #16213e !important;
+            background-color: #080e1c !important;
         }
         
         section[data-testid="stSidebar"] * {
