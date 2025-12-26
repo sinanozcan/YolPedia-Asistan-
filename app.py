@@ -1075,7 +1075,7 @@ def main():
             max-width: 900px;
         }
         .stButton button {
-            background-color: #C72334;
+            background-color: #B31F2E;
             color: white;
             border: none;
             border-radius: 5px;
