@@ -1033,12 +1033,6 @@ class UIComponents:
 
 # ===================== MAIN APPLICATION =====================
 
-# GEÇİCİ OLARAK EKLE: Hafızadaki bozuk ayarları zorla siler
-if 'api_manager' in st.session_state:
-    del st.session_state['api_manager']
-if 'kb' in st.session_state:
-    del st.session_state['kb']
-    
 def main():
     """Enhanced main application"""
     # Initialize session
