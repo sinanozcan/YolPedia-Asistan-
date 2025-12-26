@@ -88,17 +88,15 @@ class AppConfig:
     
     # AI Models
     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-3.0-flash",       # En yeni ve hızlı (Ücretli hesapta muhteşem çalışır)
-        "gemini-2.0-flash",       # Çok stabil ve hızlı
-        "gemini-1.5-pro",         # En zeki, uzun metinler için ideal
-        "gemini-1.5-flash"        # En güvenilir yedek
+        "gemini-2.0-flash",       # Şu anki en hızlı ve güncel stabil model
+        "gemini-1.5-pro",         # En zeki ve derin analiz yapan model
+        "gemini-1.5-flash"        # En hızlı ve ekonomik yedek model
     ])
     
     MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-3.0-flash": 1.0,
-        "gemini-1.5-pro": 0.9,
-        "gemini-2.0-flash": 0.7,
-        "gemini-1.5-flash": 0.5,
+        "gemini-2.0-flash": 1.0,
+        "gemini-1.5-pro": 0.8,
+        "gemini-1.5-flash": 0.6
     })
     
     # Stop words
