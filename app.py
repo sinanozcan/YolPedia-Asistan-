@@ -1071,7 +1071,7 @@ def main():
     
     st.markdown("---")
         section[data-testid="stSidebar"] {
-            background-color: #333333 !important;
+            background-color: #222222 !important;
         }
               
         section[data-testid="stSidebar"] * {
@@ -1149,7 +1149,6 @@ def main():
     
     # Sidebar for mode selection
     with st.sidebar: # Ana blok (En başta)
-        # Alttaki her şey sağa kaymış (içeride) olmalı:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image(config.YOLPEDIA_ICON, width=40)
