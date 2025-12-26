@@ -1142,7 +1142,7 @@ def main():
     
     # Sidebar for mode selection
     with st.sidebar:
-        st.image(config.YOLPEDIA_ICON, width=60)
+        st.image(config.YOLPEDIA_ICON, width=40)
         st.markdown("---")
         
         # Mode selection
@@ -1156,7 +1156,7 @@ def main():
         st.markdown("---")
         
         # Statistics
-        with st.expander("📊 İstatistikler"):
+        with st.expander("İstatistikler"):
             if 'kb' in st.session_state:
                 stats = st.session_state.kb.get_stats()
                 st.metric("Toplam Kayıt", stats["total_entries"])
@@ -1166,14 +1166,14 @@ def main():
                 st.metric("Önbellek Başarı", cache_stats["hit_rate"])
         
         # Export option
-        export_chat = st.checkbox("💾 Sohbeti dışa aktar", value=False)
+        export_chat = st.checkbox("Sohbeti dışa aktar", value=False)
         
         # Clear chat
-        if st.button("🗑️ Sohbeti Temizle"):
+        if st.button("Sohbeti Temizle"):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": "Sohbet temizlendi. Yeniden başlayalım can dost!",
+                "content": "Sohbet temizlendi. Yeni bir sohbet başlatalım mı, can dost?",
                 "timestamp": time.time()
             })
             st.rerun()
@@ -1193,7 +1193,7 @@ def main():
         ])
         
         st.download_button(
-            label="📥 Sohbeti İndir",
+            label="Sohbeti İndir",
             data=chat_text,
             file_name=f"yolpedia_sohbet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
             mime="text/plain"
