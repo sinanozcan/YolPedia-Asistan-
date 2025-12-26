@@ -1152,7 +1152,8 @@ def main():
          # Logo için container
          col1, col2, col3 = st.columns([1, 2, 1])
          with col2:
-             st.image(config.YOLPEDIA_ICON, width=80)
+             st.image(config.YOLPEDIA_ICON, width=40)
+        }
         
         st.markdown("---")
         
