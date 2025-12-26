@@ -1078,7 +1078,7 @@ def main():
         
         /* Butonlar */
         .stButton button {
-            background-color: #B31F2E !important;
+            background-color: #cc0000 !important;
             color: white !important;
             border: none;
             border-radius: 5px;
