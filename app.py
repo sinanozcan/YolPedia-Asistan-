@@ -2,7 +2,18 @@
 YolPedia Can Dede - Enhanced Production Version
 With SQLite, Redis, Monitoring, and Advanced Features
 """
+import sys
+import traceback
 
+def handle_exceptions(exc_type, exc_value, exc_traceback):
+    """Custom exception handler"""
+    print("\n" + "="*50)
+    print("STREAMLIT HATASI:")
+    print("="*50)
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
+    print("="*50 + "\n")
+
+sys.excepthook = handle_exceptions
 import streamlit as st
 import streamlit.components.v1 as components
 import google.generativeai as genai
