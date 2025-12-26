@@ -1063,17 +1063,17 @@ def main():
         }
         
         /* Sidebar */
+        with st.sidebar:
+            # Logo için container
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+        st.image(config.YOLPEDIA_ICON, width=80)
+    
+    st.markdown("---")
         section[data-testid="stSidebar"] {
-            background-color: #080e1c !important;
+            background-color: #333333 !important;
         }
-
-        section[data-testid="stSidebar"] .stImage {
-            display: flex !important;
-            justify-content: center !important;
-            margin: 0 auto !important;  
-        }
-
-        
+              
         section[data-testid="stSidebar"] * {
             color: #e6e6e6 !important;
         }
@@ -1148,8 +1148,12 @@ def main():
     """, unsafe_allow_html=True)
     
     # Sidebar for mode selection
-    with st.sidebar:
-        st.image(config.YOLPEDIA_ICON, width=40)
+    wwith st.sidebar:
+         # Logo için container
+         col1, col2, col3 = st.columns([1, 2, 1])
+         with col2:
+             st.image(config.YOLPEDIA_ICON, width=80)
+        
         st.markdown("---")
         
         # Mode selection
