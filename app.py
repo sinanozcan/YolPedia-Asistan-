@@ -902,7 +902,7 @@ class ResponseGenerator:
                 prompt,
                 stream=True,
                 generation_config=gen_config,
-                safety_settings=safety
+                safety_settings=safety,
                 request_options={"timeout": 60}
             )
             
