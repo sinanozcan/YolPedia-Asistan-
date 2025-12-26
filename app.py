@@ -1154,9 +1154,6 @@ def main():
         with col2:
             st.image(config.YOLPEDIA_ICON, width=40)
         
-        # 1156. satırdaki '}' silindi
-        
-        # 1157. satır artık girintili (sidebar bloğunun içinde)
         st.markdown("---")
     
         # Mode selection (Bunlar da girintili olmalı)
