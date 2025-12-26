@@ -1037,13 +1037,13 @@ def main():
         
         /* Ana arkaplan */
         .stApp, .main {
-            background-color: #1a1a2e !important;
+            background-color: #101010 !important;
             color: #e6e6e6 !important;
         }
         
         /* Container */
         .block-container {
-            padding-top: 3rem !important;
+            padding-top: 3.5rem !important;
             max-width: 900px;
             background-color: #1a1a2e !important;
         }
@@ -1066,6 +1066,13 @@ def main():
         section[data-testid="stSidebar"] {
             background-color: #080e1c !important;
         }
+
+        section[data-testid="stSidebar"] .stImage {
+            display: flex !important;
+            justify-content: center !important;
+            margin: 0 auto !important;  
+        }
+
         
         section[data-testid="stSidebar"] * {
             color: #e6e6e6 !important;
