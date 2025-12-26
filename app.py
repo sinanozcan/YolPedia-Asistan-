@@ -313,11 +313,13 @@ class KnowledgeBase:
 
 # ===================== CACHING SYSTEM =====================
 
+# ===================== CACHING SYSTEM =====================
+
 class ResponseCache:
-    """LRU cache for API responses"""
+    """LRU cache for API responses (Passive TTL - No Threading)"""
     
     def __init__(self, max_size: int = config.CACHE_SIZE):
-        self.cache = {}
+        self.cache = {} # {key: {'value': str, 'expiry': float}}
         self.order = deque()
         self.max_size = max_size
         self.hits = 0
@@ -329,39 +331,52 @@ class ResponseCache:
         return hashlib.md5(f"{query}_{mode}".encode()).hexdigest()
     
     def get(self, key: str) -> Optional[str]:
-        """Get from cache"""
+        """Get from cache and check if expired"""
         with self.lock:
             if key in self.cache:
-                # Move to end (most recently used)
-                self.order.remove(key)
+                item = self.cache[key]
+                
+                # Süre kontrolü: Eğer vakti geçtiyse sil
+                if item['expiry'] and time.time() > item['expiry']:
+                    if key in self.order:
+                        self.order.remove(key)
+                    del self.cache[key]
+                    self.misses += 1
+                    return None
+                
+                # Süre dolmadıysa LRU sırasını güncelle
+                if key in self.order:
+                    self.order.remove(key)
                 self.order.append(key)
                 self.hits += 1
-                return self.cache[key]
+                return item['value']
+            
             self.misses += 1
             return None
     
     def set(self, key: str, value: str, ttl: int = 300):
-        """Set cache with TTL"""
+        """Set cache with expiry timestamp"""
         with self.lock:
+            # Boyut limiti kontrolü
             if len(self.cache) >= self.max_size:
-                # Remove oldest
-                oldest = self.order.popleft()
-                del self.cache[oldest]
+                try:
+                    oldest = self.order.popleft()
+                    if oldest in self.cache:
+                        del self.cache[oldest]
+                except IndexError:
+                    pass
             
-            self.cache[key] = value
+            # Zaman damgası ekle
+            expiry = time.time() + ttl if ttl else None
+            
+            self.cache[key] = {
+                'value': value,
+                'expiry': expiry
+            }
+            
+            if key in self.order:
+                self.order.remove(key)
             self.order.append(key)
-            
-            # Schedule removal if TTL specified
-            if ttl:
-                def remove_later():
-                    time.sleep(ttl)
-                    with self.lock:
-                        if key in self.cache:
-                            if key in self.order:
-                                self.order.remove(key)
-                            del self.cache[key]
-                
-                threading.Thread(target=remove_later, daemon=True).start()
     
     def get_stats(self) -> Dict:
         """Get cache statistics"""
@@ -888,6 +903,7 @@ class ResponseGenerator:
                 stream=True,
                 generation_config=gen_config,
                 safety_settings=safety
+                request_options={"timeout": 60}
             )
             
             for chunk in response:
@@ -929,16 +945,16 @@ class ResponseGenerator:
         greetings = ["merhaba", "selam", "slm", "selamun aleykum"]
         if any(g in norm for g in greetings):
             return random.choice([
-                "Eyvallah can dost, hoş geldin. Aşk ile...",
-                "Selam olsun erenler. Buyur can...",
-                "Aşk ile selam, güzel dost. Ne üzerine muhabbet edelim?"
+                "Eyvallah, can dost. Hoş geldin.",
+                "Selam olsun, erenler. Buyur, ne sual etmek istersin?",
+                "Selam, güzel dost. Umarim iyisinizdir. Ne üzerine muhabbet edelim?"
             ])
         
         status = ["nasilsin", "naber", "ne var ne yok"]
         if any(s in norm for s in status):
             return random.choice([
-                "Şükür Hak'ka, bugün de yolun ve sizlerin hizmetindeyim can. Sen nasılsın?",
-                "Çok şükür erenler. Gönül sohbetine hazırım."
+                "Şükür, Erenler, bugün de yolun ve sizlerin hizmetindeyim. Siz nasılsınız?",
+                "Çok şükür, erenler. Dost sohbetine hazırım."
             ])
         
         return None
@@ -1064,10 +1080,9 @@ def main():
         
         /* Sidebar */
         with st.sidebar:
-            # Logo için container
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
-        st.image(config.YOLPEDIA_ICON, width=80)
+                st.image(config.YOLPEDIA_ICON, width=80)
     
     st.markdown("---")
         section[data-testid="stSidebar"] {
@@ -1263,7 +1278,7 @@ def main():
             placeholder = st.empty()
             full_response = ""
             
-            with st.spinner("Can Dede tefekkürde..."):
+            with st.spinner("Can Dede dúşünüyor..."):
                 generator = ResponseGenerator(
                     st.session_state.api_manager,
                     st.session_state.cache
