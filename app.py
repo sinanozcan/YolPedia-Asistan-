@@ -1147,25 +1147,25 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-# Sidebar for mode selection
-with st.sidebar:
-    # Logo için container
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.image(config.YOLPEDIA_ICON, width=40)
+    # Sidebar for mode selection
+    with st.sidebar:
+        # Logo için container
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(config.YOLPEDIA_ICON, width=40)
+        
+        # 1156. satırdaki '}' silindi
+        
+        # 1157. satır artık girintili (sidebar bloğunun içinde)
+        st.markdown("---")
     
-    # 1156. satırdaki '}' silindi
-    
-    # 1157. satır artık girintili (sidebar bloğunun içinde)
-    st.markdown("---")
-
-    # Mode selection (Bunlar da girintili olmalı)
-    mode = st.radio(
-        "**Mod Seçin:**",
-        ["Sohbet Modu", "Araştırma Modu"],
-        index=0,
-        key="mode"
-    )
+        # Mode selection (Bunlar da girintili olmalı)
+        mode = st.radio(
+            "**Mod Seçin:**",
+            ["Sohbet Modu", "Araştırma Modu"],
+            index=0,
+            key="mode"
+        )
         
         st.markdown("---")
         
