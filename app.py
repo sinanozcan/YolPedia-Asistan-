@@ -1043,7 +1043,7 @@ def main():
         
         /* Container */
         .block-container {
-            padding-top: 3.5rem !important;
+            padding-top: 4rem !important;
             max-width: 900px;
             background-color: #222222 !important;
         }
