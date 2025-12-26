@@ -697,12 +697,12 @@ def init_session():
         st.session_state.messages.append({
             "role": "assistant",
             "content": (
-                "Eyvallah, can dost! Ben Can Dede. "
-                "Yolpedia.eu'nun Alevî-Bektaşî sohbet ve araştırma rehberinizim.\n\n"
+                "Merhaba, can dost! Ben Can Dede. "
+                "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
                 "Sol menüden istediğin modu seç:\n\n"
-                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbeti yaparız.\n\n"
+                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbetleri yaparız.\n\n"
                 "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi ararım.\n\n"
-                "Buyur erenler, hangi modda buluşalım? Aşk ile..."
+                "Buyur erenler, hangi modda buluşalım?"
             ),
             "timestamp": time.time()
         })
