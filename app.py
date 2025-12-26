@@ -1213,7 +1213,8 @@ def main():
     """, unsafe_allow_html=True)
     
     # Render UI
-    def render_header():
+    
+def render_header():
     """Render application header - theme fixed"""
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px; padding: 2rem; 
