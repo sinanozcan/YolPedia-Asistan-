@@ -701,7 +701,7 @@ def init_session():
                 "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
                 "Sol menüden istediğin modu seç:\n\n"
                 "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbetleri yaparız.\n\n"
-                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi ararım.\n\n"
+                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi sunarım.\n\n"
                 "Buyur erenler, hangi modda buluşalım?"
             ),
             "timestamp": time.time()
