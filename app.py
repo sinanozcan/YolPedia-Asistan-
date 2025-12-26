@@ -972,7 +972,7 @@ class UIComponents:
         """, unsafe_allow_html=True)
     
         @staticmethod
-    def render_sidebar() -> Tuple[str, bool]:
+def render_sidebar() -> Tuple[str, bool]:
         """Render enhanced sidebar with fixed colors"""
         with st.sidebar:
             # Sidebar arkaplanı
