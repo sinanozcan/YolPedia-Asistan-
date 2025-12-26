@@ -88,15 +88,15 @@ class AppConfig:
     
     # AI Models
     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-2.0-flash-exp",
-        "gemini-2.5-pro",
-        "gemini-3-pro"
+        "gemini-3.0-flash",       # Ana modelin bu olmalı
+        "gemini-3.0-pro",        # Daha derin analizler için
+        "gemini-2.0-flash-001"    # Yedek stabil model
     ])
     
     MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-3-pro": 1.0,
-        "gemini-2.5-pro": 0.8,
-        "gemini-2.0-flash-exp": 0.6
+        "gemini-3.0-flash": 1.0,
+        "gemini-3.0-pro": 0.8,
+        "gemini-2.0-flash-001": 0.6
     })
     
     # Stop words
@@ -310,8 +310,6 @@ class KnowledgeBase:
             "latest_update": latest['updated_at'] if latest else None,
             "latest_title": latest['baslik'] if latest else None
         }
-
-# ===================== CACHING SYSTEM =====================
 
 # ===================== CACHING SYSTEM =====================
 
@@ -935,7 +933,7 @@ class ResponseGenerator:
                     yield fallback
                     return
             
-            yield "⚠️ Teknik bir sorun oluştu. Lütfen daha sonra tekrar deneyin."
+            yield f"⚠️ AI Hatası (Hata Ayıklama): {str(e)}"
     
     @staticmethod
     def get_fallback_response(query: str) -> Optional[str]:
