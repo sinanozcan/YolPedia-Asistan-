@@ -1148,7 +1148,7 @@ def main():
     """, unsafe_allow_html=True)
     
     # Sidebar for mode selection
-    wwith st.sidebar:
+    with st.sidebar:
          # Logo için container
          col1, col2, col3 = st.columns([1, 2, 1])
          with col2:
