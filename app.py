@@ -14,9 +14,6 @@ import logging
 import hashlib
 import html
 import sqlite3
-
-# Sayfanın EN BAŞINDA, tüm import'lardan SONRA ekle:
-
 import streamlit as st
 
 # ===================== CUSTOM PAGE CONFIG =====================
