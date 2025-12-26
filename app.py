@@ -1143,7 +1143,7 @@ def main():
     
     # Render UI
     class UIComponents:
-    """Enhanced UI components"""
+        """Enhanced UI components"""
     
     @staticmethod
     def render_header():
