@@ -15,7 +15,6 @@ import hashlib
 import html
 import sqlite3
 from UIComponents import UIComponents
-
 # ===================== CUSTOM PAGE CONFIG =====================
 
 st.set_page_config(
