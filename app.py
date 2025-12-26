@@ -29,7 +29,7 @@ class AppConfig:
     # Search parameters
     MIN_SEARCH_LENGTH: int = 3
     MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 20
+    SEARCH_SCORE_THRESHOLD: int = 10  # Lowered from 20 to catch more results
     MAX_SEARCH_RESULTS: int = 5
     
     # File paths
@@ -237,18 +237,27 @@ def calculate_score(entry: Dict, query: str, keywords: List[str]) -> int:
     title = normalize_turkish(entry.get('baslik', ''))
     content = normalize_turkish(entry.get('icerik', ''))
     
-    # Exact query match
+    # Exact query match (highest priority)
     if query in title:
-        score += 300
+        score += 500  # Increased from 300
     elif query in content:
-        score += 150
+        score += 250  # Increased from 150
+    
+    # Check for multi-word phrases (e.g., "pir sultan")
+    query_words = query.split()
+    if len(query_words) > 1:
+        # Bonus for all words appearing together
+        if all(word in title for word in query_words):
+            score += 300
+        elif all(word in content for word in query_words):
+            score += 150
     
     # Keyword matches
     for kw in keywords:
         if kw in title:
-            score += 100
+            score += 150  # Increased from 100
         elif kw in content:
-            score += 40 if len(kw) > 3 else 15
+            score += 60 if len(kw) > 3 else 30  # Increased scoring
     
     return score
 
@@ -258,8 +267,10 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
         return [], ""
     
     norm_query = normalize_turkish(query)
+    
+    # More lenient keyword extraction - include shorter words for names
     keywords = [k for k in norm_query.split() 
-                if len(k) > 2 and k not in config.STOP_WORDS]
+                if len(k) > 1 and k not in config.STOP_WORDS]  # Changed from len(k) > 2
     
     if not keywords:
         return [], ""
@@ -279,7 +290,7 @@ def search_kb(query: str, db: List[Dict]) -> Tuple[List[Dict], str]:
     results.sort(key=lambda x: x['puan'], reverse=True)
     top = results[:config.MAX_SEARCH_RESULTS]
     
-    logger.info(f"Search '{query}' returned {len(top)} results")
+    logger.info(f"Search '{query}' with keywords {keywords} returned {len(top)} results")
     return top, norm_query
 
 # ===================== LOCAL RESPONSES =====================
@@ -436,18 +447,24 @@ Sen Can Dede'sin, Yolpedia.eu araştırma modundasın.
 def generate_response(query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
     """Generate AI response with multi-key fallback"""
     
-    # Check for local response
-    local = get_local_response(query)
-    if local:
-        time.sleep(0.3)
-        yield local
-        return
+    # CRITICAL: In research mode, NEVER use local response
+    # Local responses are for casual chat only
+    if "Sohbet" not in mode:
+        # Research mode: skip local response entirely
+        pass
+    else:
+        # Sohbet mode: check for local response
+        local = get_local_response(query)
+        if local:
+            time.sleep(0.3)
+            yield local
+            return
     
     # Build prompt
     prompt = build_gem_prompt(query, sources, mode)
     
     if prompt is None:
-        yield "📚 Arşivde bu konuda kaynak bulamadım can."
+        yield "📚 Maalesef, sorduğunuz konu hakkında Yolpedia.eu veritabanında kaynak bulunamadı."
         return
     
     # Safety settings
