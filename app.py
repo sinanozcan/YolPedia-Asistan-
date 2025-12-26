@@ -87,7 +87,7 @@ class AppConfig:
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
     # AI Models
-     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
+    GEMINI_MODELS: List[str] = field(default_factory=lambda: [
         "gemini-3.0-flash",       # En yeni ve hızlı (Ücretli hesapta muhteşem çalışır)
         "gemini-2.0-flash",       # Çok stabil ve hızlı
         "gemini-1.5-pro",         # En zeki, uzun metinler için ideal
