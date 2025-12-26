@@ -23,7 +23,7 @@ import streamlit as st
 
 st.set_page_config(
     page_title="Can Dede | YolPedia Rehberiniz",  # Sekmede görünecek
-    page_icon="🧿",  # Sekmedeki favicon (emoji veya yolpedia icon URL'i)
+    page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",  # Sekmedeki favicon (emoji veya yolpedia icon URL'i)
     layout="centered",
     initial_sidebar_state="expanded",
     menu_items={
