@@ -1045,7 +1045,7 @@ def main():
         .block-container {
             padding-top: 3.5rem !important;
             max-width: 900px;
-            background-color: #333333 !important;
+            background-color: #222222 !important;
         }
         
         /* Tüm metinler */
