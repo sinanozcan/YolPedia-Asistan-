@@ -24,6 +24,29 @@ import threading
 from collections import deque, defaultdict
 import secrets
 
+# ===================== PAGE CONFIGURATION =====================
+
+st.set_page_config(
+    page_title=config.ASSISTANT_NAME,
+    page_icon=config.YOLPEDIA_ICON,  # Bu zaten var
+    layout="centered",
+    # AŞAĞIDAKİ SATIRLARI EKLE:
+    page_icon="🧭",  # İstersen emoji kullan
+    menu_items={
+        'Get Help': 'https://yolpedia.eu',
+        'Report a bug': "https://yolpedia.eu/contact",
+        'About': f"""
+        # {config.ASSISTANT_NAME}
+        
+        {config.MOTTO}
+        
+        Yolpedia.eu - Alevî-Bektaşî Araştırma Portalı
+        
+        [Yolpedia'ya Git](https://yolpedia.eu)
+        """
+    }
+)
+
 # ===================== CONFIGURATION =====================
 
 @dataclass
