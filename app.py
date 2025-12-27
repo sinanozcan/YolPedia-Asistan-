@@ -895,7 +895,7 @@ YANLIŞ: "Üzüntü de Hakk'ın bir tecellisidir, insanı olgunlaştırır..."
     # Ayrıca dil kuralları ekle
     ctx_section += "\n\n<dil_kurali>\nKullanıcı son mesajında Almanca konuştu. O yüzden Almanca devam et.\n</dil_kurali>"
         
-        # Add sources if available
+     # Add sources if available
         src_section = ""
         if sources:
             src_text = "\n".join([
@@ -904,7 +904,7 @@ YANLIŞ: "Üzüntü de Hakk'ın bir tecellisidir, insanı olgunlaştırır..."
             ])
             src_section = f"\n\n<yolpedia_referanslar>\n{src_text}\n</yolpedia_referanslar>"
         
-        return f"{sys}{ctx_section}{src_section}\n\n<kullanici>\n{query}\n</kullanici>\n\nCan Dede:"
+            return f"{sys}{ctx_section}{src_section}\n\n<kullanici>\n{query}\n</kullanici>\n\nCan Dede:"
     
     @staticmethod
     def build_research_prompt(query: str, sources: List[Dict]) -> Optional[str]:
