@@ -86,17 +86,17 @@ class AppConfig:
     CAN_DEDE_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
-    # AI Models
+    # Ücretli hesabınız için kesin çalışan resmi ID'ler
     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-1.5-pro",          # ⭐ BUNU BİRİNCİ SIRAYA AL
-        "gemini-2.0-flash-exp",    # İkinci
-        "gemini-1.5-flash"         # Son
+        "gemini-2.0-flash",       # Ana model (Hızlı ve zeki)
+        "gemini-1.5-pro",         # Araştırma uzmanı
+        "gemini-1.5-flash"        # Ekonomik yedek
     ])
     
     MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-1.5-pro": 1.0,         # ⭐ EN YÜKSEK ÖNCELİK
-        "gemini-2.0-flash-exp": 0.7,
-        "gemini-1.5-flash": 0.3
+        "gemini-2.0-flash": 1.0,
+        "gemini-1.5-pro": 0.8,
+        "gemini-1.5-flash": 0.6,
     })
     
     # Stop words
