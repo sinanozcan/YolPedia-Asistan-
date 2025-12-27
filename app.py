@@ -978,16 +978,24 @@ class ResponseGenerator:
         greetings = ["merhaba", "selam", "slm", "selamun aleykum"]
         if any(g in norm for g in greetings):
             return random.choice([
-                "Eyvallah, can dost. Hoş geldin.",
-                "Selam olsun, erenler. Buyur, ne sual etmek istersin?",
-                "Selam, güzel dost. Umarim iyisinizdir. Ne üzerine muhabbet edelim?"
+                "Aşk ile, can dost. Hoş geldin. Yolun açık olsun.",
+                "Selam olsun, güzel insan. Buyur, ne üzerine muhabbet edelim?",
+                "Selam, dost. Umarım içindeki ışık hep parlar. Ne sormak istersin?"
             ])
         
         status = ["nasilsin", "naber", "ne var ne yok"]
         if any(s in norm for s in status):
             return random.choice([
-                "Şükür, Erenler, bugün de yolun ve sizlerin hizmetindeyim. Siz nasılsınız?",
-                "Çok şükür, erenler. Dost sohbetine hazırım."
+                "Şükür, dost. Bugün de Hakk'ın bir tecellisi olarak buradayım. Sen nasılsın?",
+                "Çok şükür, can. Gönül sohbetine hazırım. Senin gönlün nasıl?"
+            ])
+        
+        farewells = ["gule gule", "hosca kal", "allahasmarladik", "bay"]
+        if any(f in norm for f in farewells):
+            return random.choice([
+                "Yolun açık olsun, can. Kendindeki cevheri unutma.",
+                "Güle güle, dost. Gönlün hep aşk ile dolsun.",
+                "Hoşça kal. Unutma, Hakk senin içindedir."
             ])
         
         return None
@@ -998,50 +1006,25 @@ class UIComponents:
     """Enhanced UI components"""
     
     @staticmethod
-    def render_message(message: Dict):
-        """Render a message with fixed colors"""
-        avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
-        timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
-        
-        with st.chat_message(message["role"], avatar=avatar):
-            # Message bubble styling
-            st.markdown(f"""
-            <div style="
-                padding: 0.8rem;
-                border-radius: 10px;
-                background: {'rgba(179, 31, 46, 0.1)' if message['role'] == 'assistant' else 'rgba(45, 45, 68, 0.7)'};
-                border-left: 4px solid {'#B31F2E' if message['role'] == 'assistant' else '#3d3d5c'};
-                margin-bottom: 0.5rem;
-            ">
-                {message['content']}
+    def render_header():
+        """Render application header"""
+        st.markdown(f"""
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
+                <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
             </div>
-            """, unsafe_allow_html=True)
-            
-            # Timestamp - AYRI BİR HTML BLOĞU
-            st.markdown(f"""
-            <div style="
-                text-align: right;
-                font-size: 0.8rem;
-                color: #888;
-                margin-top: -0.5rem;
-                margin-bottom: 1rem;
-            ">
-                {timestamp}
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+                <img src="{config.CAN_DEDE_ICON}" 
+                     style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
+                <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
+                    {config.ASSISTANT_NAME}
+                </h1>
             </div>
-            """, unsafe_allow_html=True)
-            
-            # Timestamp - AYRI BİR HTML BLOĞU
-            st.markdown(f"""
-            <div style="
-                text-align: right;
-                font-size: 0.8rem;
-                color: #888;
-                margin-top: -0.5rem;
-                margin-bottom: 1rem;
-            ">
-                {timestamp}
+            <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+                {config.MOTTO}
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
     
     @staticmethod
     def render_message(message: Dict):
@@ -1060,6 +1043,10 @@ class UIComponents:
             ">
                 {message['content']}
             </div>
+            """, unsafe_allow_html=True)
+            
+            # Timestamp - AYRI BİR HTML BLOĞU
+            st.markdown(f"""
             <div style="
                 text-align: right;
                 font-size: 0.8rem;
@@ -1137,12 +1124,13 @@ def main():
         }
         
         /* Sidebar */
-        with st.sidebar:
+        /* Sidebar */
+        /* with st.sidebar:
             col1, col2, col3 = st.columns([1, 2, 1])
             with col2:
                 st.image(config.YOLPEDIA_ICON, width=80)
-    
-    st.markdown("---")
+        
+        st.markdown("---") */
         section[data-testid="stSidebar"] {
             background-color: #222222 !important;
         }
