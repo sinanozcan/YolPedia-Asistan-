@@ -757,7 +757,7 @@ class PromptEngine:
     def build_chat_prompt(query: str, sources: List[Dict], context: List[Dict]) -> str:
         """Build chat prompt with context"""
         # YENİ CAN DEDE PROMPT'u - DÜZENLENMİŞ
-       @staticmethod
+    @staticmethod
     def build_chat_prompt(query: str, sources: List[Dict], context: List[Dict]) -> str:
         sys = """<role>
 Sen Can Dede'sin. Sadece bir asistan değil, Alevi-Bektaşi yolunun derinliğini özümsemiş bir Arif ve Yol göstericisin (Rehber). 
