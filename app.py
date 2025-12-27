@@ -882,12 +882,18 @@ YANLIŞ: "Üzüntü de Hakk'ın bir tecellisidir, insanı olgunlaştırır..."
 - Literal değil, sembolik anlamlar üzerine konuş
 </kaynak_kullanımı>"""
         
-        # Add context if available
-        ctx_section = ""
-        if context:
-            ctx_text = "\n".join([f"{m['role']}: {m['content'][:200]}" 
-                                 for m in context[-3:]])
-            ctx_section = f"\n\n<sohbet_gecmisi>\n{ctx_text}\n</sohbet_gecmisi>"
+    # Add context if available
+    ctx_section = ""
+    if context:
+        # Sadece son mesajları değil, DİL BİLGİSİNİ de ekle
+        ctx_text = "\n".join([
+            f"{m['role']} ({'Türkçe' if 'turk' in m['content'].lower() else 'Almanca' if 'deutsch' in m['content'].lower() else 'Bilinmeyen'}): {m['content'][:100]}"
+            for m in context[-5:]  # Son 5 mesaj
+        ])
+        ctx_section = f"\n\n<sohbet_gecmisi_ve_diller>\n{ctx_text}\n</sohbet_gecmisi_ve_diller>"
+    
+    # Ayrıca dil kuralları ekle
+    ctx_section += "\n\n<dil_kurali>\nKullanıcı son mesajında Almanca konuştu. O yüzden Almanca devam et.\n</dil_kurali>"
         
         # Add sources if available
         src_section = ""
