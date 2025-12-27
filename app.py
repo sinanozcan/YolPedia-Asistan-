@@ -1188,13 +1188,6 @@ def main():
         }
         
         /* Sidebar */
-        /* Sidebar */
-        /* with st.sidebar:
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                st.image(config.YOLPEDIA_ICON, width=80)
-        
-        st.markdown("---") */
         section[data-testid="stSidebar"] {
             background-color: #222222 !important;
         }
@@ -1273,12 +1266,12 @@ def main():
     """, unsafe_allow_html=True)
     
     # Sidebar for mode selection
-    with st.sidebar: # Ana blok (En başta)
+    with st.sidebar:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image(config.YOLPEDIA_ICON, width=40)
         
-        st.markdown("---") # Bu artık sidebar bloğunun içinde
+        st.markdown("---")
     
         mode = st.radio(
             "**Mod Seçin:**",
@@ -1287,7 +1280,7 @@ def main():
             key="mode"
         )
         
-        st.markdown("---") # Bu da sidebar bloğunun içinde
+        st.markdown("---")
         
         # Statistics
         with st.expander("İstatistikler"):
@@ -1334,35 +1327,35 @@ def main():
         )
     
     # Handle user input
-if user_input := st.chat_input("Can Dede'ye sor..."):
-    # Sanitize input
-    user_input = SecurityManager.sanitize_input(user_input)
-    
-    if not user_input:
-        st.error("Geçersiz giriş")
-        st.stop()
-    
-    # Check rate limit
-    ok, err_msg, remaining = st.session_state.rate_limiter.check_limit()
-    if not ok:
-        st.error(err_msg)
-        st.stop()
-    
-    # Update request count
-    st.session_state.request_count += 1
-    
-    # Add user message
-    user_message = {
-        "role": "user",
-        "content": user_input,
-        "timestamp": time.time()
-    }
-    st.session_state.messages.append(user_message)  # ← BURASI ÇALIŞIYOR MU?
-    UIComponents.render_message(user_message)  # ← EKRANDA GÖSTERİYOR MU?
+    if user_input := st.chat_input("Can Dede'ye sor..."):
+        # Sanitize input
+        user_input = SecurityManager.sanitize_input(user_input)
+        
+        if not user_input:
+            st.error("Geçersiz giriş")
+            st.stop()
+        
+        # Check rate limit
+        ok, err_msg, remaining = st.session_state.rate_limiter.check_limit()
+        if not ok:
+            st.error(err_msg)
+            st.stop()
+        
+        # Update request count
+        st.session_state.request_count += 1
+        
+        # Add user message
+        user_message = {
+            "role": "user",
+            "content": user_input,
+            "timestamp": time.time()
+        }
+        st.session_state.messages.append(user_message)
+        UIComponents.render_message(user_message)
         
         # Scroll to bottom
-    components.html(
-        """
+        components.html(
+            """
             <script>
                 setTimeout(() => {
                     const main = window.parent.document.querySelector(".main");
