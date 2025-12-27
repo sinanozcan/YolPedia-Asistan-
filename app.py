@@ -1334,31 +1334,31 @@ def main():
         )
     
     # Handle user input
-    if user_input := st.chat_input("Can Dede'ye sor..."):
-        # Sanitize input
-        user_input = SecurityManager.sanitize_input(user_input)
-        
-        if not user_input:
-            st.error("Geçersiz giriş")
-            st.stop()
-        
-        # Check rate limit
-        ok, err_msg, remaining = st.session_state.rate_limiter.check_limit()
-        if not ok:
-            st.error(err_msg)
-            st.stop()
-        
-        # Update request count
-        st.session_state.request_count += 1
-        
-        # Add user message
-        user_message = {
-            "role": "user",
-            "content": user_input,
-            "timestamp": time.time()
-        }
-        st.session_state.messages.append(user_message)
-        UIComponents.render_message(user_message)
+if user_input := st.chat_input("Can Dede'ye sor..."):
+    # Sanitize input
+    user_input = SecurityManager.sanitize_input(user_input)
+    
+    if not user_input:
+        st.error("Geçersiz giriş")
+        st.stop()
+    
+    # Check rate limit
+    ok, err_msg, remaining = st.session_state.rate_limiter.check_limit()
+    if not ok:
+        st.error(err_msg)
+        st.stop()
+    
+    # Update request count
+    st.session_state.request_count += 1
+    
+    # Add user message
+    user_message = {
+        "role": "user",
+        "content": user_input,
+        "timestamp": time.time()
+    }
+    st.session_state.messages.append(user_message)  # ← BURASI ÇALIŞIYOR MU?
+    UIComponents.render_message(user_message)  # ← EKRANDA GÖSTERİYOR MU?
         
         # Scroll to bottom
         components.html(
