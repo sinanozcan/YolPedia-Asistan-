@@ -1361,8 +1361,8 @@ if user_input := st.chat_input("Can Dede'ye sor..."):
     UIComponents.render_message(user_message)  # ← EKRANDA GÖSTERİYOR MU?
         
         # Scroll to bottom
-        components.html(
-            """
+    components.html(
+        """
             <script>
                 setTimeout(() => {
                     const main = window.parent.document.querySelector(".main");
