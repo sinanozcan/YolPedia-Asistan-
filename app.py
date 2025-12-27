@@ -997,26 +997,38 @@ class ResponseGenerator:
 class UIComponents:
     """Enhanced UI components"""
     
-    @staticmethod
-    def render_header():
-        """Render application header"""
-        st.markdown(f"""
-        <div style="text-align: center; margin-bottom: 30px;">
-            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
+   @staticmethod
+    def render_message(message: Dict):
+        """Render a message with fixed colors"""
+        avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
+        timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
+        
+        with st.chat_message(message["role"], avatar=avatar):
+            # Message bubble styling
+            st.markdown(f"""
+            <div style="
+                padding: 0.8rem;
+                border-radius: 10px;
+                background: {'rgba(179, 31, 46, 0.1)' if message['role'] == 'assistant' else 'rgba(45, 45, 68, 0.7)'};
+                border-left: 4px solid {'#B31F2E' if message['role'] == 'assistant' else '#3d3d5c'};
+                margin-bottom: 0.5rem;
+            ">
+                {message['content']}
             </div>
-            <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
-                <img src="{config.CAN_DEDE_ICON}" 
-                     style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
-                <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
-                    {config.ASSISTANT_NAME}
-                </h1>
+            """, unsafe_allow_html=True)
+            
+            # Timestamp - AYRI BİR HTML BLOĞU
+            st.markdown(f"""
+            <div style="
+                text-align: right;
+                font-size: 0.8rem;
+                color: #888;
+                margin-top: -0.5rem;
+                margin-bottom: 1rem;
+            ">
+                {timestamp}
             </div>
-            <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
-                {config.MOTTO}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+            """, unsafe_allow_html=True)
     
     @staticmethod
     def render_message(message: Dict):
