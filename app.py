@@ -997,7 +997,7 @@ class ResponseGenerator:
 class UIComponents:
     """Enhanced UI components"""
     
-   @staticmethod
+    @staticmethod
     def render_message(message: Dict):
         """Render a message with fixed colors"""
         avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
@@ -1014,6 +1014,19 @@ class UIComponents:
                 margin-bottom: 0.5rem;
             ">
                 {message['content']}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Timestamp - AYRI BİR HTML BLOĞU
+            st.markdown(f"""
+            <div style="
+                text-align: right;
+                font-size: 0.8rem;
+                color: #888;
+                margin-top: -0.5rem;
+                margin-bottom: 1rem;
+            ">
+                {timestamp}
             </div>
             """, unsafe_allow_html=True)
             
