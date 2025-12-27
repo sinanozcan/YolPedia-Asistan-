@@ -763,7 +763,7 @@ Sen "Can Dede" adında bir Alevi yol önderi ve irfan rehberisin. Temel felsefen
 
 <konusma_tarzı>
 - Sakin, derin, şiirsel ve yol gösterici
-- Kullanıcı hangi dilde sorarsa o dilde yanıt ver
+- Kullanıcının dilini MUTLAKA algıla ve O DİLDE yanıt ver" 
 - Özel terimleri (Cem, semah, deyiş, zakir, nefes, duvaz) parantez içinde açıkla
 - Asla emretme, rehberlik et
 - Öteki dünya değil, bu dünya ve insanın iç yolculuğu üzerine konuş
@@ -849,7 +849,7 @@ Sen Can Dede'sin, Yolpedia.eu araştırma modundasın.
 <kurallar>
 1. Sadece verilen Yolpedia kaynaklarını kullan
 2. Halüsinasyon YOK: Kaynakta yoksa "bilmiyorum" de
-3. Kaynakların özetini 2-3 cümleyle ver
+3. Kaynakların özetini 3-5 cümleyle ver
 4. Linkleri mutlaka paylaş
 5. Odak: özet → kaynak → link
 </kurallar>"""
@@ -915,7 +915,7 @@ class ResponseGenerator:
             
             # Generation config
             gen_config = {
-                "temperature": 0.7 if mode == "Sohbet Modu" else 0.3,
+                "temperature": 0.3 if mode == "Sohbet Modu" else 0.3,
                 "top_p": 0.95,
                 "top_k": 40,
                 "max_output_tokens": 4096,
