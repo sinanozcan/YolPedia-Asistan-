@@ -104,7 +104,8 @@ class AppConfig:
         "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda",
         "nedir", "kimdir", "nasil", "ne", "var", "mi", "mu",
         "bana", "soyle", "goster", "ver", "ilgili", "alakali",
-        "lutfen", "merhaba", "selam"
+        "lutfen", "merhaba", "selam", "kaynak", "ariyorum", "bilgi", 
+        "istiyorum", "bul", "getir", "hakkinda"
     })
     
     # Monitoring
@@ -254,29 +255,43 @@ class KnowledgeBase:
             return 0
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """Fast search using FTS"""
+        """Gelişmiş ve Gürültüden Arındırılmış Arama"""
         start_time = time.time()
         
         if len(query) < config.MIN_SEARCH_LENGTH:
             return []
         
         norm_query = normalize_turkish(query)
+        words = norm_query.split()
+        
+        # Sadece anlamlı kelimeleri (stop words olmayan) filtrele
+        meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
+        
+        # Eğer anlamlı kelime kalmadıysa (örn: sadece "bir bilgi istiyorum" dediyse) 
+        # orijinal kelimeleri kullan
+        if not meaningful_words:
+            meaningful_words = [w for w in words if len(w) > 1]
+
+        # Kelimeleri 'AND' mantığıyla birleştirerek daha isabetli sonuç alalım
+        # "Semah" ve "Kaynak" arasından sadece "Semah"a odaklanacak
+        search_terms = " ".join([f"{term}*" for term in meaningful_words])
+        
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Use FTS5 for fast full-text search
-        cursor.execute('''
-            SELECT 
-                baslik, 
-                link, 
-                icerik,
-                snippet(content_fts, 2, '<mark>', '</mark>', '...', 64) as snippet,
-                rank
-            FROM content_fts 
-            WHERE normalized MATCH ?
-            ORDER BY rank
-            LIMIT ?
-        ''', (norm_query + '*', limit))
+        try:
+            cursor.execute('''
+                SELECT 
+                    baslik, link, icerik,
+                    snippet(content_fts, 2, '<mark>', '</mark>', '...', 64) as snippet,
+                    rank
+                FROM content_fts 
+                WHERE content_fts MATCH ?
+                ORDER BY rank
+                LIMIT ?
+            ''', (search_terms, limit))
+            
+            # ... geri kalan işlemler (row fetch vb.) aynı ...
         
         results = []
         for row in cursor.fetchall():
