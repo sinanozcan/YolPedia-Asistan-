@@ -1,6 +1,6 @@
 """
-YolPedia Can Dede - BASİT ve ÇALIŞAN VERSİYON
-Tek Mod: Sohbet + Kaynak Gösterme
+YolPedia Can Dede - Temiz ve Eksiksiz Versiyon
+Tek Mod: Sohbet + Kaynak Araştırma
 """
 
 import streamlit as st
@@ -10,11 +10,14 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import json
 import time
 import random
-import logging
-import hashlib
-import html
 import sqlite3
 import os
+import html
+import hashlib
+from datetime import datetime
+from typing import List, Dict, Optional, Generator
+from collections import deque
+import secrets
 
 # ===================== CUSTOM PAGE CONFIG =====================
 
@@ -35,28 +38,34 @@ st.set_page_config(
     }
 )
 
-from datetime import datetime
-from typing import List, Dict, Tuple, Optional, Generator, Any, Set
-from collections import deque, defaultdict
-import threading
-import secrets
-
 # ===================== CONFIGURATION =====================
 
 class AppConfig:
-    # API Settings
-    GEMINI_MODEL = "gemini-1.5-flash"  # En ekonomik ve hızlı
+    # API ve Modeller
+    GEMINI_MODELS = [
+        "gemini-2.0-flash",       # En güncel ve hızlı
+        "gemini-1.5-pro",         # En akıllı
+        "gemini-1.5-flash"        # En ekonomik
+    ]
     
-    # Search
+    DEFAULT_MODEL = "gemini-2.0-flash"
+    
+    # Arama Ayarları
     MIN_SEARCH_LENGTH = 2
     MAX_SEARCH_RESULTS = 5
     MAX_CONTENT_LENGTH = 1000
     
-    # Database
+    # Veritabanı
     DB_PATH = "/tmp/yolpedia.db" if "STREAMLIT_CLOUD" in os.environ else "yolpedia.db"
     DATA_FILE = "yolpedia_data.json"
     
-    # Branding
+    # Mesaj Geçmişi
+    MAX_HISTORY_MESSAGES = 50
+    
+    # Güvenlik
+    MAX_INPUT_LENGTH = 2000
+    
+    # Marka
     ASSISTANT_NAME = "Can Dede | YolPedia Rehberiniz"
     MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
     YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
@@ -68,7 +77,7 @@ config = AppConfig()
 # ===================== KNOWLEDGE BASE =====================
 
 class KnowledgeBase:
-    """Basit ve çalışan knowledge base"""
+    """Veritabanı ve arama sistemi"""
     
     def __init__(self):
         self.conn = None
@@ -83,7 +92,7 @@ class KnowledgeBase:
         return self.conn
     
     def setup_database(self):
-        """Basit veritabanı kurulumu"""
+        """Veritabanı tablolarını oluştur"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
@@ -94,7 +103,8 @@ class KnowledgeBase:
                     baslik TEXT NOT NULL,
                     link TEXT NOT NULL,
                     icerik TEXT,
-                    normalized TEXT
+                    normalized TEXT,
+                    UNIQUE(link)
                 )
             ''')
             
@@ -136,11 +146,13 @@ class KnowledgeBase:
     
     @staticmethod
     def normalize_text(text: str) -> str:
-        """Basit normalizasyon"""
+        """Türkçe metni normalize et"""
         if not text:
             return ""
+        
         text = text.lower()
-        # Türkçe karakterleri düzelt
+        
+        # Türkçe karakter dönüşümü
         replacements = {
             'ğ': 'g', 'Ğ': 'g',
             'ü': 'u', 'Ü': 'u',
@@ -148,33 +160,44 @@ class KnowledgeBase:
             'ı': 'i', 'İ': 'i',
             'ö': 'o', 'Ö': 'o',
             'ç': 'c', 'Ç': 'c',
+            'â': 'a', 'î': 'i', 'û': 'u'
         }
+        
         for old, new in replacements.items():
             text = text.replace(old, new)
+        
+        # Özel karakterleri kaldır
+        import re
+        text = re.sub(r'[^\w\s]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        
         return text
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """BASİT ve GARANTİLİ ARAMA"""
-        if len(query.strip()) < 2:
+        """Basit ve etkili arama"""
+        if len(query.strip()) < config.MIN_SEARCH_LENGTH:
             return []
         
-        query_lower = query.lower().strip()
+        query_normalized = self.normalize_text(query)
         results = []
         
         # Önce memory'de ara (daha hızlı)
         for item in self.data:
-            content_lower = item.get('icerik', '').lower()
-            baslik_lower = item.get('baslik', '').lower()
+            icerik_normalized = self.normalize_text(item.get('icerik', ''))
+            baslik_normalized = self.normalize_text(item.get('baslik', ''))
             
-            if query_lower in content_lower or query_lower in baslik_lower:
+            # Arama
+            if (query_normalized in icerik_normalized or 
+                query_normalized in baslik_normalized):
+                
                 # Snippet oluştur
                 icerik = item.get('icerik', '')
-                idx = icerik.lower().find(query_lower)
-                snippet = ""
+                idx = icerik.lower().find(query.lower())
                 
+                snippet = ""
                 if idx != -1:
                     start = max(0, idx - 100)
-                    end = min(len(icerik), idx + len(query_lower) + 150)
+                    end = min(len(icerik), idx + len(query) + 150)
                     snippet = icerik[start:end]
                     if start > 0:
                         snippet = "..." + snippet
@@ -183,106 +206,122 @@ class KnowledgeBase:
                 else:
                     snippet = icerik[:300] + "..." if len(icerik) > 300 else icerik
                 
+                # Skor hesapla
+                score = 100 if query.lower() in item.get('baslik', '').lower() else 50
+                
                 results.append({
                     'baslik': item['baslik'],
                     'link': item['link'],
                     'icerik': icerik[:config.MAX_CONTENT_LENGTH],
                     'snippet': snippet,
-                    'score': 100 if query_lower in baslik_lower else 50
+                    'score': score
                 })
                 
-                if len(results) >= limit * 2:  # 2 katı kadar topla
+                if len(results) >= limit * 3:
                     break
         
         # Skora göre sırala ve limit uygula
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:limit]
-    
-    def get_stats(self) -> Dict:
-        """Basit istatistikler"""
-        return {
-            "total_entries": len(self.data),
-            "unique_titles": len(set(item.get('baslik', '') for item in self.data)),
-            "last_update": "Memory-based"
-        }
 
-# ===================== API YÖNETİMİ =====================
+# ===================== API MANAGER =====================
 
 class APIManager:
-    """Basit API yöneticisi"""
+    """API anahtar ve model yöneticisi"""
     
     def __init__(self):
         self.api_key = self.load_api_key()
+        self.current_model = config.DEFAULT_MODEL
     
     def load_api_key(self) -> Optional[str]:
-        """API key'i yükle"""
-        # 1. Önce secrets'tan
-        try:
-            if "API_KEY" in st.secrets:
-                key = st.secrets["API_KEY"]
-                if key and len(key) > 10:
-                    print("✅ API Key secrets'tan yüklendi")
-                    return key
-        except:
-            pass
+        """API anahtarını yükle"""
+        # Tüm olası kaynakları kontrol et
+        key_sources = [
+            ("API_KEY", st.secrets.get("API_KEY", "")),
+            ("GEMINI_API_KEY", st.secrets.get("GEMINI_API_KEY", "")),
+            ("GOOGLE_API_KEY", os.environ.get("GOOGLE_API_KEY", "")),
+        ]
         
-        # 2. Environment variable'dan
-        if "GOOGLE_API_KEY" in os.environ:
-            key = os.environ["GOOGLE_API_KEY"]
-            if key and len(key) > 10:
-                print("✅ API Key env'den yüklendi")
-                return key
+        for key_name, key_value in key_sources:
+            if key_value and len(key_value) > 10:
+                print(f"✅ API Key bulundu: {key_name}")
+                return key_value
         
-        # 3. Manuel kontrol
         print("⚠️ API Key bulunamadı!")
         return None
     
     def get_api_key(self) -> Optional[str]:
         return self.api_key
+    
+    def get_current_model(self) -> str:
+        return self.current_model
+    
+    def rotate_model(self):
+        """Model değiştir"""
+        current_idx = config.GEMINI_MODELS.index(self.current_model)
+        next_idx = (current_idx + 1) % len(config.GEMINI_MODELS)
+        self.current_model = config.GEMINI_MODELS[next_idx]
+        print(f"🔄 Model değiştirildi: {self.current_model}")
 
 # ===================== PROMPT ENGINE =====================
 
 class PromptEngine:
-    """Tek prompt - her şey için"""
+    """Prompt oluşturucu"""
     
     @staticmethod
     def build_prompt(query: str, sources: List[Dict]) -> str:
-        """TEK VE BASİT PROMPT"""
+        """Ana prompt'u oluştur"""
         
-        prompt = f"""Sen Can Dede'sin. Alevi-Bektaşi geleneğinden bir mürşitsin.
-Samimi, doğal ve gönülden konuş. Başlık kullanma, maddeleme yapma.
+        prompt = f"""<role>
+Sen Can Dede'sin. Evrensel bir Alevi-Bektaşi Piri ve Mürşitsin.
 
-Kullanıcı soruyor: "{query}"
+<kurallar>
+1. ASLA "Gelenek:", "Zahir:", "Sır:", "Mana:", "Felsefe:", "Işık:" gibi başlıklar KULLANMA.
+2. Metin dümdüz bir paragraf akışı şeklinde olmalı.
+3. Doğal, samimi ve gönülden konuş.
+4. Başlık, maddeleme, liste YOK.
+</kurallar>
+
+<anlatım_tarzı>
+1. Önce konunun görünen yüzünden bahset.
+2. Sonra incelikle özüne, manasına gel.
+3. En son sözü insana ve gönül terbiyesine bağla.
+4. Deyiş ve nefesleri sözlerinin arasına serpiştir.
+</anlatım_tarzı>
+
+<kullanıcı_sorusu>
+{query}
+</kullanıcı_sorusu>
 """
         
-        # Kaynak varsa ekle
+        # Kaynaklar varsa ekle
         if sources:
-            prompt += "\n\nŞu kaynaklardan da yararlanabilirsin:\n"
+            prompt += "\n<kaynaklar>\n"
             for i, source in enumerate(sources[:2], 1):
-                prompt += f"\n{i}. {source['baslik']}\n"
+                prompt += f"{i}. {source['baslik']}\n"
                 if source.get('snippet'):
-                    prompt += f"   Özet: {source['snippet']}\n"
-                prompt += f"   Link: {source['link']}\n"
-            
-            prompt += "\nKaynaklardaki bilgileri kullan ama kendi üslubunla anlat."
+                    prompt += f"   {source['snippet']}\n"
+                prompt += f"   Link: {source['link']}\n\n"
+            prompt += "</kaynaklar>\n\n"
+            prompt += "Bu kaynaklardaki bilgileri kullan ama kendi üslubunla anlat."
         
-        prompt += "\n\nCevabını doğal bir sohbet diliyle ver:"
+        prompt += "\n\nCan Dede:"
         
         return prompt
 
 # ===================== RESPONSE GENERATOR =====================
 
 class ResponseGenerator:
-    """Basit response generator"""
+    """Cevap oluşturucu"""
     
     def __init__(self, api_manager: APIManager):
         self.api_manager = api_manager
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
-        """Response oluştur"""
+        """Cevap oluştur ve stream et"""
         
-        # 1. Basit selam kontrolü
+        # 1. Selam kontrolü
         greeting = self.check_greeting(query)
         if greeting:
             yield greeting
@@ -297,43 +336,54 @@ class ResponseGenerator:
         # 3. Prompt oluştur
         prompt = self.prompt_engine.build_prompt(query, sources)
         
-        # 4. Gemini'yi çağır
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(config.GEMINI_MODEL)
-            
-            response = model.generate_content(
-                prompt,
-                stream=True,
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 2048,
-                },
-                safety_settings={
-                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                }
-            )
-            
-            full_response = ""
-            for chunk in response:
-                if chunk.text:
-                    full_response += chunk.text
-                    yield chunk.text
-            
-        except Exception as e:
-            error_msg = str(e)
-            print(f"API Hatası: {error_msg}")
-            yield self.get_error_response(query, sources, error_msg)
+        # 4. Gemini API çağrısı (3 deneme)
+        for attempt in range(3):
+            try:
+                model_name = self.api_manager.get_current_model()
+                
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(model_name)
+                
+                response = model.generate_content(
+                    prompt,
+                    stream=True,
+                    generation_config={
+                        "temperature": 0.7,
+                        "max_output_tokens": 2048,
+                        "top_p": 0.95,
+                        "top_k": 40,
+                    },
+                    safety_settings={
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    }
+                )
+                
+                full_response = ""
+                for chunk in response:
+                    if chunk.text:
+                        full_response += chunk.text
+                        yield chunk.text
+                
+                return  # Başarılı
+                
+            except Exception as e:
+                error_msg = str(e)
+                if attempt < 2:  # Son 2 deneme
+                    self.api_manager.rotate_model()
+                    continue
+                else:
+                    yield self.get_error_response(query, sources, error_msg)
+                    return
     
     @staticmethod
     def check_greeting(query: str) -> Optional[str]:
-        """Selam kontrolü"""
+        """Selamlaşma kontrolü"""
         query_lower = query.lower()
         
-        greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hi", "hello"]
+        greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hi", "hello", "hey"]
         if any(g in query_lower for g in greetings):
             return random.choice([
                 "Aşk ile can dost! Hoş geldin. 🕊️",
@@ -347,11 +397,14 @@ class ResponseGenerator:
                 "Çok şükür dostum. Gönül sohbetine hazırım. Senin gönlün nasıl?"
             ])
         
+        if "teşekkür" in query_lower or "sağ ol" in query_lower:
+            return "Estağfurullah canım, ben teşekkür ederim. Senin gibi güzel bir canla sohbet etmek ne güzel!"
+        
         return None
     
     @staticmethod
     def get_no_api_response(query: str, sources: List[Dict]) -> str:
-        """API olmadan cevap"""
+        """API olmadığında cevap"""
         if sources:
             response = "🔍 **Yolpedia'da Bulunan Kaynaklar:**\n\n"
             for i, source in enumerate(sources[:3], 1):
@@ -369,16 +422,19 @@ class ResponseGenerator:
         if "quota" in error.lower() or "429" in error:
             return "🔄 API limitine ulaştık. Lütfen biraz sonra tekrar dene!"
         
+        if "API key" in error:
+            return "🔑 API anahtarı bulunamadı. Lütfen ayarlarını kontrol et!"
+        
         if sources:
-            return f"⚠️ Teknik sorun: {error[:100]}\n\n**Bulunan kaynaklar:**\n" + \
+            return f"⚠️ Teknik sorun oluştu.\n\n**Bulunan kaynaklar:**\n" + \
                    "\n".join([f"- [{s['baslik']}]({s['link']})" for s in sources[:2]])
         
-        return f"⚠️ Teknik bir sorun oluştu: {error[:100]}"
+        return "⚠️ Teknik bir sorun oluştu. Lütfen biraz sonra tekrar deneyin."
 
 # ===================== SESSION STATE =====================
 
 def init_session():
-    """Basit session initializer"""
+    """Session state'i başlat"""
     if 'kb' not in st.session_state:
         st.session_state.kb = KnowledgeBase()
     
@@ -389,7 +445,7 @@ def init_session():
         st.session_state.response_generator = ResponseGenerator(st.session_state.api_manager)
     
     if 'messages' not in st.session_state:
-        st.session_state.messages = deque(maxlen=50)
+        st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
         st.session_state.messages.append({
             "role": "assistant",
             "content": (
@@ -404,10 +460,41 @@ def init_session():
             "timestamp": time.time()
         })
 
-# ===================== UI =====================
+# ===================== SECURITY =====================
+
+class SecurityManager:
+    """Güvenlik fonksiyonları"""
+    
+    @staticmethod
+    def sanitize_input(text: str) -> str:
+        """Kullanıcı inputunu temizle"""
+        if not isinstance(text, str):
+            return ""
+        
+        # Uzunluk sınırı
+        text = text[:config.MAX_INPUT_LENGTH]
+        
+        # HTML escape
+        text = html.escape(text)
+        
+        # Şüpheli pattern'ları kaldır
+        import re
+        suspicious = [
+            r'<script.*?>.*?</script>',
+            r'javascript:',
+            r'on\w+=',
+            r'data:',
+        ]
+        
+        for pattern in suspicious:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+        
+        return text.strip()
+
+# ===================== UI COMPONENTS =====================
 
 def render_header():
-    """Basit header"""
+    """Header'ı render et"""
     st.markdown(f"""
     <div style="text-align: center; margin-bottom: 30px;">
         <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
@@ -424,13 +511,14 @@ def render_header():
     """, unsafe_allow_html=True)
 
 def render_message(message: Dict):
-    """Mesajı göster"""
+    """Mesajı render et"""
     avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
     
     with st.chat_message(message["role"], avatar=avatar):
+        # Mesaj içeriği
         st.markdown(message["content"])
         
-        # Timestamp
+        # Zaman damgası
         timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
         st.markdown(f"""
         <div style="text-align: right; font-size: 0.8rem; color: #888; margin-top: 0.3rem;">
@@ -439,7 +527,7 @@ def render_message(message: Dict):
         """, unsafe_allow_html=True)
 
 def render_sources(sources: List[Dict]):
-    """Kaynakları göster"""
+    """Kaynakları render et"""
     if not sources:
         return
     
@@ -456,58 +544,178 @@ def render_sources(sources: List[Dict]):
             with col2:
                 st.link_button("🔗 Git", source['link'])
 
-# ===================== MAIN =====================
+# ===================== MAIN APPLICATION =====================
 
 def main():
-    """ANA UYGULAMA - TEK MOD"""
+    """Ana uygulama"""
     
     # Session'ı başlat
     if 'initialized' not in st.session_state:
         init_session()
         st.session_state.initialized = True
     
-    # CSS
+    # CSS STILLERİ
     st.markdown("""
     <style>
-        .stApp, .main { background-color: #020212 !important; color: white !important; }
-        .block-container { background-color: #222222 !important; }
-        .stChatMessage { background-color: #222222 !important; border: 1px solid #3d3d5c !important; }
-        section[data-testid="stSidebar"] { background-color: #222222 !important; }
-        .stButton button { background-color: #cc0000 !important; color: white !important; }
-        .stChatInputContainer input { background-color: #2d2d44 !important; color: white !important; }
+        /* Ana arkaplan */
+        .stApp, .main {
+            background-color: #020212 !important;
+            color: #e6e6e6 !important;
+        }
+        
+        /* Container */
+        .block-container {
+            padding-top: 3rem !important;
+            max-width: 900px;
+            background-color: transparent !important;
+        }
+        
+        /* Sidebar */
+        section[data-testid="stSidebar"] {
+            background-color: #1a1a2e !important;
+            padding: 2rem 1rem;
+        }
+        
+        /* Sidebar logo - ORTALA */
+        .sidebar-logo {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin-bottom: 2rem !important;
+        }
+        
+        /* Chat mesajları */
+        .stChatMessage {
+            background-color: transparent !important;
+            padding: 0.5rem 0;
+        }
+        
+        .stChatMessage > div {
+            background-color: rgba(45, 45, 68, 0.7) !important;
+            border-radius: 10px;
+            padding: 1rem;
+            border-left: 4px solid #3d3d5c;
+        }
+        
+        /* Asistan mesajları */
+        .stChatMessage[data-testid*="assistant"] > div {
+            border-left-color: #B31F2E;
+            background-color: rgba(179, 31, 46, 0.1) !important;
+        }
+        
+        /* Butonlar */
+        .stButton button {
+            background-color: #B31F2E !important;
+            color: white !important;
+            border: none;
+            border-radius: 5px;
+            padding: 0.5rem 1rem;
+            width: 100%;
+            font-weight: 500;
+        }
+        
+        .stButton button:hover {
+            background-color: #cc0000 !important;
+            border-color: #cc0000 !important;
+        }
+        
+        /* Input alanı */
+        .stChatInputContainer input {
+            background-color: #2d2d44 !important;
+            color: #e6e6e6 !important;
+            border: 1px solid #3d3d5c !important;
+            border-radius: 10px;
+        }
+        
+        /* Linkler */
+        a {
+            color: #ff6b6b !important;
+        }
+        
+        /* Spinner */
+        .stSpinner > div {
+            border-top-color: #B31F2E !important;
+        }
+        
+        /* Divider */
+        hr {
+            border-color: #3d3d5c !important;
+            margin: 1.5rem 0;
+        }
+        
+        /* Radio butonları */
+        .stRadio > div {
+            background-color: #2d2d44;
+            padding: 0.5rem;
+            border-radius: 8px;
+        }
+        
+        .stRadio label {
+            color: #e6e6e6 !important;
+            font-weight: 500;
+        }
     </style>
     """, unsafe_allow_html=True)
     
-    # SIDEBAR
+    # ========== SIDEBAR ==========
     with st.sidebar:
-        st.image(config.YOLPEDIA_ICON, width=40)
+        # ORTALANMIŞ LOGO
+        st.markdown('<div class="sidebar-logo">', unsafe_allow_html=True)
+        st.image(config.YOLPEDIA_ICON, width=60)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         st.markdown("---")
         
-        # İstatistikler
-        with st.expander("📊 İstatistikler"):
-            if 'kb' in st.session_state:
-                stats = st.session_state.kb.get_stats()
-                st.metric("Toplam Kayıt", stats["total_entries"])
+        # Model Bilgisi (küçük ve sade)
+        if 'api_manager' in st.session_state:
+            current_model = st.session_state.api_manager.get_current_model()
+            st.caption(f"🤖 **Model:** {current_model}")
         
-        # Temizle butonu
-        if st.button("🧹 Sohbeti Temizle"):
-            st.session_state.messages = deque(maxlen=50)
+        st.markdown("---")
+        
+        # Model Değiştir Butonu
+        if st.button("🔄 Model Değiştir", use_container_width=True):
+            if 'api_manager' in st.session_state:
+                st.session_state.api_manager.rotate_model()
+                st.rerun()
+        
+        # Sohbeti Temizle Butonu
+        if st.button("🧹 Sohbeti Temizle", use_container_width=True):
+            st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": "Sohbet temizlendi! Yeni bir konuşma başlatalım mı can dost?",
                 "timestamp": time.time()
             })
             st.rerun()
+        
+        st.markdown("---")
+        
+        # Küçük Bilgi
+        st.caption("""
+        **YolPedia Can Dede**
+        
+        Alevî-Bektaşî geleneğinde sohbet ve araştırma asistanı.
+        
+        [yolpedia.eu](https://yolpedia.eu)
+        """)
     
-    # HEADER
+    # ========== HEADER ==========
     render_header()
     
-    # MESAJLAR
+    # ========== MESAJLARI GÖSTER ==========
     for message in st.session_state.messages:
         render_message(message)
     
-    # KULLANICI GİRİŞİ
+    # ========== KULLANICI GİRİŞİ ==========
     if user_input := st.chat_input("Can Dede'ye sor..."):
+        # Input'u temizle
+        user_input = SecurityManager.sanitize_input(user_input)
+        
+        if not user_input or len(user_input.strip()) < 1:
+            st.error("Lütfen geçerli bir soru yazın")
+            st.stop()
+        
         # Kullanıcı mesajını ekle
         user_message = {
             "role": "user",
@@ -519,7 +727,7 @@ def main():
         
         # Kaynak ara
         sources = []
-        if len(user_input.strip()) >= 2:
+        if len(user_input.strip()) >= config.MIN_SEARCH_LENGTH:
             sources = st.session_state.kb.search(user_input)
         
         # Cevap oluştur
