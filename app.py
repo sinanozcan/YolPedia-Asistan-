@@ -220,55 +220,55 @@ class KnowledgeBase:
         self.setup_database()
     
     def get_connection(self):
-    """Get database connection with error handling"""
-    try:
-        if self.conn is None:
-            # Streamlit Cloud'da path'i düzelt
-            import os
-            if "STREAMLIT_CLOUD" in os.environ:
-                # Cloud'da /tmp dizinini kullan
-                db_dir = "/tmp"
-                self.db_path = f"{db_dir}/yolpedia.db"
+        """Get database connection with error handling"""
+        try:
+            if self.conn is None:
+                # Streamlit Cloud'da path'i düzelt
+                import os
+                if "STREAMLIT_CLOUD" in os.environ:
+                    # Cloud'da /tmp dizinini kullan
+                    db_dir = "/tmp"
+                    self.db_path = f"{db_dir}/yolpedia.db"
+                
+                self.conn = sqlite3.connect(self.db_path)
+                self.conn.row_factory = sqlite3.Row
             
-            self.conn = sqlite3.connect(self.db_path)
+            return self.conn
+        except Exception as e:
+            logger.error(f"Database connection failed: {e}")
+            # Geçici bir RAM üzerinde database oluştur
+            self.conn = sqlite3.connect(":memory:")
             self.conn.row_factory = sqlite3.Row
-        
-        return self.conn
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        # Geçici bir RAM üzerinde database oluştur
-        self.conn = sqlite3.connect(":memory:")
-        self.conn.row_factory = sqlite3.Row
-        return self.conn
+            return self.conn
     
     def setup_database(self):
-    """Initialize database tables with better error handling"""
-    try:
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        # Table oluştur
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS content (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                baslik TEXT NOT NULL,
-                link TEXT NOT NULL,
-                icerik TEXT,
-                normalized TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(link)
-            )
-        ''')
-        
-        conn.commit()
-        logger.info(f"Database initialized at {self.db_path}")
-        
-    except Exception as e:
-        logger.error(f"Failed to setup database: {e}")
-        # Memory'de devam et
-        self.conn = sqlite3.connect(":memory:")
-        self.conn.row_factory = sqlite3.Row
+        """Initialize database tables with better error handling"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Table oluştur
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS content (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    baslik TEXT NOT NULL,
+                    link TEXT NOT NULL,
+                    icerik TEXT,
+                    normalized TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(link)
+                )
+            ''')
+            
+            conn.commit()
+            logger.info(f"Database initialized at {self.db_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to setup database: {e}")
+            # Memory'de devam et
+            self.conn = sqlite3.connect(":memory:")
+            self.conn.row_factory = sqlite3.Row
     
     def load_from_json(self, data_file: str = config.DATA_FILE):
         """Load data from JSON file into database"""
@@ -435,35 +435,35 @@ class KnowledgeBase:
         return final_results
     
     def get_stats(self) -> Dict:
-    """Get database statistics with error handling"""
-    try:
-        conn = self.get_connection()
-        if conn is None:
-            return {"error": "Database connection failed"}
-        
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT COUNT(*) as total FROM content")
-        total = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(DISTINCT baslik) as unique_titles FROM content")
-        unique = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT MAX(created_at) as last_update FROM content")
-        last_update = cursor.fetchone()[0]
-        
-        return {
-            "total_entries": total or 0,
-            "unique_titles": unique or 0,
-            "last_update": last_update or "N/A"
-        }
-    except Exception as e:
-        logger.error(f"Error getting stats: {e}")
-        return {
-            "total_entries": 0,
-            "unique_titles": 0,
-            "last_update": "Error"
-        }
+        """Get database statistics with error handling"""
+        try:
+            conn = self.get_connection()
+            if conn is None:
+                return {"error": "Database connection failed"}
+            
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) as total FROM content")
+            total = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(DISTINCT baslik) as unique_titles FROM content")
+            unique = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT MAX(created_at) as last_update FROM content")
+            last_update = cursor.fetchone()[0]
+            
+            return {
+                "total_entries": total or 0,
+                "unique_titles": unique or 0,
+                "last_update": last_update or "N/A"
+            }
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return {
+                "total_entries": 0,
+                "unique_titles": 0,
+                "last_update": "Error"
+            }
 # ===================== CACHING SYSTEM =====================
 
 class ResponseCache:
