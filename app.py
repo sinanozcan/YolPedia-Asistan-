@@ -854,11 +854,11 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-    # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP (Mod ne olursa olsun)
-    fallback = self.get_fallback_response(query)
-    if fallback:
-        yield fallback
-        return
+        # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP (Mod ne olursa olsun)
+        fallback = self.get_fallback_response(query)
+        if fallback:
+            yield fallback
+            return
 
     # 2. SELAM DEĞİLSE MODLARA GÖRE DEVAM ET
     if mode == "Sohbet Modu":
