@@ -255,7 +255,7 @@ class KnowledgeBase:
             return 0
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """Gelişmiş ve Gürültüden Arındırılmış Arama"""
+        """Trigram Uyumlu ve Yıldız Hatasından Arındırılmış Arama"""
         start_time = time.time()
         
         if len(query) < config.MIN_SEARCH_LENGTH:
@@ -264,17 +264,15 @@ class KnowledgeBase:
         norm_query = normalize_turkish(query)
         words = norm_query.split()
         
-        # Sadece anlamlı kelimeleri (stop words olmayan) filtrele
+        # Gürültü kelimeleri temizle
         meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
         
-        # Eğer anlamlı kelime kalmadıysa (örn: sadece "bir bilgi istiyorum" dediyse) 
-        # orijinal kelimeleri kullan
         if not meaningful_words:
             meaningful_words = [w for w in words if len(w) > 1]
 
-        # Kelimeleri 'AND' mantığıyla birleştirerek daha isabetli sonuç alalım
-        # "Semah" ve "Kaynak" arasından sadece "Semah"a odaklanacak
-        search_terms = " ".join([f"{term}*" for term in meaningful_words])
+        # ÖNEMLİ: Trigram tokenizer yıldız (*) desteklemez. 
+        # Yıldızları siliyoruz ve kelimeleri " OR " ile bağlıyoruz.
+        search_terms = " OR ".join([f'"{term}"' for term in meaningful_words])
         
         conn = self.get_connection()
         cursor = conn.cursor()
@@ -283,14 +281,14 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT 
                     baslik, link, icerik,
-                    snippet(content_fts, 2, '<mark>', '</mark>', '...', 64) as snippet,
+                    snippet(content_fts, 2, '<mark>', </mark>', '...', 64) as snippet,
                     rank
                 FROM content_fts 
                 WHERE content_fts MATCH ?
                 ORDER BY rank
                 LIMIT ?
             ''', (search_terms, limit))
-
+            
             results = []
             for row in cursor.fetchall():
                 results.append({
