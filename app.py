@@ -854,22 +854,17 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-        # Fonksiyonun içi: 8 boşluk içeride
-        # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP
+        """Sırasıyla: Selam kontrolü, Önbellek, Prompt oluşturma ve API çağrısı."""
+        start_time = time.time()
+
+        # 1. ADIM: SELAM/HAL HATIR KONTROLÜ (Hızlı Yanıt)
+        # Mod ne olursa olsun önce kullanıcının selamını alalım.
         fallback = self.get_fallback_response(query)
-        
         if fallback:
-            # If bloğunun içi: 12 boşluk içeride
             yield fallback
             return
 
-    # 2. SELAM DEĞİLSE MODLARA GÖRE DEVAM ET
-    if mode == "Sohbet Modu":
-        # ... sohbet promptu oluşturma ...
-    else: # Araştırma Modu
-        # ... araştırma promptu oluşturma ...
-        
-        # Check cache first
+        # 2. ADIM: ÖNBELLEK (CACHE) KONTROLÜ
         if config.ENABLE_CACHING:
             cache_key = self.cache.get_key(query, mode)
             cached_response = self.cache.get(cache_key)
@@ -877,34 +872,25 @@ class ResponseGenerator:
                 logger.info(f"Cache hit for query: {query[:50]}...")
                 yield cached_response
                 return
-        
-        # Get context for chat mode
-        context = []
+
+        # 3. ADIM: PROMPT (TALİMAT) OLUŞTURMA
         if mode == "Sohbet Modu":
+            # Sohbet modunda geçmiş mesajları (context) dahil et
             context = list(st.session_state.messages)[-5:]
-        
-        # Build prompt
-        if mode == "Sohbet Modu":
             prompt = self.prompt_engine.build_chat_prompt(query, sources, context)
         else:
-            # ARAŞTIRMA MODU BURASI
+            # Araştırma Modu
             prompt = self.prompt_engine.build_research_prompt(query, sources)
             
-            # Eğer veritabanında kaynak bulunamadıysa (prompt None ise)
+            # Eğer araştırma modunda veritabanında kaynak bulunamadıysa (prompt None döner)
             if prompt is None:
-                # 1. Önce selam/hal hatır mı diye kontrol et (Kendi yazdığın get_fallback_response fonksiyonunu kullan)
-                fallback = self.get_fallback_response(query)
-                if fallback:
-                    yield fallback # Eğer selam ise selamını alacak
-                else:
-                    # 2. Selam değilse ama kaynak da yoksa, mürşit nezaketiyle cevap ver
-                    yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir lisan bulamadım. "
-                           "Lakin mürşit kapısı her daim açıktır; istersen konuyu biraz daha açarak sor, "
-                           "başka bir kelimeyle arayalım ya da gel Sohbet Modu'nda gönül dilinden konuşalım. "
-                           "Neyi merak edersin?")
+                yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir lisan bulamadım. "
+                       "Lakin mürşit kapısı her daim açıktır; istersen konuyu biraz daha açarak sor, "
+                       "başka bir kelimeyle arayalım ya da gel Sohbet Modu'nda gönül dilinden konuşalım. "
+                       "Neyi merak edersin?")
                 return
-        
-        # Get best API key and model
+
+        # 4. ADIM: API ANAHTARI VE MODEL SEÇİMİ
         api_key = self.api_manager.get_best_key()
         if not api_key:
             yield "⚠️ Tüm API anahtarları tükenmiş. Lütfen daha sonra tekrar deneyin."
@@ -912,22 +898,23 @@ class ResponseGenerator:
         
         model_name = self.api_manager.get_best_model()
         
-        # Generate response
+        # 5. ADIM: YANIT OLUŞTURMA (AI ÇAĞRISI)
         full_response = ""
         try:
             genai.configure(api_key=api_key["value"])
             model = genai.GenerativeModel(model_name)
             
-            # Generation config
+            # Sohbet için biraz daha yaratıcı (0.7), Araştırma için daha odaklı (0.2) ısı ayarı
+            temp = 0.7 if mode == "Sohbet Modu" else 0.2
+            
             gen_config = {
-                "temperature": 0.3 if mode == "Sohbet Modu" else 0.3,
+                "temperature": temp,
                 "top_p": 0.95,
                 "top_k": 40,
                 "max_output_tokens": 4096,
                 "candidate_count": 1,
             }
             
-            # Safety settings
             safety = {
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -935,7 +922,6 @@ class ResponseGenerator:
                 HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
             }
             
-            # Stream response
             response = model.generate_content(
                 prompt,
                 stream=True,
@@ -949,11 +935,11 @@ class ResponseGenerator:
                     full_response += chunk.text
                     yield chunk.text
             
-            # Record success
+            # Başarılı kayıtlar
             response_time = time.time() - start_time
             self.api_manager.record_success(api_key["name"], model_name, response_time)
             
-            # Cache successful response
+            # Başarılı yanıtı cache'e ekle
             if config.ENABLE_CACHING and full_response:
                 cache_key = self.cache.get_key(query, mode)
                 self.cache.set(cache_key, full_response)
@@ -966,21 +952,19 @@ class ResponseGenerator:
             self.api_manager.record_failure(api_key["name"], model_name, error_str)
             logger.error(f"API call failed: {error_str}")
             
-            # Fallback to local response for simple queries
-            if mode == "Sohbet Modu":
-                fallback = self.get_fallback_response(query)
-                if fallback:
-                    yield fallback
-                    return
-            
-            yield f"⚠️ AI Hatası (Hata Ayıklama): {str(e)}"
-    
+            # Hata durumunda yerel cevapları dene
+            fallback_err = self.get_fallback_response(query)
+            if fallback_err:
+                yield fallback_err
+            else:
+                yield f"⚠️ Teknik bir sorun oluştu (Hata: {error_str})"
+
     @staticmethod
     def get_fallback_response(query: str) -> Optional[str]:
-        """Local fallback responses for common queries"""
+        """Basit selamlaşmalar için yerel cevaplar."""
         norm = normalize_turkish(query).strip()
         
-        greetings = ["merhaba", "selam", "slm", "selamun aleykum"]
+        greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hey", "merhabalar"]
         if any(g in norm for g in greetings):
             return random.choice([
                 "Aşk ile, can dost. Hoş geldin. Yolun açık olsun.",
@@ -988,14 +972,14 @@ class ResponseGenerator:
                 "Selam, dost. Umarım içindeki ışık hep parlar. Ne sormak istersin?"
             ])
         
-        status = ["nasilsin", "naber", "ne var ne yok"]
+        status = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
         if any(s in norm for s in status):
             return random.choice([
                 "Şükür, dost. Bugün de Hakk'ın bir tecellisi olarak buradayım. Sen nasılsın?",
                 "Çok şükür, can. Gönül sohbetine hazırım. Senin gönlün nasıl?"
             ])
         
-        farewells = ["gule gule", "hosca kal", "allahasmarladik", "bay"]
+        farewells = ["gule gule", "hosca kal", "allahasmarladik", "bay", "gorusuruz"]
         if any(f in norm for f in farewells):
             return random.choice([
                 "Yolun açık olsun, can. Özündeki cevheri unutma.",
