@@ -986,7 +986,7 @@ class ResponseGenerator:
             
             # Eğer araştırma modunda veritabanında kaynak bulunamadıysa (prompt None döner)
             if prompt is None:
-                yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir lisan bulamadım. "
+                yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir kaynak bulamadım. "
                        "Lakin mürşit kapısı her daim açıktır; istersen konuyu biraz daha açarak sor, "
                        "başka bir kelimeyle arayalım ya da gel Sohbet Modu'nda gönül dilinden konuşalım. "
                        "Neyi merak edersin?")
