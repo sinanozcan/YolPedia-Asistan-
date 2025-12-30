@@ -825,6 +825,38 @@ def init_session():
     
     if 'api_manager' not in st.session_state:
         st.session_state.api_manager = APIManager()
+
+    # DEBUG: "semah" kelimesini veritabanında ara
+if 'kb' in st.session_state:
+    import sqlite3
+    conn = sqlite3.connect(config.DB_PATH)
+    cursor = conn.cursor()
+    
+    # Tüm içerikleri kontrol et
+    cursor.execute("SELECT baslik, icerik FROM content")
+    all_content = cursor.fetchall()
+    
+    semah_count = 0
+    semah_titles = []
+    
+    for baslik, icerik in all_content:
+        content_lower = f"{baslik} {icerik}".lower()
+        if "semah" in content_lower:
+            semah_count += 1
+            semah_titles.append(baslik)
+    
+    st.sidebar.markdown("### 🐛 DEBUG Bilgisi")
+    st.sidebar.write(f"Toplam kayıt: {len(all_content)}")
+    st.sidebar.write(f"'semah' içeren kayıt: {semah_count}")
+    
+    if semah_titles:
+        st.sidebar.write("Bulunan başlıklar:")
+        for title in semah_titles[:5]:
+            st.sidebar.write(f"- {title}")
+    else:
+        st.sidebar.write("❌ 'semah' kelimesi hiçbir kayıtta yok!")
+    
+    conn.close()
     
     # Chat history with size limit
     if 'messages' not in st.session_state:
