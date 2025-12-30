@@ -88,17 +88,15 @@ class AppConfig:
     
     # Ücretli hesabınız için kesin çalışan resmi ID'ler
     GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-3-pro",             # En zeki, mürşit bilgeliği için en iyisi
-        "gemini-3-flash",           # Çok hızlı ve güncel
-        "gemini-2.5-pro",           # Çok stabil derin analiz modeli
-        "gemini-2.0-flash"          # Hızlı yedek
+        "gemini-1.5-pro-latest",    # En zeki mürşit bilgeliği (Zahir/Batın için en iyisi)
+        "gemini-2.0-flash-exp",     # Çok hızlı ve yeni nesil zeka
+        "gemini-1.5-flash-latest",  # En hızlı ve güvenilir yedek
     ])
     
     MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-3-pro": 1.0,
-        "gemini-3-flash": 0.8,
-        "gemini-2.5-pro": 0.6,
-        "gemini-2.0-flash": 0.4
+        "gemini-1.5-pro-latest": 1.0,
+        "gemini-2.0-flash-exp": 0.8,
+        "gemini-1.5-flash-latest": 0.6
     })
     
     # Stop words
