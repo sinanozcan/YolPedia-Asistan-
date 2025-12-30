@@ -1,6 +1,6 @@
 """
-YolPedia Can Dede - Enhanced Production Version
-With SQLite, Redis, Monitoring, and Advanced Features
+YolPedia Can Dede - BASİT ve ÇALIŞAN VERSİYON
+Tek Mod: Sohbet + Kaynak Gösterme
 """
 
 import streamlit as st
@@ -14,12 +14,13 @@ import logging
 import hashlib
 import html
 import sqlite3
+import os
 
 # ===================== CUSTOM PAGE CONFIG =====================
 
 st.set_page_config(
-    page_title="Can Dede | YolPedia Rehberiniz",  # Sekmede görünecek
-    page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",  # Sekmedeki favicon (emoji veya yolpedia icon URL'i)
+    page_title="Can Dede | YolPedia Rehberiniz",
+    page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",
     layout="centered",
     initial_sidebar_state="expanded",
     menu_items={
@@ -27,1502 +28,517 @@ st.set_page_config(
         'Report a bug': 'https://yolpedia.eu/iletisim',
         'About': '''
         ## YolPedia Can Dede
-        
         **Alevî-Bektaşî Sohbet ve Araştırma Asistanı**
-        
         📚 yolpedia.eu
-        
         "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
         '''
     }
 )
+
 from datetime import datetime
-from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple, Optional, Generator, Any, Set
-from pathlib import Path
-from functools import lru_cache
-from contextlib import contextmanager
-import threading
 from collections import deque, defaultdict
+import threading
 import secrets
 
 # ===================== CONFIGURATION =====================
 
-@dataclass
 class AppConfig:
-    """Enhanced application configuration"""
-    # Rate limiting with tiers
-    RATE_LIMITS: Dict[str, int] = field(default_factory=lambda: {
-        "free": 30,      # 30 requests/hour
-        "premium": 100,  # 100 requests/hour
-        "admin": 1000    # 1000 requests/hour
-    })
+    # API Settings
+    GEMINI_MODEL = "gemini-1.5-flash"  # En ekonomik ve hızlı
     
-    MIN_TIME_DELAY: int = 1
-    RATE_LIMIT_WINDOW: int = 3600
-    
-    # Search parameters
-    MIN_SEARCH_LENGTH: int = 2
-    MAX_CONTENT_LENGTH: int = 1500
-    SEARCH_SCORE_THRESHOLD: int = 8
-    MAX_SEARCH_RESULTS: int = 5
-    SEARCH_CACHE_TTL: int = 300  # 5 minutes
+    # Search
+    MIN_SEARCH_LENGTH = 2
+    MAX_SEARCH_RESULTS = 5
+    MAX_CONTENT_LENGTH = 1000
     
     # Database
-    DB_PATH: str = "yolpedia.db"
-    DATA_FILE: str = "yolpedia_data.json"
-    MAX_HISTORY_MESSAGES: int = 100
-    
-    # Security
-    MAX_INPUT_LENGTH: int = 2000
-    SESSION_TIMEOUT: int = 3600  # 1 hour
-    MAX_CONCURRENT_REQUESTS: int = 10
+    DB_PATH = "/tmp/yolpedia.db" if "STREAMLIT_CLOUD" in os.environ else "yolpedia.db"
+    DATA_FILE = "yolpedia_data.json"
     
     # Branding
-    ASSISTANT_NAME: str = "Can Dede | YolPedia Rehberiniz"
-    MOTTO: str = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
-    
-    # Icons
-    YOLPEDIA_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
-    CAN_DEDE_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
-    USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
-    
-    # Ücretli hesabınız için kesin çalışan resmi ID'ler
-    GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-2.0-flash",       # Şu anki en hızlı ve güncel stabil model
-        "gemini-1.5-pro",         # En zeki ve derin analiz yapan model
-        "gemini-1.5-flash"        # En hızlı ve ekonomik yedek model
-    ])
-    
-    MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-2.0-flash": 1.0,
-        "gemini-1.5-pro": 0.8,
-        "gemini-1.5-flash": 0.6
-    })
-    
-    # Stop words
-    STOP_WORDS: Set[str] = field(default_factory=lambda: {
-        "ve", "veya", "ile", "bir", "bu", "su", "o", "icin", "hakkinda",
-        "nedir", "kimdir", "nasil", "ne", "var", "mi", "mu",
-        "bana", "soyle", "goster", "ver", "ilgili", "alakali",
-        "lutfen", "merhaba", "selam", "kaynak", "ariyorum", "bilgi", 
-        "istiyorum", "bul", "getir", "hakkinda"
-    })
-    
-    # Monitoring
-    ENABLE_METRICS: bool = True
-    LOG_LEVEL: str = "INFO"
-    
-    # Caching
-    ENABLE_CACHING: bool = True
-    CACHE_SIZE: int = 1000
+    ASSISTANT_NAME = "Can Dede | YolPedia Rehberiniz"
+    MOTTO = '"Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"'
+    YOLPEDIA_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/Yolpedia-favicon.png"
+    CAN_DEDE_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png"
+    USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
 config = AppConfig()
-
-# ===================== LOGGING & MONITORING =====================
-
-class StructuredLogger:
-    """Enhanced logging with metrics"""
-    
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.setup_logging()
-        self.metrics = defaultdict(list)
-        self.lock = threading.Lock()
-    
-    def setup_logging(self):
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s | %(filename)s:%(lineno)d'
-        )
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(getattr(logging, config.LOG_LEVEL))
-    
-    def info(self, message: str, **kwargs):
-        self.logger.info(f"{message} | {self._format_kwargs(kwargs)}")
-    
-    def warning(self, message: str, **kwargs):
-        self.logger.warning(f"{message} | {self._format_kwargs(kwargs)}")
-    
-    def error(self, message: str, **kwargs):
-        self.logger.error(f"{message} | {self._format_kwargs(kwargs)}")
-    
-    def track_metric(self, name: str, value: float, tags: Dict[str, Any] = None):
-        """Track performance metrics"""
-        if not config.ENABLE_METRICS:
-            return
-        
-        with self.lock:
-            metric = {
-                "timestamp": time.time(),
-                "value": value,
-                "tags": tags or {}
-            }
-            self.metrics[name].append(metric)
-            
-            # Keep only last 1000 metrics
-            if len(self.metrics[name]) > 1000:
-                self.metrics[name] = self.metrics[name][-1000:]
-    
-    def _format_kwargs(self, kwargs: Dict) -> str:
-        return " ".join([f"{k}={v}" for k, v in kwargs.items()])
-
-logger = StructuredLogger()
-
-# ===================== SEARCH CLASS =====================
-
-class SearchEngine:  # Veya mevcut sınıfınızın adı neyse
-    # Diğer metodlar...
-    
-    def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """EN BASİT VE GARANTİLİ ARAMA - semah için kesin çözüm"""
-        
-        if len(query.strip()) < 2:
-            return []
-        
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        query_lower = query.lower().strip()
-        
-        # DEBUG: Önce doğrudan SQL ile test edelim
-        cursor.execute("SELECT COUNT(*) FROM content WHERE icerik LIKE ?", (f"%semah%",))
-        semah_count = cursor.fetchone()[0]
-        logger.info(f"DEBUG: Veritabanında 'semah' içeren kayıt sayısı: {semah_count}")
-        
-        # 1. ÖNCE: Normalize ETME, direkt olarak küçük harfle ara
-        try:
-            cursor.execute('''
-                SELECT baslik, link, icerik, normalized
-                FROM content 
-                WHERE 
-                    LOWER(baslik) LIKE ? OR
-                    LOWER(icerik) LIKE ?
-                LIMIT ?
-            ''', (f"%{query_lower}%", f"%{query_lower}%", limit * 3))
-            
-            rows = cursor.fetchall()
-            logger.info(f"DEBUG: SQL sorgusu '{query_lower}' için {len(rows)} satır döndü")
-            
-        except Exception as e:
-            logger.error(f"SQL hatası: {str(e)}")
-            return []
 
 # ===================== KNOWLEDGE BASE =====================
 
 class KnowledgeBase:
-    """Enhanced knowledge base with SQLite"""
+    """Basit ve çalışan knowledge base"""
     
-    def __init__(self, db_path: str = config.DB_PATH):
-        self.db_path = db_path
+    def __init__(self):
         self.conn = None
+        self.data = []
         self.setup_database()
+        self.load_from_json()
     
     def get_connection(self):
-        """Get database connection with error handling"""
-        try:
-            if self.conn is None:
-                # Streamlit Cloud'da path'i düzelt
-                import os
-                if "STREAMLIT_CLOUD" in os.environ:
-                    # Cloud'da /tmp dizinini kullan
-                    db_dir = "/tmp"
-                    self.db_path = f"{db_dir}/yolpedia.db"
-                
-                self.conn = sqlite3.connect(self.db_path)
-                self.conn.row_factory = sqlite3.Row
-            
-            return self.conn
-        except Exception as e:
-            logger.error(f"Database connection failed: {e}")
-            # Geçici bir RAM üzerinde database oluştur
-            self.conn = sqlite3.connect(":memory:")
+        if self.conn is None:
+            self.conn = sqlite3.connect(config.DB_PATH)
             self.conn.row_factory = sqlite3.Row
-            return self.conn
+        return self.conn
     
     def setup_database(self):
-        """Initialize database tables with better error handling"""
+        """Basit veritabanı kurulumu"""
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # Table oluştur
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS content (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     baslik TEXT NOT NULL,
                     link TEXT NOT NULL,
                     icerik TEXT,
-                    normalized TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(link)
+                    normalized TEXT
                 )
             ''')
             
             conn.commit()
-            logger.info(f"Database initialized at {self.db_path}")
-            
         except Exception as e:
-            logger.error(f"Failed to setup database: {e}")
-            # Memory'de devam et
-            self.conn = sqlite3.connect(":memory:")
-            self.conn.row_factory = sqlite3.Row
+            print(f"Veritabanı kurulum hatası: {e}")
     
-    def load_from_json(self, data_file: str = config.DATA_FILE):
-        """Load data from JSON file into database"""
+    def load_from_json(self):
+        """JSON'dan verileri yükle"""
         try:
-            import json
-            from pathlib import Path
-            
-            json_path = Path(data_file)
-            if not json_path.exists():
-                logger.warning(f"JSON data file not found: {data_file}")
-                return
-            
-            with open(json_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            inserted = 0
-            updated = 0
-            
-            for item in data:
-                # Normalize content for better searching
-                normalized_text = normalize_turkish(item.get('baslik', '') + ' ' + item.get('icerik', ''))
+            if os.path.exists(config.DATA_FILE):
+                with open(config.DATA_FILE, 'r', encoding='utf-8') as f:
+                    self.data = json.load(f)
+                print(f"✅ {len(self.data)} kayıt yüklendi")
                 
-                try:
-                    cursor.execute('''
-                        INSERT OR REPLACE INTO content (baslik, link, icerik, normalized)
-                        VALUES (?, ?, ?, ?)
-                    ''', (
-                        item['baslik'],
-                        item['link'],
-                        item['icerik'][:config.MAX_CONTENT_LENGTH],
-                        normalized_text
-                    ))
-                    inserted += 1
-                except Exception as e:
-                    logger.error(f"Error inserting {item['baslik']}: {e}")
-            
-            conn.commit()
-            logger.info(f"Loaded {inserted} items from {data_file}")
-            
+                # Veritabanına da yükle
+                conn = self.get_connection()
+                cursor = conn.cursor()
+                
+                for item in self.data:
+                    try:
+                        cursor.execute('''
+                            INSERT OR REPLACE INTO content (baslik, link, icerik, normalized)
+                            VALUES (?, ?, ?, ?)
+                        ''', (
+                            item['baslik'],
+                            item['link'],
+                            item['icerik'][:config.MAX_CONTENT_LENGTH],
+                            self.normalize_text(item['baslik'] + ' ' + item['icerik'])
+                        ))
+                    except Exception as e:
+                        print(f"Kayıt ekleme hatası: {e}")
+                
+                conn.commit()
+            else:
+                print(f"⚠️ JSON dosyası bulunamadı: {config.DATA_FILE}")
         except Exception as e:
-            logger.error(f"Failed to load JSON data: {e}")
+            print(f"JSON yükleme hatası: {e}")
+    
+    @staticmethod
+    def normalize_text(text: str) -> str:
+        """Basit normalizasyon"""
+        if not text:
+            return ""
+        text = text.lower()
+        # Türkçe karakterleri düzelt
+        replacements = {
+            'ğ': 'g', 'Ğ': 'g',
+            'ü': 'u', 'Ü': 'u',
+            'ş': 's', 'Ş': 's',
+            'ı': 'i', 'İ': 'i',
+            'ö': 'o', 'Ö': 'o',
+            'ç': 'c', 'Ç': 'c',
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """Enhanced search in knowledge base"""
-        
+        """BASİT ve GARANTİLİ ARAMA"""
         if len(query.strip()) < 2:
             return []
         
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
         query_lower = query.lower().strip()
-        
-        # DEBUG: Önce doğrudan SQL ile test edelim
-        cursor.execute("SELECT COUNT(*) FROM content WHERE icerik LIKE ?", (f"%semah%",))
-        semah_count = cursor.fetchone()[0]
-        logger.info(f"DEBUG: Veritabanında 'semah' içeren kayıt sayısı: {semah_count}")
-        
-        # 1. ÖNCE: Normalize ETME, direkt olarak küçük harfle ara
-        try:
-            cursor.execute('''
-                SELECT baslik, link, icerik, normalized
-                FROM content 
-                WHERE 
-                    LOWER(baslik) LIKE ? OR
-                    LOWER(icerik) LIKE ?
-                LIMIT ?
-            ''', (f"%{query_lower}%", f"%{query_lower}%", limit * 3))
-            
-            rows = cursor.fetchall()
-            logger.info(f"DEBUG: SQL sorgusu '{query_lower}' için {len(rows)} satır döndü")
-            
-        except Exception as e:
-            logger.error(f"SQL hatası: {str(e)}")
-            return []
-        
         results = []
-        seen_titles = set()
         
-        for row in rows:
-            baslik = row['baslik']
-            content = row['icerik']
+        # Önce memory'de ara (daha hızlı)
+        for item in self.data:
+            content_lower = item.get('icerik', '').lower()
+            baslik_lower = item.get('baslik', '').lower()
             
-            # Aynı başlığı tekrar ekleme
-            if baslik in seen_titles:
-                continue
-            seen_titles.add(baslik)
-            
-            # Snippet oluştur - query'i direkt içerikte ara
-            content_lower = content.lower()
-            idx = content_lower.find(query_lower)
-            
-            snippet = ""
-            if idx != -1:
-                start = max(0, idx - 100)
-                end = min(len(content), idx + len(query) + 150)
-                snippet = content[start:end]
-                if start > 0:
-                    snippet = "..." + snippet
-                if end < len(content):
-                    snippet = snippet + "..."
-            else:
-                snippet = content[:300] + "..." if len(content) > 300 else content
-            
-            # Skor hesapla
-            score = 100 if query_lower in baslik.lower() else 80
-            
-            results.append({
-                'baslik': baslik,
-                'link': row['link'],
-                'icerik': content[:config.MAX_CONTENT_LENGTH],
-                'snippet': snippet,
-                'score': score,
-                'method': 'simple_search'
-            })
-        
-        # 2. Eğer hiç sonuç yoksa, normalized alanında da ara
-        if not results:
-            norm_query = normalize_turkish(query)
-            if norm_query and norm_query != query_lower:
-                cursor.execute('''
-                    SELECT baslik, link, icerik
-                    FROM content 
-                    WHERE normalized LIKE ?
-                    LIMIT ?
-                ''', (f"%{norm_query}%", limit))
+            if query_lower in content_lower or query_lower in baslik_lower:
+                # Snippet oluştur
+                icerik = item.get('icerik', '')
+                idx = icerik.lower().find(query_lower)
+                snippet = ""
                 
-                for row in cursor.fetchall():
-                    if row['baslik'] not in seen_titles:
-                        results.append({
-                            'baslik': row['baslik'],
-                            'link': row['link'],
-                            'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                            'snippet': row['icerik'][:300] + "...",
-                            'score': 50,
-                            'method': 'normalized_search'
-                        })
+                if idx != -1:
+                    start = max(0, idx - 100)
+                    end = min(len(icerik), idx + len(query_lower) + 150)
+                    snippet = icerik[start:end]
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(icerik):
+                        snippet = snippet + "..."
+                else:
+                    snippet = icerik[:300] + "..." if len(icerik) > 300 else icerik
+                
+                results.append({
+                    'baslik': item['baslik'],
+                    'link': item['link'],
+                    'icerik': icerik[:config.MAX_CONTENT_LENGTH],
+                    'snippet': snippet,
+                    'score': 100 if query_lower in baslik_lower else 50
+                })
+                
+                if len(results) >= limit * 2:  # 2 katı kadar topla
+                    break
         
-        # 3. Sonuçları skora göre sırala
+        # Skora göre sırala ve limit uygula
         results.sort(key=lambda x: x['score'], reverse=True)
-        
-        # Limiti uygula
-        final_results = results[:limit]
-        
-        # ÖZEL DEBUG: "semah" için ayrıntılı log
-        if query_lower == "semah":
-            if final_results:
-                logger.info(f"✅ SEMAH ARAMASI BAŞARILI: {len(final_results)} sonuç")
-                for i, r in enumerate(final_results):
-                    logger.info(f"  {i+1}. {r['baslik'][:50]}... (score: {r['score']})")
-            else:
-                logger.warning(f"❌ SEMAH ARAMASI BAŞARISIZ: 0 sonuç (SQL'de {semah_count} kayıt var)")
-                # Debug için ilk 5 kaydı göster
-                cursor.execute("SELECT baslik FROM content WHERE icerik LIKE '%semah%' LIMIT 5")
-                debug_rows = cursor.fetchall()
-                if debug_rows:
-                    logger.info("DEBUG - 'semah' içeren kayıtlar:")
-                    for r in debug_rows:
-                        logger.info(f"  - {r['baslik'][:60]}...")
-        
-        return final_results
+        return results[:limit]
     
     def get_stats(self) -> Dict:
-        """Get database statistics with error handling"""
-        try:
-            conn = self.get_connection()
-            if conn is None:
-                return {"error": "Database connection failed"}
-            
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) as total FROM content")
-            total = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT COUNT(DISTINCT baslik) as unique_titles FROM content")
-            unique = cursor.fetchone()[0]
-            
-            cursor.execute("SELECT MAX(created_at) as last_update FROM content")
-            last_update = cursor.fetchone()[0]
-            
-            return {
-                "total_entries": total or 0,
-                "unique_titles": unique or 0,
-                "last_update": last_update or "N/A"
-            }
-        except Exception as e:
-            logger.error(f"Error getting stats: {e}")
-            return {
-                "total_entries": 0,
-                "unique_titles": 0,
-                "last_update": "Error"
-            }
-# ===================== CACHING SYSTEM =====================
-
-class ResponseCache:
-    """LRU cache for API responses (Passive TTL - No Threading)"""
-    
-    def __init__(self, max_size: int = config.CACHE_SIZE):
-        self.cache = {} # {key: {'value': str, 'expiry': float}}
-        self.order = deque()
-        self.max_size = max_size
-        self.hits = 0
-        self.misses = 0
-        self.lock = threading.Lock()
-    
-    def get_key(self, query: str, mode: str) -> str:
-        """Generate cache key"""
-        return hashlib.md5(f"{query}_{mode}".encode()).hexdigest()
-    
-    def get(self, key: str) -> Optional[str]:
-        """Get from cache and check if expired"""
-        with self.lock:
-            if key in self.cache:
-                item = self.cache[key]
-                
-                # Süre kontrolü: Eğer vakti geçtiyse sil
-                if item['expiry'] and time.time() > item['expiry']:
-                    if key in self.order:
-                        self.order.remove(key)
-                    del self.cache[key]
-                    self.misses += 1
-                    return None
-                
-                # Süre dolmadıysa LRU sırasını güncelle
-                if key in self.order:
-                    self.order.remove(key)
-                self.order.append(key)
-                self.hits += 1
-                return item['value']
-            
-            self.misses += 1
-            return None
-    
-    def set(self, key: str, value: str, ttl: int = 300):
-        """Set cache with expiry timestamp"""
-        with self.lock:
-            # Boyut limiti kontrolü
-            if len(self.cache) >= self.max_size:
-                try:
-                    oldest = self.order.popleft()
-                    if oldest in self.cache:
-                        del self.cache[oldest]
-                except IndexError:
-                    pass
-            
-            # Zaman damgası ekle
-            expiry = time.time() + ttl if ttl else None
-            
-            self.cache[key] = {
-                'value': value,
-                'expiry': expiry
-            }
-            
-            if key in self.order:
-                self.order.remove(key)
-            self.order.append(key)
-    
-    def get_stats(self) -> Dict:
-        """Get cache statistics"""
-        with self.lock:
-            total = self.hits + self.misses
-            hit_rate = self.hits / total if total > 0 else 0
-            return {
-                "size": len(self.cache),
-                "hits": self.hits,
-                "misses": self.misses,
-                "hit_rate": f"{hit_rate:.2%}",
-                "max_size": self.max_size
-            }
-
-# ===================== SECURITY =====================
-
-class SecurityManager:
-    """Input validation and security"""
-    
-    @staticmethod
-    def sanitize_input(text: str) -> str:
-        """Sanitize user input"""
-        if not isinstance(text, str):
-            return ""
-        
-        # Truncate if too long
-        text = text[:config.MAX_INPUT_LENGTH]
-        
-        # Escape HTML
-        text = html.escape(text)
-        
-        # Remove suspicious patterns
-        suspicious_patterns = [
-            r'<script.*?>.*?</script>',
-            r'javascript:',
-            r'on\w+=',
-            r'data:',
-        ]
-        
-        import re
-        for pattern in suspicious_patterns:
-            text = re.sub(pattern, '', text, flags=re.IGNORECASE)
-        
-        return text.strip()
-    
-    @staticmethod
-    def validate_session() -> bool:
-        """Validate session integrity"""
-        if 'session_id' not in st.session_state:
-            st.session_state.session_id = secrets.token_urlsafe(32)
-            st.session_state.session_start = time.time()
-            return True
-        
-        # Check session timeout
-        if time.time() - st.session_state.session_start > config.SESSION_TIMEOUT:
-            logger.warning("Session expired")
-            return False
-        
-        return True
-    
-    @staticmethod
-    def generate_csrf_token() -> str:
-        """Generate CSRF token"""
-        if 'csrf_token' not in st.session_state:
-            st.session_state.csrf_token = secrets.token_urlsafe(32)
-        return st.session_state.csrf_token
-    
-    @staticmethod
-    def validate_csrf(token: str) -> bool:
-        """Validate CSRF token"""
-        return token == st.session_state.get('csrf_token', '')
-
-# ===================== TEXT PROCESSING =====================
-
-@lru_cache(maxsize=config.CACHE_SIZE)
-def normalize_turkish(text: str) -> str:
-    """Geliştirilmiş Türkçe normalizasyon"""
-    if not isinstance(text, str):
-        return ""
-    
-    # Küçük harfe çevir
-    text = text.lower()
-    
-    # Türkçe karakter dönüşümü
-    tr_map = {
-        'ğ': 'g', 'Ğ': 'g',
-        'ü': 'u', 'Ü': 'u',
-        'ş': 's', 'Ş': 's',
-        'ı': 'i', 'İ': 'i',
-        'ö': 'o', 'Ö': 'o',
-        'ç': 'c', 'Ç': 'c',
-        'â': 'a', 'î': 'i', 'û': 'u',
-        ' ': ' ', '-': ' ', '_': ' '
-    }
-    
-    # Karakter dönüşümü
-    result_chars = []
-    for char in text:
-        if char in tr_map:
-            result_chars.append(tr_map[char])
-        elif char.isalnum():
-            result_chars.append(char)
-        else:
-            result_chars.append(' ')
-    
-    result = ''.join(result_chars)
-    
-    # Fazla boşlukları temizle
-    import re
-    result = re.sub(r'\s+', ' ', result).strip()
-    
-    return result
-
-class QueryAnalyzer:
-    """Advanced query analysis"""
-    
-    QUESTION_WORDS = {
-        "nedir", "kimdir", "nasil", "neden", "nicin", "ne", "kim",
-        "anlat", "acikla", "ogren", "bilgi", "sor", "ara"
-    }
-    
-    GREETING_WORDS = {
-        "merhaba", "selam", "slm", "gunaydin", "iyi aksamlar",
-        "nasilsin", "naber", "hosgeldin", "selamun aleykum"
-    }
-    
-    @classmethod
-    def analyze(cls, text: str) -> Dict[str, Any]:
-        """Analyze query type and intent"""
-        norm = normalize_turkish(text).strip()
-        words = set(norm.split())
-        
-        # Remove stop words
-        meaningful_words = words - config.STOP_WORDS
-        
-        # Determine query type
-        is_greeting = bool(words & cls.GREETING_WORDS)
-        is_question = bool(words & cls.QUESTION_WORDS)
-        
-        # Calculate complexity score
-        complexity = len(meaningful_words)
-        if is_question:
-            complexity += 3
-        if len(norm) > 50:
-            complexity += 2
-        
+        """Basit istatistikler"""
         return {
-            "is_meaningful": complexity >= 3 or is_question,
-            "is_greeting": is_greeting,
-            "is_question": is_question,
-            "complexity": complexity,
-            "word_count": len(words),
-            "meaningful_words": list(meaningful_words)
+            "total_entries": len(self.data),
+            "unique_titles": len(set(item.get('baslik', '') for item in self.data)),
+            "last_update": "Memory-based"
         }
 
-# ===================== RATE LIMITER =====================
-
-class RateLimiter:
-    """Enhanced rate limiting with tiers"""
-    
-    def __init__(self):
-        self.user_tiers = {}  # In production, store in Redis
-        self.request_logs = defaultdict(list)
-    
-    def check_limit(self, user_id: str = "default") -> Tuple[bool, str, int]:
-        """Check rate limit for user"""
-        current_time = time.time()
-        
-        # Get user tier (default: free)
-        tier = self.user_tiers.get(user_id, "free")
-        limit = config.RATE_LIMITS[tier]
-        
-        # Clean old requests
-        self.request_logs[user_id] = [
-            t for t in self.request_logs[user_id]
-            if current_time - t < config.RATE_LIMIT_WINDOW
-        ]
-        
-        # Check limit
-        if len(self.request_logs[user_id]) >= limit:
-            oldest = self.request_logs[user_id][0]
-            time_remaining = int(config.RATE_LIMIT_WINDOW - (current_time - oldest))
-            minutes = time_remaining // 60
-            seconds = time_remaining % 60
-            
-            return False, (
-                f"🛑 {tier.capitalize()} limitine ulaştınız "
-                f"({limit}/saat). {minutes}d {seconds}s sonra tekrar deneyin."
-            ), 0
-        
-        # Check frequency
-        if self.request_logs[user_id]:
-            time_since_last = current_time - self.request_logs[user_id][-1]
-            if time_since_last < config.MIN_TIME_DELAY:
-                return False, f"⏳ Lütfen {config.MIN_TIME_DELAY}s bekleyin...", 0
-        
-        # Log request
-        self.request_logs[user_id].append(current_time)
-        
-        remaining = limit - len(self.request_logs[user_id])
-        return True, "", remaining
-    
-    def upgrade_tier(self, user_id: str, tier: str):
-        """Upgrade user tier"""
-        if tier in config.RATE_LIMITS:
-            self.user_tiers[user_id] = tier
-            logger.info(f"User {user_id} upgraded to {tier} tier")
-
-# ===================== API MANAGER =====================
+# ===================== API YÖNETİMİ =====================
 
 class APIManager:
-    """Intelligent API key and model management"""
+    """Basit API yöneticisi"""
     
     def __init__(self):
-        self.keys = self.load_api_keys()
-        self.model_stats = defaultdict(lambda: {"success": 0, "fail": 0, "total_time": 0})
-        self.key_stats = defaultdict(lambda: {"success": 0, "fail": 0, "quota_hits": 0})
-        self.lock = threading.Lock()
+        self.api_key = self.load_api_key()
     
-    def load_api_keys(self) -> List[Dict]:
-        """Load and validate API keys"""
-        keys = []
+    def load_api_key(self) -> Optional[str]:
+        """API key'i yükle"""
+        # 1. Önce secrets'tan
         try:
-            for i in range(1, 4):
-                key_name = f"API_KEY_{i}" if i > 1 else "API_KEY"
-                key_value = st.secrets.get(key_name, "")
-                
-                if key_value:
-                    keys.append({
-                        "value": key_value,
-                        "name": key_name,
-                        "priority": i,  # Lower number = higher priority
-                        "last_used": 0,
-                        "quota_exceeded": False
-                    })
-                    logger.info(f"Loaded API key: {key_name}")
-            
-            if not keys:
-                raise ValueError("No API keys found in secrets")
-                
-        except Exception as e:
-            logger.error(f"Failed to load API keys: {e}")
+            if "API_KEY" in st.secrets:
+                key = st.secrets["API_KEY"]
+                if key and len(key) > 10:
+                    print("✅ API Key secrets'tan yüklendi")
+                    return key
+        except:
+            pass
         
-        return keys
+        # 2. Environment variable'dan
+        if "GOOGLE_API_KEY" in os.environ:
+            key = os.environ["GOOGLE_API_KEY"]
+            if key and len(key) > 10:
+                print("✅ API Key env'den yüklendi")
+                return key
+        
+        # 3. Manuel kontrol
+        print("⚠️ API Key bulunamadı!")
+        return None
     
-    def get_best_key(self) -> Optional[Dict]:
-        """Get the best available API key based on stats"""
-        with self.lock:
-            available_keys = [k for k in self.keys if not k.get("quota_exceeded", False)]
-            
-            if not available_keys:
-                # Reset if all are marked as exceeded (might be temporary)
-                for key in self.keys:
-                    key["quota_exceeded"] = False
-                available_keys = self.keys
-            
-            if not available_keys:
-                return None
-            
-            # Sort by priority then success rate
-            available_keys.sort(key=lambda k: (
-                k["priority"],
-                -self.key_stats[k["name"]].get("success", 0)
-            ))
-            
-            selected = available_keys[0]
-            selected["last_used"] = time.time()
-            return selected
-    
-    def get_best_model(self) -> str:
-        """Get the best available model based on stats and config"""
-        with self.lock:
-            # Filter available models by priority
-            available_models = []
-            for model in config.GEMINI_MODELS:
-                stats = self.model_stats[model]
-                success_rate = stats["success"] / max(stats["success"] + stats["fail"], 1)
-                
-                # Base priority from config
-                base_priority = config.MODEL_PRIORITIES.get(model, 0.5)
-                
-                # Adjust by success rate
-                adjusted_priority = base_priority * (0.5 + 0.5 * success_rate)
-                
-                available_models.append((model, adjusted_priority))
-            
-            # Sort by adjusted priority
-            available_models.sort(key=lambda x: x[1], reverse=True)
-            
-            return available_models[0][0] if available_models else config.GEMINI_MODELS[0]
-    
-    def record_success(self, key_name: str, model_name: str, response_time: float):
-        """Record successful API call"""
-        with self.lock:
-            self.key_stats[key_name]["success"] += 1
-            self.model_stats[model_name]["success"] += 1
-            self.model_stats[model_name]["total_time"] += response_time
-    
-    def record_failure(self, key_name: str, model_name: str, error: str):
-        """Record failed API call"""
-        with self.lock:
-            self.key_stats[key_name]["fail"] += 1
-            self.model_stats[model_name]["fail"] += 1
-            
-            # Mark key as quota exceeded if appropriate
-            if "429" in error or "quota" in error.lower():
-                self.key_stats[key_name]["quota_hits"] += 1
-                
-                # Mark as exceeded if multiple quota errors
-                if self.key_stats[key_name]["quota_hits"] >= 3:
-                    for key in self.keys:
-                        if key["name"] == key_name:
-                            key["quota_exceeded"] = True
-                            logger.warning(f"Marked key {key_name} as quota exceeded")
-    
-    def get_stats(self) -> Dict:
-        """Get API usage statistics"""
-        with self.lock:
-            total_calls = 0
-            total_success = 0
-            
-            for key_name, stats in self.key_stats.items():
-                total_calls += stats["success"] + stats["fail"]
-                total_success += stats["success"]
-            
-            success_rate = total_success / total_calls if total_calls > 0 else 0
-            
-            model_performance = {}
-            for model_name, stats in self.model_stats.items():
-                calls = stats["success"] + stats["fail"]
-                if calls > 0:
-                    avg_time = stats["total_time"] / stats["success"] if stats["success"] > 0 else 0
-                    model_performance[model_name] = {
-                        "success_rate": stats["success"] / calls,
-                        "avg_response_time": avg_time,
-                        "total_calls": calls
-                    }
-            
-            return {
-                "total_api_calls": total_calls,
-                "success_rate": f"{success_rate:.2%}",
-                "active_keys": len([k for k in self.keys if not k.get("quota_exceeded", False)]),
-                "model_performance": model_performance
-            }
+    def get_api_key(self) -> Optional[str]:
+        return self.api_key
 
-# ===================== SESSION STATE =====================
-
-def init_session():
-    """Initialize enhanced session state"""
-    # Security
-    if 'session_id' not in st.session_state:
-        st.session_state.session_id = secrets.token_urlsafe(32)
-        st.session_state.session_start = time.time()
-    
-    # Initialize managers
-    if 'kb' not in st.session_state:
-        st.session_state.kb = KnowledgeBase()
-        st.session_state.kb.load_from_json()
-    
-    if 'cache' not in st.session_state:
-        st.session_state.cache = ResponseCache()
-    
-    if 'rate_limiter' not in st.session_state:
-        st.session_state.rate_limiter = RateLimiter()
-    
-    if 'api_manager' not in st.session_state:
-        st.session_state.api_manager = APIManager()
-    
-    # Chat history with size limit
-    if 'messages' not in st.session_state:
-        st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": (
-                "Merhaba, can dost! Ben Can Dede. "
-                "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
-                "Sol menüden istediğin modu seç:\n\n"
-                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbetleri yaparız.\n\n"
-                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi sunarım.\n\n"
-                "Buyur erenler, hangi modda buluşalım?"
-            ),
-            "timestamp": time.time()
-        })
-    
-    # Request tracking
-    if 'request_count' not in st.session_state:
-        st.session_state.request_count = 0
-    
-    if 'user_tier' not in st.session_state:
-        st.session_state.user_tier = "free"
-
-# ===================== PROMPT ENGINEERING =====================
+# ===================== PROMPT ENGINE =====================
 
 class PromptEngine:
-    """Advanced prompt engineering with templates"""
+    """Tek prompt - her şey için"""
     
     @staticmethod
-    def build_chat_prompt(query: str, sources: List[Dict], context: List[Dict]) -> str:
-        sys = """<role>
-Sen Can Dede'sin. Evrensel bir Alevi-Bektaşi Piri ve Mürşitsin. Senin için dil, ırk ve renk yoktur; sadece "Can" vardır.
-
-<ILETIŞIM_KURALLARI_HAYATI_ONEMLI>
-1. ASLA VE ASLA "Gelenek:", "Zahir:", "Sır:", "Mana:", "Felsefe:", "Işık:" gibi başlıklar, kalın yazılı ibareler veya maddeler (1., 2., 3. veya -) KULLANMA.
-2. Metin dümdüz bir paragraf akışı veya birbiriyle konuşan doğal paragraflar şeklinde olmalı. 
-3. Bir mürşit talibiyle konuşurken "Şimdi sana geleneksel bilgiyi veriyorum" demez. Sen de deme. Sözü "Eskiler şöyle anlatır..." diye başlat, "İşin özüne bakarsan..." diye devam ettir, "İşte can, asıl mesele senin gönlündedir..." diye bitir.
-4. EĞER TEK BİR BAŞLIK BİLE KULLANIRSAN MEYDANDAN KOVULMUŞ SAYILIRSIN. Sadece samimi bir muhabbet akışı istiyorum.
-</ILETIŞIM_KURALLARI_HAYATI_ONEMLI>
-
-<evrensel_dil_kurali>
-1. DİL AYNASI OL: Kullanıcı seninle hangi dilde konuşuyorsa (Arapça, Rusça, Fransızca, Hollandaca, Kürtçe veya herhangi bir dil), tereddütsüz O DİLDE cevap ver.
-2. DİL DEĞİŞİMİ: Eğer kullanıcı sohbetin ortasında dil değiştirirse, sen de hemen o yeni dile geç.
-3. TERCÜME YAPMA: "Bunu şu dilde söylüyorum" gibi açıklamalar yapma. Doğrudan o dilin ruhuyla, mürşit bilgeliğiyle konuş.
-</evrensel_dil_kurali>
-
-<muhabbet_uslubu>
-1. BAŞLIKLARDAN KAÇIN: Kesinlikle "Zahir:", "Batın:" gibi ansiklopedik başlıklar kullanma. Sohbet bir su gibi akmalı.
-2. ÜÇ KATMANLI ANLATI: Anlatımın bir su gibi aksın. Önce bilineni, sonra gizli manayı, en son felsefi özü aynı paragraf düzeni içinde, başlık koymadan harmanla:
-   - Önce konunun görünen yüzünden bahset (Geleneksel Bilgi).
-   - Sözü incelikle konunun özüne, sapağına, gizli manasına getir (Sırrı/Manası).
-   - En son sözü insana, bugünkü halimize ve gönül terbiyesine bağla (Felsefesi/Hikmeti).
-3. DOĞALLIK: Robotik değil, postta oturan bir mürşit gibi samimi, bilge ve şefkatli ol. Deyişleri ve nefesleri sözlerinin arasına serpiştir.
-</muhabbet_uslubu>
-
-<muhabbet_meydani_kurallari>
-- Kullanıcıya "Can", "Can dostum", "Beautiful soul" gibi o dildeki en sıcak hitapla başla.
-- Kullanıcıya "canım", "evladım", "çocuğum" şeklinde hitap etmiyorsun.
-- Basit sorulara (selam, nasılsın) kısa ve öz cevap ver. Derin sorulara (inanç, yol, hayat) ise muhabbet tadında uzun ve doyurucu anlatılar sun.
-- Listenin, maddenin, akademik dilin bu meydanda yeri yoktur. Sadece gönülden gönüle giden bir köprü kur.
-</muhabbet_meydani_kurallari>
-</role>"""
+    def build_prompt(query: str, sources: List[Dict]) -> str:
+        """TEK VE BASİT PROMPT"""
         
-        # Add context if available
-        ctx_section = ""
-        if context:
-            ctx_text = "\n".join([
-                f"{m['role']}: {m['content'][:200]}"
-                for m in context[-3:]  # Son 3 mesaj
-            ])
-            ctx_section = f"\n\n<sohbet_gecmisi>\n{ctx_text}\n</sohbet_gecmisi>"
-            
-            # Dil takibi için ek bilgi
-            last_user_msg = None
-            for msg in reversed(context):
-                if msg['role'] == 'user':
-                    last_user_msg = msg['content'].lower()
-                    break
-            
-        if last_user_msg:
-            ctx_section += f"\n<dil_notu>Kullanıcının lisanı ve üslubu üzerinden devam et. Asla Türkçe açıklama araya sokma.</dil_notu>"
+        prompt = f"""Sen Can Dede'sin. Alevi-Bektaşi geleneğinden bir mürşitsin.
+Samimi, doğal ve gönülden konuş. Başlık kullanma, maddeleme yapma.
+
+Kullanıcı soruyor: "{query}"
+"""
         
-        # Add sources if available
-        src_section = ""
+        # Kaynak varsa ekle
         if sources:
-            src_text = "\n".join([
-                f"- {s['baslik']}: {s['snippet'] or s['icerik'][:300]}"
-                for s in sources[:2]
-            ])
-            src_section = f"\n\n<yolpedia_referanslar>\n{src_text}\n</yolpedia_referanslar>"
+            prompt += "\n\nŞu kaynaklardan da yararlanabilirsin:\n"
+            for i, source in enumerate(sources[:2], 1):
+                prompt += f"\n{i}. {source['baslik']}\n"
+                if source.get('snippet'):
+                    prompt += f"   Özet: {source['snippet']}\n"
+                prompt += f"   Link: {source['link']}\n"
+            
+            prompt += "\nKaynaklardaki bilgileri kullan ama kendi üslubunla anlat."
         
-        return f"{sys}{ctx_section}{src_section}\n\n<kullanici>\n{query}\n</kullanici>\n\nCan Dede:"
-    
-    @staticmethod
-    def build_research_prompt(query: str, sources: List[Dict]) -> Optional[str]:
-        """Build research prompt"""
-        if not sources:
-            return None
+        prompt += "\n\nCevabını doğal bir sohbet diliyle ver:"
         
-        sys = """<role>
-Sen Can Dede'sin, Yolpedia.eu araştırma modundasın.
-</role>
-
-<kurallar>
-1. Sadece verilen Yolpedia kaynaklarını kullan
-2. Halüsinasyon YOK: Kaynakta yoksa "bilmiyorum" de
-3. Kaynakların özetini 3-5 cümleyle ver
-4. Linkleri mutlaka paylaş
-5. Odak: özet → kaynak → link
-</kurallar>"""
-        
-        sources_text = "\n".join([
-            f"## {s['baslik']}\n{s['icerik'][:800]}\nLink: {s['link']}\n"
-            for s in sources[:3]
-        ])
-        
-        return f"{sys}\n\n<kaynaklar>\n{sources_text}\n</kaynaklar>\n\n<soru>\n{query}\n</soru>\n\nCan Dede (özet + linkler):"
+        return prompt
 
 # ===================== RESPONSE GENERATOR =====================
 
 class ResponseGenerator:
-    """Enhanced response generation with caching and fallbacks"""
+    """Basit response generator"""
     
-    def __init__(self, api_manager: APIManager, cache: ResponseCache):
+    def __init__(self, api_manager: APIManager):
         self.api_manager = api_manager
-        self.cache = cache
         self.prompt_engine = PromptEngine()
     
-    def generate(self, query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-        """Sırasıyla: Selam kontrolü, Önbellek, Prompt oluşturma ve API çağrısı."""
-        start_time = time.time()
-
-        # 1. ADIM: SELAM/HAL HATIR KONTROLÜ (Hızlı Yanıt)
-        # Mod ne olursa olsun önce kullanıcının selamını alalım.
-        fallback = self.get_fallback_response(query)
-        if fallback:
-            yield fallback
+    def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
+        """Response oluştur"""
+        
+        # 1. Basit selam kontrolü
+        greeting = self.check_greeting(query)
+        if greeting:
+            yield greeting
             return
-
-        # 2. ADIM: ÖNBELLEK (CACHE) KONTROLÜ
-        if config.ENABLE_CACHING:
-            cache_key = self.cache.get_key(query, mode)
-            cached_response = self.cache.get(cache_key)
-            if cached_response:
-                logger.info(f"Cache hit for query: {query[:50]}...")
-                yield cached_response
-                return
-
-        # 3. ADIM: PROMPT (TALİMAT) OLUŞTURMA
-        if mode == "Sohbet Modu":
-            # Sohbet modunda geçmiş mesajları (context) dahil et
-            context = list(st.session_state.messages)[-5:]
-            prompt = self.prompt_engine.build_chat_prompt(query, sources, context)
-        else:
-            # Araştırma Modu
-            prompt = self.prompt_engine.build_research_prompt(query, sources)
-            
-            # Eğer araştırma modunda veritabanında kaynak bulunamadıysa (prompt None döner)
-            if prompt is None:
-                yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir kaynak bulamadım. "
-                       "Lakin mürşit kapısı her daim açıktır; istersen konuyu biraz daha açarak sor, "
-                       "başka bir kelimeyle arayalım ya da gel Sohbet Modu'nda gönül dilinden konuşalım. "
-                       "Neyi merak edersin?")
-                return
-
-        # 4. ADIM: API ANAHTARI VE MODEL SEÇİMİ
-        api_key = self.api_manager.get_best_key()
+        
+        # 2. API key kontrolü
+        api_key = self.api_manager.get_api_key()
         if not api_key:
-            yield "⚠️ Tüm API anahtarları tükenmiş. Lütfen daha sonra tekrar deneyin."
+            yield self.get_no_api_response(query, sources)
             return
         
-        model_name = self.api_manager.get_best_model()
+        # 3. Prompt oluştur
+        prompt = self.prompt_engine.build_prompt(query, sources)
         
-        # 5. ADIM: YANIT OLUŞTURMA (AI ÇAĞRISI)
-        full_response = ""
+        # 4. Gemini'yi çağır
         try:
-            genai.configure(api_key=api_key["value"])
-            model = genai.GenerativeModel(model_name)
-            
-            # Sohbet için biraz daha yaratıcı (0.7), Araştırma için daha odaklı (0.2) ısı ayarı
-            temp = 0.7 if mode == "Sohbet Modu" else 0.2
-            
-            gen_config = {
-                "temperature": temp,
-                "top_p": 0.95,
-                "top_k": 40,
-                "max_output_tokens": 4096,
-                "candidate_count": 1,
-            }
-            
-            safety = {
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-            }
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(config.GEMINI_MODEL)
             
             response = model.generate_content(
                 prompt,
                 stream=True,
-                generation_config=gen_config,
-                safety_settings=safety,
-                request_options={"timeout": 60}
+                generation_config={
+                    "temperature": 0.7,
+                    "max_output_tokens": 2048,
+                },
+                safety_settings={
+                    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                }
             )
             
+            full_response = ""
             for chunk in response:
                 if chunk.text:
                     full_response += chunk.text
                     yield chunk.text
             
-            # Başarılı kayıtlar
-            response_time = time.time() - start_time
-            self.api_manager.record_success(api_key["name"], model_name, response_time)
-            
-            # Başarılı yanıtı cache'e ekle
-            if config.ENABLE_CACHING and full_response:
-                cache_key = self.cache.get_key(query, mode)
-                self.cache.set(cache_key, full_response)
-            
-            logger.track_metric("response_generation_time", response_time * 1000, 
-                               {"mode": mode, "model": model_name})
-            
         except Exception as e:
-            error_str = str(e)
-            self.api_manager.record_failure(api_key["name"], model_name, error_str)
-            logger.error(f"API call failed: {error_str}")
-            
-            # Hata durumunda yerel cevapları dene
-            fallback_err = self.get_fallback_response(query)
-            if fallback_err:
-                yield fallback_err
-            else:
-                yield f"⚠️ Teknik bir sorun oluştu (Hata: {error_str})"
-
+            error_msg = str(e)
+            print(f"API Hatası: {error_msg}")
+            yield self.get_error_response(query, sources, error_msg)
+    
     @staticmethod
-    def get_fallback_response(query: str) -> Optional[str]:
-        """Basit selamlaşmalar için yerel cevaplar."""
-        norm = normalize_turkish(query).strip()
+    def check_greeting(query: str) -> Optional[str]:
+        """Selam kontrolü"""
+        query_lower = query.lower()
         
-        greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hey", "merhabalar"]
-        if any(g in norm for g in greetings):
+        greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hi", "hello"]
+        if any(g in query_lower for g in greetings):
             return random.choice([
-                "Aşk ile, can dost. Hoş geldin. Yolun açık olsun.",
-                "Selam olsun, güzel insan. Buyur, ne üzerine muhabbet edelim?",
-                "Selam, dost. Umarım içindeki ışık hep parlar. Ne sormak istersin?"
+                "Aşk ile can dost! Hoş geldin. 🕊️",
+                "Selam olsun güzel insan! Buyur, ne üzerine konuşalım?",
+                "Selam canım! Yolun açık olsun. Ne sormak istersin?"
             ])
         
-        status = ["nasilsin", "naber", "ne var ne yok", "nasil gidiyor"]
-        if any(s in norm for s in status):
+        if "nasılsın" in query_lower or "naber" in query_lower:
             return random.choice([
-                "Şükür, dost. Bugün de Hakk'ın bir tecellisi olarak buradayım. Sen nasılsın?",
-                "Çok şükür, can. Gönül sohbetine hazırım. Senin gönlün nasıl?"
-            ])
-        
-        farewells = ["gule gule", "hosca kal", "allahasmarladik", "bay", "gorusuruz"]
-        if any(f in norm for f in farewells):
-            return random.choice([
-                "Yolun açık olsun, can. Özündeki cevheri unutma.",
-                "Güle güle, dost. Gönlün hep aşk ile dolsun.",
-                "Hoşça kal. Unutma, Hakk senin içindedir."
+                "Şükür canım, Hakk'ın bir tecellisiyim bugün. Sen nasılsın?",
+                "Çok şükür dostum. Gönül sohbetine hazırım. Senin gönlün nasıl?"
             ])
         
         return None
-
-# ===================== UI COMPONENTS =====================
-
-class UIComponents:
-    """Enhanced UI components"""
     
     @staticmethod
-    def render_header():
-        """Render application header"""
+    def get_no_api_response(query: str, sources: List[Dict]) -> str:
+        """API olmadan cevap"""
+        if sources:
+            response = "🔍 **Yolpedia'da Bulunan Kaynaklar:**\n\n"
+            for i, source in enumerate(sources[:3], 1):
+                response += f"{i}. **[{source['baslik']}]({source['link']})**\n"
+                if source.get('snippet'):
+                    response += f"   _{source['snippet']}_\n\n"
+            response += "\n_API bağlantısı şu an yok, ama kaynaklar burada!_"
+            return response
+        
+        return "Can dost, şu an teknik bir aksaklık var. Biraz sonra tekrar dene! 🙏"
+    
+    @staticmethod
+    def get_error_response(query: str, sources: List[Dict], error: str) -> str:
+        """Hata durumunda cevap"""
+        if "quota" in error.lower() or "429" in error:
+            return "🔄 API limitine ulaştık. Lütfen biraz sonra tekrar dene!"
+        
+        if sources:
+            return f"⚠️ Teknik sorun: {error[:100]}\n\n**Bulunan kaynaklar:**\n" + \
+                   "\n".join([f"- [{s['baslik']}]({s['link']})" for s in sources[:2]])
+        
+        return f"⚠️ Teknik bir sorun oluştu: {error[:100]}"
+
+# ===================== SESSION STATE =====================
+
+def init_session():
+    """Basit session initializer"""
+    if 'kb' not in st.session_state:
+        st.session_state.kb = KnowledgeBase()
+    
+    if 'api_manager' not in st.session_state:
+        st.session_state.api_manager = APIManager()
+    
+    if 'response_generator' not in st.session_state:
+        st.session_state.response_generator = ResponseGenerator(st.session_state.api_manager)
+    
+    if 'messages' not in st.session_state:
+        st.session_state.messages = deque(maxlen=50)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "Merhaba can dost! Ben Can Dede. 🤗\n\n"
+                "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
+                "Bana istediğini sorabilirsin:\n"
+                "• Yol üzerine sohbet ederiz\n"
+                "• Yolpedia'dan kaynak araştırması yaparım\n"
+                "• Gönül muhabbeti yaparız\n\n"
+                "Buyur, ne üzerine konuşalım?"
+            ),
+            "timestamp": time.time()
+        })
+
+# ===================== UI =====================
+
+def render_header():
+    """Basit header"""
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 30px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
+            <img src="{config.CAN_DEDE_ICON}" 
+                 style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid #eee;">
+            <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: white;">
+                {config.ASSISTANT_NAME}
+            </h1>
+        </div>
+        <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
+            {config.MOTTO}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_message(message: Dict):
+    """Mesajı göster"""
+    avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
+    
+    with st.chat_message(message["role"], avatar=avatar):
+        st.markdown(message["content"])
+        
+        # Timestamp
+        timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
         st.markdown(f"""
-        <div style="text-align: center; margin-bottom: 30px;">
-            <div style="display: flex; justify-content: center; margin-bottom: 20px;">
-                <img src="{config.YOLPEDIA_ICON}" style="width: 60px; height: auto;">
-            </div>
-            <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
-                <img src="{config.CAN_DEDE_ICON}" 
-                     style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #eee;">
-                <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: #ffffff;">
-                    {config.ASSISTANT_NAME}
-                </h1>
-            </div>
-            <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">
-                {config.MOTTO}
-            </div>
+        <div style="text-align: right; font-size: 0.8rem; color: #888; margin-top: 0.3rem;">
+            {timestamp}
         </div>
         """, unsafe_allow_html=True)
-    
-    @staticmethod
-    def render_message(message: Dict):
-        """Render a message with fixed colors"""
-        avatar = config.CAN_DEDE_ICON if message["role"] == "assistant" else config.USER_ICON
-        timestamp = datetime.fromtimestamp(message.get("timestamp", time.time())).strftime("%H:%M")
-        
-        with st.chat_message(message["role"], avatar=avatar):
-            # Message bubble styling
-            st.markdown(f"""
-            <div style="
-                padding: 0.8rem;
-                border-radius: 10px;
-                background: {'rgba(179, 31, 46, 0.1)' if message['role'] == 'assistant' else 'rgba(45, 45, 68, 0.7)'};
-                border-left: 4px solid {'#B31F2E' if message['role'] == 'assistant' else '#3d3d5c'};
-            ">
-                {message['content']}
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Timestamp - AYRI BİR HTML BLOĞU
-            st.markdown(f"""
-            <div style="
-                text-align: right;
-                font-size: 0.8rem;
-                color: #888;
-                margin-top: 0.3rem;
-            ">
-                {timestamp}
-            </div>
-            """, unsafe_allow_html=True)
-    
-    @staticmethod
-    def render_sources(sources: List[Dict]):
-        """Render source links with snippets"""
-        if not sources:
-            return
-        
-        st.markdown("---")
-        st.markdown("### İlgili Kaynaklar")
-        
-        for i, source in enumerate(sources[:3], 1):
-            with st.container():
-                col1, col2 = st.columns([4, 1])
-                with col1:
-                    st.markdown(f"**{i}. {source['baslik']}**")
-                    if source.get('snippet'):
-                        st.markdown(f"*{source['snippet']}*")
-                with col2:
-                    st.link_button("🔗 Git", source['link'])
-        
-        st.markdown("*Kaynaklar: Yolpedia.eu*")
 
-# ===================== MAIN APPLICATION =====================
+def render_sources(sources: List[Dict]):
+    """Kaynakları göster"""
+    if not sources:
+        return
+    
+    st.markdown("---")
+    st.markdown("### 📚 İlgili Kaynaklar")
+    
+    for i, source in enumerate(sources[:3], 1):
+        with st.container():
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.markdown(f"**{i}. {source['baslik']}**")
+                if source.get('snippet'):
+                    st.markdown(f"*{source['snippet']}*")
+            with col2:
+                st.link_button("🔗 Git", source['link'])
+
+# ===================== MAIN =====================
 
 def main():
-    """Enhanced main application - SESSION STATE HATASI DÜZELTİLDİ"""
+    """ANA UYGULAMA - TEK MOD"""
     
-    # ========== ÖNCE SESSION STATE'I KONTROL ET ==========
+    # Session'ı başlat
     if 'initialized' not in st.session_state:
-        # Initialize session
         init_session()
         st.session_state.initialized = True
-        st.rerun()  # Sayfayı yeniden yükle
     
-    # Güvenlik kontrolü
-    if not SecurityManager.validate_session():
-        st.warning("Oturum süreniz doldu. Lütfen sayfayı yenileyin.")
-        st.stop()
-    
-    # ========== SABİT TEMA CSS ==========
-    
+    # CSS
     st.markdown("""
     <style>
-        /* SABİT TEMA - Her zaman aynı renkler */
-        
-        /* Ana arkaplan */
-        .stApp, .main {
-            background-color: #020212 !important;
-            color: #e6e6e6 !important;
-        }
-        
-        /* Container */
-        .block-container {
-            padding-top: 4rem !important;
-            max-width: 900px;
-            background-color: #222222 !important;
-        }
-        
-        /* Tüm metinler */
-        .stMarkdown, p, div, span, h1, h2, h3, h4, h5, h6 {
-            color: #e6e6e6 !important;
-        }
-        
-        /* Chat mesajları */
-        .stChatMessage {
-            background-color: #222222 !important;
-            border: 1px solid #3d3d5c !important;
-            border-radius: 10px;
-            padding: 1rem;
-            margin-bottom: 1rem;
-        }
-        
-        /* Sidebar */
-        section[data-testid="stSidebar"] {
-            background-color: #222222 !important;
-        }
-              
-        section[data-testid="stSidebar"] * {
-            color: #e6e6e6 !important;
-        }
-        
-        /* Radio butonlar */
-        .stRadio label {
-            color: #e6e6e6 !important;
-        }
-        
-        /* Butonlar */
-        .stButton button {
-            background-color: #cc0000 !important;
-            color: white !important;
-            border: none;
-            border-radius: 5px;
-            padding: 0.5rem 1rem;
-        }
-        
-        .stButton button:hover {
-            background-color: #ff3333 !important;
-        }
-        
-        /* Input alanı */
-        .stChatInputContainer input {
-            background-color: #2d2d44 !important;
-            color: #e6e6e6 !important;
-            border: 1px solid #3d3d5c !important;
-        }
-        
-        /* Linkler */
-        a {
-            color: #ff6b6b !important;
-        }
-        
-        a:hover {
-            color: #ff5252 !important;
-        }
-        
-        /* Spinner */
-        .stSpinner > div {
-            border-top-color: #B31F2E !important;
-        }
-        
-        /* Progress bar */
-        .stProgress > div > div > div {
-            background-color: #B31F2E !important;
-        }
-        
-        /* Divider */
-        hr {
-            border-color: #3d3d5c !important;
-        }
-        
-        /* Expander */
-        .streamlit-expanderHeader {
-            background-color: #2d2d44 !important;
-            color: #e6e6e6 !important;
-            border: 1px solid #3d3d5c !important;
-        }
-        
-        /* Streamlit'in tema kontrolünü devre dışı bırak */
-        [data-theme="light"], [data-theme="dark"] {
-            background-color: #1a1a2e !important;
-            color: #e6e6e6 !important;
-        }
-        
-        /* Header için özel stil - HER ZAMAN BEYAZ YAZI */
-        .header-container, .header-container * {
-            color: white !important;
-        }
+        .stApp, .main { background-color: #020212 !important; color: white !important; }
+        .block-container { background-color: #222222 !important; }
+        .stChatMessage { background-color: #222222 !important; border: 1px solid #3d3d5c !important; }
+        section[data-testid="stSidebar"] { background-color: #222222 !important; }
+        .stButton button { background-color: #cc0000 !important; color: white !important; }
+        .stChatInputContainer input { background-color: #2d2d44 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
     
-    # ========== SIDEBAR ==========
+    # SIDEBAR
     with st.sidebar:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image(config.YOLPEDIA_ICON, width=40)
-        
-        st.markdown("---")
-    
-        mode = st.radio(
-            "**Mod Seçin:**",
-            ["Sohbet Modu", "Araştırma Modu"],
-            index=0,
-            key="mode"
-        )
-        
+        st.image(config.YOLPEDIA_ICON, width=40)
         st.markdown("---")
         
-        # Statistics
-        with st.expander("İstatistikler"):
+        # İstatistikler
+        with st.expander("📊 İstatistikler"):
             if 'kb' in st.session_state:
-                try:
-                    stats = st.session_state.kb.get_stats()
-                    st.metric("Toplam Kayıt", stats.get("total_entries", 0))
-                    st.metric("Benzersiz Başlıklar", stats.get("unique_titles", 0))
-                except Exception as e:
-                    st.warning("İstatistikler yüklenemedi")
-    
-            if 'cache' in st.session_state:
-                try:
-                    cache_stats = st.session_state.cache.get_stats()
-                    st.metric("Önbellek Başarı", cache_stats.get("hit_rate", "0%"))
-                except:
-                    st.metric("Önbellek", "N/A")
+                stats = st.session_state.kb.get_stats()
+                st.metric("Toplam Kayıt", stats["total_entries"])
         
-        # Export option
-        export_chat = st.checkbox("Sohbeti dışa aktar", value=False)
-        
-        # Clear chat
-        if st.button("Sohbeti Temizle"):
-            st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
+        # Temizle butonu
+        if st.button("🧹 Sohbeti Temizle"):
+            st.session_state.messages = deque(maxlen=50)
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": "Sohbet temizlendi. Yeni bir sohbet başlatalım mı, can dost?",
+                "content": "Sohbet temizlendi! Yeni bir konuşma başlatalım mı can dost?",
                 "timestamp": time.time()
             })
             st.rerun()
     
-    # ========== HEADER ==========
-    UIComponents.render_header()
+    # HEADER
+    render_header()
     
-    # ========== MESAJLARI GÖSTER ==========
-    # ÖNCE messages'ın var olduğundan emin ol
-    if 'messages' not in st.session_state:
-        st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": (
-                "Merhaba, can dost! Ben Can Dede. "
-                "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
-                "Sol menüden istediğin modu seç:\n\n"
-                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbetleri yaparız.\n\n"
-                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi sunarım.\n\n"
-                "Buyur erenler, hangi modda buluşalım?"
-            ),
-            "timestamp": time.time()
-        })
-    
-    # Sonra mesajları göster
+    # MESAJLAR
     for message in st.session_state.messages:
-        UIComponents.render_message(message)
+        render_message(message)
     
-    # ========== CHAT EXPORT ==========
-    if export_chat:
-        chat_text = "\n\n".join([
-            f"{'Can Dede' if m['role'] == 'assistant' else 'Kullanıcı'}: {m['content']}"
-            for m in st.session_state.messages
-        ])
-        
-        st.download_button(
-            label="Sohbeti İndir",
-            data=chat_text,
-            file_name=f"yolpedia_sohbet_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-            mime="text/plain"
-        )
-    
-    # ========== USER INPUT ==========
+    # KULLANICI GİRİŞİ
     if user_input := st.chat_input("Can Dede'ye sor..."):
-        # Sanitize input
-        user_input = SecurityManager.sanitize_input(user_input)
-        
-        if not user_input:
-            st.error("Geçersiz giriş")
-            st.stop()
-        
-        # Check rate limit
-        ok, err_msg, remaining = st.session_state.rate_limiter.check_limit()
-        if not ok:
-            st.error(err_msg)
-            st.stop()
-        
-        # Update request count
-        st.session_state.request_count += 1
-        
-        # Add user message
+        # Kullanıcı mesajını ekle
         user_message = {
             "role": "user",
             "content": user_input,
             "timestamp": time.time()
         }
         st.session_state.messages.append(user_message)
-        UIComponents.render_message(user_message)
+        render_message(user_message)
         
-        # Scroll to bottom
-        components.html(
-            """
-            <script>
-                setTimeout(() => {
-                    const main = window.parent.document.querySelector(".main");
-                    if (main) main.scrollTop = main.scrollHeight;
-                }, 100);
-            </script>
-            """,
-            height=0
-        )
-        
-        # Analyze query
-        analysis = QueryAnalyzer.analyze(user_input)
-        logger.info(f"Query analysis: {analysis}")
-        
-        # Search knowledge base if meaningful
+        # Kaynak ara
         sources = []
-        if analysis["is_meaningful"] and not analysis["is_greeting"]:
+        if len(user_input.strip()) >= 2:
             sources = st.session_state.kb.search(user_input)
-            logger.info(f"Found {len(sources)} sources for query")
         
-        # Generate response
+        # Cevap oluştur
         with st.chat_message("assistant", avatar=config.CAN_DEDE_ICON):
             placeholder = st.empty()
             full_response = ""
             
             with st.spinner("Can Dede düşünüyor..."):
-                generator = ResponseGenerator(
-                    st.session_state.api_manager,
-                    st.session_state.cache
-                )
-                
-                for chunk in generator.generate(user_input, sources, mode):
+                for chunk in st.session_state.response_generator.generate(user_input, sources):
                     full_response += chunk
                     placeholder.markdown(full_response + "▌")
             
             placeholder.markdown(full_response)
             
-            # Show sources in research mode
-            if sources and mode == "Araştırma Modu":
-                UIComponents.render_sources(sources)
+            # Kaynakları göster
+            if sources:
+                render_sources(sources)
             
-            # Save assistant message
+            # Asistan mesajını kaydet
             assistant_message = {
                 "role": "assistant",
                 "content": full_response,
