@@ -854,9 +854,12 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-        # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP (Mod ne olursa olsun)
+        # Fonksiyonun içi: 8 boşluk içeride
+        # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP
         fallback = self.get_fallback_response(query)
+        
         if fallback:
+            # If bloğunun içi: 12 boşluk içeride
             yield fallback
             return
 
