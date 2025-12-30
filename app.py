@@ -209,6 +209,231 @@ class SearchEngine:  # Veya mevcut sınıfınızın adı neyse
             logger.error(f"SQL hatası: {str(e)}")
             return []
 
+# ===================== KNOWLEDGE BASE =====================
+
+class KnowledgeBase:
+    """Enhanced knowledge base with SQLite"""
+    
+    def __init__(self, db_path: str = config.DB_PATH):
+        self.db_path = db_path
+        self.conn = None
+        self.setup_database()
+    
+    def get_connection(self):
+        """Get database connection with row factory"""
+        if self.conn is None:
+            self.conn = sqlite3.connect(self.db_path)
+            self.conn.row_factory = sqlite3.Row
+        return self.conn
+    
+    def setup_database(self):
+        """Initialize database tables"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS content (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                baslik TEXT NOT NULL,
+                link TEXT NOT NULL UNIQUE,
+                icerik TEXT,
+                normalized TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create indexes for faster search
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_baslik ON content(baslik)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_normalized ON content(normalized)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_created ON content(created_at)')
+        
+        conn.commit()
+        logger.info(f"Database initialized at {self.db_path}")
+    
+    def load_from_json(self, data_file: str = config.DATA_FILE):
+        """Load data from JSON file into database"""
+        try:
+            import json
+            from pathlib import Path
+            
+            json_path = Path(data_file)
+            if not json_path.exists():
+                logger.warning(f"JSON data file not found: {data_file}")
+                return
+            
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            inserted = 0
+            updated = 0
+            
+            for item in data:
+                # Normalize content for better searching
+                normalized_text = normalize_turkish(item.get('baslik', '') + ' ' + item.get('icerik', ''))
+                
+                try:
+                    cursor.execute('''
+                        INSERT OR REPLACE INTO content (baslik, link, icerik, normalized)
+                        VALUES (?, ?, ?, ?)
+                    ''', (
+                        item['baslik'],
+                        item['link'],
+                        item['icerik'][:config.MAX_CONTENT_LENGTH],
+                        normalized_text
+                    ))
+                    inserted += 1
+                except Exception as e:
+                    logger.error(f"Error inserting {item['baslik']}: {e}")
+            
+            conn.commit()
+            logger.info(f"Loaded {inserted} items from {data_file}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load JSON data: {e}")
+    
+    def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
+        """Enhanced search in knowledge base"""
+        
+        if len(query.strip()) < 2:
+            return []
+        
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        query_lower = query.lower().strip()
+        
+        # DEBUG: Önce doğrudan SQL ile test edelim
+        cursor.execute("SELECT COUNT(*) FROM content WHERE icerik LIKE ?", (f"%semah%",))
+        semah_count = cursor.fetchone()[0]
+        logger.info(f"DEBUG: Veritabanında 'semah' içeren kayıt sayısı: {semah_count}")
+        
+        # 1. ÖNCE: Normalize ETME, direkt olarak küçük harfle ara
+        try:
+            cursor.execute('''
+                SELECT baslik, link, icerik, normalized
+                FROM content 
+                WHERE 
+                    LOWER(baslik) LIKE ? OR
+                    LOWER(icerik) LIKE ?
+                LIMIT ?
+            ''', (f"%{query_lower}%", f"%{query_lower}%", limit * 3))
+            
+            rows = cursor.fetchall()
+            logger.info(f"DEBUG: SQL sorgusu '{query_lower}' için {len(rows)} satır döndü")
+            
+        except Exception as e:
+            logger.error(f"SQL hatası: {str(e)}")
+            return []
+        
+        results = []
+        seen_titles = set()
+        
+        for row in rows:
+            baslik = row['baslik']
+            content = row['icerik']
+            
+            # Aynı başlığı tekrar ekleme
+            if baslik in seen_titles:
+                continue
+            seen_titles.add(baslik)
+            
+            # Snippet oluştur - query'i direkt içerikte ara
+            content_lower = content.lower()
+            idx = content_lower.find(query_lower)
+            
+            snippet = ""
+            if idx != -1:
+                start = max(0, idx - 100)
+                end = min(len(content), idx + len(query) + 150)
+                snippet = content[start:end]
+                if start > 0:
+                    snippet = "..." + snippet
+                if end < len(content):
+                    snippet = snippet + "..."
+            else:
+                snippet = content[:300] + "..." if len(content) > 300 else content
+            
+            # Skor hesapla
+            score = 100 if query_lower in baslik.lower() else 80
+            
+            results.append({
+                'baslik': baslik,
+                'link': row['link'],
+                'icerik': content[:config.MAX_CONTENT_LENGTH],
+                'snippet': snippet,
+                'score': score,
+                'method': 'simple_search'
+            })
+        
+        # 2. Eğer hiç sonuç yoksa, normalized alanında da ara
+        if not results:
+            norm_query = normalize_turkish(query)
+            if norm_query and norm_query != query_lower:
+                cursor.execute('''
+                    SELECT baslik, link, icerik
+                    FROM content 
+                    WHERE normalized LIKE ?
+                    LIMIT ?
+                ''', (f"%{norm_query}%", limit))
+                
+                for row in cursor.fetchall():
+                    if row['baslik'] not in seen_titles:
+                        results.append({
+                            'baslik': row['baslik'],
+                            'link': row['link'],
+                            'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
+                            'snippet': row['icerik'][:300] + "...",
+                            'score': 50,
+                            'method': 'normalized_search'
+                        })
+        
+        # 3. Sonuçları skora göre sırala
+        results.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Limiti uygula
+        final_results = results[:limit]
+        
+        # ÖZEL DEBUG: "semah" için ayrıntılı log
+        if query_lower == "semah":
+            if final_results:
+                logger.info(f"✅ SEMAH ARAMASI BAŞARILI: {len(final_results)} sonuç")
+                for i, r in enumerate(final_results):
+                    logger.info(f"  {i+1}. {r['baslik'][:50]}... (score: {r['score']})")
+            else:
+                logger.warning(f"❌ SEMAH ARAMASI BAŞARISIZ: 0 sonuç (SQL'de {semah_count} kayıt var)")
+                # Debug için ilk 5 kaydı göster
+                cursor.execute("SELECT baslik FROM content WHERE icerik LIKE '%semah%' LIMIT 5")
+                debug_rows = cursor.fetchall()
+                if debug_rows:
+                    logger.info("DEBUG - 'semah' içeren kayıtlar:")
+                    for r in debug_rows:
+                        logger.info(f"  - {r['baslik'][:60]}...")
+        
+        return final_results
+    
+    def get_stats(self) -> Dict:
+        """Get database statistics"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) as total FROM content")
+        total = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(DISTINCT baslik) as unique_titles FROM content")
+        unique = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT MAX(created_at) as last_update FROM content")
+        last_update = cursor.fetchone()[0]
+        
+        return {
+            "total_entries": total,
+            "unique_titles": unique,
+            "last_update": last_update or "N/A"
+        }
 # ===================== CACHING SYSTEM =====================
 
 class ResponseCache:
