@@ -255,39 +255,40 @@ class KnowledgeBase:
             return 0
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """Trigram Uyumlu ve Yıldız Hatasından Arındırılmış Arama"""
+        """Hatadan arındırılmış ve iyileştirilmiş trigram arama"""
         start_time = time.time()
         
         if len(query) < config.MIN_SEARCH_LENGTH:
             return []
         
+        # Sorguyu temizle ve normalize et
         norm_query = normalize_turkish(query)
         words = norm_query.split()
         
-        # Gürültü kelimeleri temizle
+        # "hakkında", "kaynak" gibi gürültü kelimeleri temizle
         meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
-        
         if not meaningful_words:
-            meaningful_words = [w for w in words if len(w) > 1]
+            meaningful_words = words
 
-        # ÖNEMLİ: Trigram tokenizer yıldız (*) desteklemez. 
-        # Yıldızları siliyoruz ve kelimeleri " OR " ile bağlıyoruz.
-        search_terms = " OR ".join([f'"{term}"' for term in meaningful_words])
+        # Trigram için en temiz arama formatı: Kelimeleri yan yana düz metin olarak ara
+        search_query = " ".join(meaningful_words)
         
         conn = self.get_connection()
         cursor = conn.cursor()
         
         try:
+            # ÖNEMLİ: snippet içindeki tırnak hatası düzeltildi. 
+            # 1. kolon (icerik) üzerinden snippet alıyoruz.
             cursor.execute('''
                 SELECT 
                     baslik, link, icerik,
-                    snippet(content_fts, 2, '<mark>', </mark>', '...', 64) as snippet,
+                    snippet(content_fts, 1, '<mark>', '</mark>', '...', 64) as snippet_text,
                     rank
                 FROM content_fts 
                 WHERE content_fts MATCH ?
                 ORDER BY rank
                 LIMIT ?
-            ''', (search_terms, limit))
+            ''', (search_query, limit))
             
             results = []
             for row in cursor.fetchall():
@@ -295,11 +296,16 @@ class KnowledgeBase:
                     'baslik': row['baslik'],
                     'link': row['link'],
                     'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                    'snippet': row['snippet'],
+                    'snippet': row['snippet_text'],
                     'score': 100 - row['rank']
                 })
+            
+            logger.info(f"Arama '{search_query}' için {len(results)} sonuç getirdi.")
+            return results
+            
         except Exception as e:
-            logger.error(f"Arama hatası: {e}")
+            # Hata mesajını terminale/loglara yazdır ki ne olduğunu görelim
+            logger.error(f"⚠️ Kritik Arama Hatası: {str(e)}")
             return []
         
         return results
