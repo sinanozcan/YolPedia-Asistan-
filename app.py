@@ -1055,15 +1055,6 @@ class UIComponents:
 # ===================== MAIN APPLICATION =====================
 
 def main():
-    # TEMPORARY: Yeni Can Dede karakterini aktif etmek için hafızayı zorla boşaltıyoruz
-    # Bir kez çalıştıktan sonra bu 4 satırı silebilirsin.
-    if 'api_manager' in st.session_state:
-        del st.session_state['api_manager']
-    if 'kb' in st.session_state:
-        del st.session_state['kb']
-
-
-def main():
     """Enhanced main application"""
     # Initialize session
     init_session()
