@@ -256,127 +256,127 @@ class KnowledgeBase:
             return 0
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-    """BASİT VE ETKİLİ TAM METİN ARAMA - semah gibi kelimeler için düzeltildi"""
-    
-    if len(query) < config.MIN_SEARCH_LENGTH:
-        return []
-    
-    conn = self.get_connection()
-    cursor = conn.cursor()
-    
-    # Sorguyu normalize et
-    norm_query = normalize_turkish(query)
-    
-    # ANLAMLı kelimeleri bul
-    words = norm_query.split()
-    meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
-    if not meaningful_words:
-        meaningful_words = words
-    
-    results = []
-    
-    # YÖNTEM 1: TAM METİN ARAMA (en güvenilir)
-    try:
-        # LIKE ile tüm alanlarda ara
-        like_pattern = f"%{norm_query}%"
-        cursor.execute('''
-            SELECT baslik, link, icerik, normalized
-            FROM content 
-            WHERE 
-                LOWER(baslik) LIKE ? OR
-                LOWER(icerik) LIKE ? OR
-                LOWER(normalized) LIKE ?
-            LIMIT ?
-        ''', (like_pattern, like_pattern, like_pattern, limit * 2))
+        """BASİT VE ETKİLİ TAM METİN ARAMA - semah gibi kelimeler için düzeltildi"""
         
-        rows = cursor.fetchall()
+        if len(query) < config.MIN_SEARCH_LENGTH:
+            return []
         
-        # Sonuçları işle
-        for row in rows:
-            content = row['icerik']
-            query_lower = query.lower()
-            content_lower = content.lower()
-            
-            # Snippet oluştur (query'i içeren kısım)
-            snippet = ""
-            idx = content_lower.find(query_lower)
-            
-            if idx != -1:
-                start = max(0, idx - 60)
-                end = min(len(content), idx + len(query) + 120)
-                snippet = content[start:end]
-                if start > 0:
-                    snippet = "..." + snippet
-                if end < len(content):
-                    snippet = snippet + "..."
-            else:
-                # Query bulunamadıysa baştan al
-                snippet = content[:250] + "..." if len(content) > 250 else content
-            
-            # Skor hesapla (başlıkta geçerse yüksek puan)
-            score = 50
-            title_lower = row['baslik'].lower()
-            if query_lower in title_lower:
-                score = 90
-            elif any(word in title_lower for word in meaningful_words):
-                score = 70
-            
-            results.append({
-                'baslik': row['baslik'],
-                'link': row['link'],
-                'icerik': content[:config.MAX_CONTENT_LENGTH],
-                'snippet': snippet,
-                'score': score,
-                'method': 'like_search'
-            })
+        conn = self.get_connection()
+        cursor = conn.cursor()
         
-    except Exception as e:
-        logger.error(f"Arama hatası: {str(e)}")
-    
-    # YÖNTEM 2: Kelime bazlı arama (backup)
-    if len(results) < 3 and meaningful_words:
+        # Sorguyu normalize et
+        norm_query = normalize_turkish(query)
+        
+        # ANLAMLI kelimeleri bul
+        words = norm_query.split()
+        meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
+        if not meaningful_words:
+            meaningful_words = words
+        
+        results = []
+        
+        # YÖNTEM 1: TAM METİN ARAMA (en güvenilir)
         try:
-            word_conditions = []
-            params = []
-            
-            for word in meaningful_words[:3]:  # İlk 3 kelime
-                word_conditions.append("normalized LIKE ?")
-                params.append(f"%{word}%")
-            
-            where_clause = " OR ".join(word_conditions)
-            params.append(limit)
-            
-            cursor.execute(f'''
-                SELECT baslik, link, icerik
+            # LIKE ile tüm alanlarda ara
+            like_pattern = f"%{norm_query}%"
+            cursor.execute('''
+                SELECT baslik, link, icerik, normalized
                 FROM content 
-                WHERE {where_clause}
+                WHERE 
+                    LOWER(baslik) LIKE ? OR
+                    LOWER(icerik) LIKE ? OR
+                    LOWER(normalized) LIKE ?
                 LIMIT ?
-            ''', params)
+            ''', (like_pattern, like_pattern, like_pattern, limit * 2))
             
-            for row in cursor.fetchall():
-                # Aynı başlık zaten varsa ekleme
-                if not any(r['baslik'] == row['baslik'] for r in results):
-                    results.append({
-                        'baslik': row['baslik'],
-                        'link': row['link'],
-                        'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                        'snippet': row['icerik'][:200] + "...",
-                        'score': 40,
-                        'method': 'word_search'
-                    })
-                    
+            rows = cursor.fetchall()
+            
+            # Sonuçları işle
+            for row in rows:
+                content = row['icerik']
+                query_lower = query.lower()
+                content_lower = content.lower()
+                
+                # Snippet oluştur (query'i içeren kısım)
+                snippet = ""
+                idx = content_lower.find(query_lower)
+                
+                if idx != -1:
+                    start = max(0, idx - 60)
+                    end = min(len(content), idx + len(query) + 120)
+                    snippet = content[start:end]
+                    if start > 0:
+                        snippet = "..." + snippet
+                    if end < len(content):
+                        snippet = snippet + "..."
+                else:
+                    # Query bulunamadıysa baştan al
+                    snippet = content[:250] + "..." if len(content) > 250 else content
+                
+                # Skor hesapla (başlıkta geçerse yüksek puan)
+                score = 50
+                title_lower = row['baslik'].lower()
+                if query_lower in title_lower:
+                    score = 90
+                elif any(word in title_lower for word in meaningful_words):
+                    score = 70
+                
+                results.append({
+                    'baslik': row['baslik'],
+                    'link': row['link'],
+                    'icerik': content[:config.MAX_CONTENT_LENGTH],
+                    'snippet': snippet,
+                    'score': score,
+                    'method': 'like_search'
+                })
+            
         except Exception as e:
-            logger.error(f"Kelime arama hatası: {str(e)}")
-    
-    # Sonuçları skora göre sırala
-    results.sort(key=lambda x: x['score'], reverse=True)
-    
-    # Limiti uygula
-    final_results = results[:limit]
-    
-    logger.info(f"Arama '{query}' için {len(final_results)} sonuç bulundu.")
-    
-    return final_results
+            logger.error(f"Arama hatası: {str(e)}")
+        
+        # YÖNTEM 2: Kelime bazlı arama (backup)
+        if len(results) < 3 and meaningful_words:
+            try:
+                word_conditions = []
+                params = []
+                
+                for word in meaningful_words[:3]:  # İlk 3 kelime
+                    word_conditions.append("normalized LIKE ?")
+                    params.append(f"%{word}%")
+                
+                where_clause = " OR ".join(word_conditions)
+                params.append(limit)
+                
+                cursor.execute(f'''
+                    SELECT baslik, link, icerik
+                    FROM content 
+                    WHERE {where_clause}
+                    LIMIT ?
+                ''', params)
+                
+                for row in cursor.fetchall():
+                    # Aynı başlık zaten varsa ekleme
+                    if not any(r['baslik'] == row['baslik'] for r in results):
+                        results.append({
+                            'baslik': row['baslik'],
+                            'link': row['link'],
+                            'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
+                            'snippet': row['icerik'][:200] + "...",
+                            'score': 40,
+                            'method': 'word_search'
+                        })
+                        
+            except Exception as e:
+                logger.error(f"Kelime arama hatası: {str(e)}")
+        
+        # Sonuçları skora göre sırala
+        results.sort(key=lambda x: x['score'], reverse=True)
+        
+        # Limiti uygula
+        final_results = results[:limit]
+        
+        logger.info(f"Arama '{query}' için {len(final_results)} sonuç bulundu.")
+        
+        return final_results
     
     def get_stats(self) -> Dict:
         """Get database statistics"""
@@ -394,7 +394,6 @@ class KnowledgeBase:
             "latest_update": latest['updated_at'] if latest else None,
             "latest_title": latest['baslik'] if latest else None
         }
-
 # ===================== CACHING SYSTEM =====================
 
 class ResponseCache:
