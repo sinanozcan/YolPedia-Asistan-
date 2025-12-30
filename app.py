@@ -87,7 +87,7 @@ class AppConfig:
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
     # Ücretli hesabınız için kesin çalışan resmi ID'ler
-   GEMINI_MODELS: List[str] = field(default_factory=lambda: [
+    GEMINI_MODELS: List[str] = field(default_factory=lambda: [
         "gemini-2.0-flash",       # Şu anki en hızlı ve güncel stabil model
         "gemini-1.5-pro",         # En zeki ve derin analiz yapan model
         "gemini-1.5-flash"        # En hızlı ve ekonomik yedek model
