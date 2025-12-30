@@ -14,6 +14,7 @@ import logging
 import hashlib
 import html
 import sqlite3
+
 # ===================== CUSTOM PAGE CONFIG =====================
 
 st.set_page_config(
@@ -255,60 +256,189 @@ class KnowledgeBase:
             return 0
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
-        """Hatadan arındırılmış ve iyileştirilmiş trigram arama"""
-        start_time = time.time()
+    """Gelişmiş hibrit arama: FTS + LIKE + Normalize edilmiş arama"""
+    start_time = time.time()
+    
+    if len(query) < config.MIN_SEARCH_LENGTH:
+        return []
+    
+    # 1. Sorguyu normalize et
+    norm_query = normalize_turkish(query)
+    words = norm_query.split()
+    
+    # 2. Gürültü kelimeleri temizle
+    meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
+    if not meaningful_words:
+        meaningful_words = words
+    
+    # 3. FTS için arama sorgusu hazırla
+    # NOT: Trigram tokenizer için kelimeleri yıldızlarla birleştirelim
+    fts_query_parts = []
+    for word in meaningful_words:
+        if len(word) >= 3:
+            fts_query_parts.append(f"*{word}*")
+        else:
+            fts_query_parts.append(word)
+    
+    fts_query = " OR ".join(fts_query_parts)
+    if not fts_query:
+        fts_query = norm_query
+    
+    conn = self.get_connection()
+    cursor = conn.cursor()
+    
+    results = []
+    seen_titles = set()  # Tekrar eden sonuçları engelle
+    
+    try:
+        # YÖNTEM 1: FTS5 Trigram Arama (Hızlı)
+        cursor.execute('''
+            SELECT 
+                baslik, link, icerik,
+                snippet(content_fts, 2, '<mark>', '</mark>', '...', 64) as snippet_text,
+                rank
+            FROM content_fts 
+            WHERE content_fts MATCH ?
+            ORDER BY rank
+            LIMIT ?
+        ''', (fts_query, limit * 2))  # Daha fazla sonuç al, sonra filtrele
         
-        if len(query) < config.MIN_SEARCH_LENGTH:
-            return []
+        fts_results = cursor.fetchall()
         
-        # Sorguyu temizle ve normalize et
-        norm_query = normalize_turkish(query)
-        words = norm_query.split()
+        # YÖNTEM 2: Normalized içerikte LIKE arama (Yedek)
+        like_query = f"%{norm_query}%"
+        cursor.execute('''
+            SELECT 
+                baslik, link, icerik,
+                SUBSTR(icerik, INSTR(LOWER(normalized), LOWER(?)), 300) as snippet_text,
+                100 as rank
+            FROM content 
+            WHERE normalized LIKE ?
+            LIMIT ?
+        ''', (norm_query, like_query, limit))
         
-        # "hakkında", "kaynak" gibi gürültü kelimeleri temizle
-        meaningful_words = [w for w in words if w not in config.STOP_WORDS and len(w) > 1]
-        if not meaningful_words:
-            meaningful_words = words
-
-        # Trigram için en temiz arama formatı: Kelimeleri yan yana düz metin olarak ara
-        search_query = " ".join(meaningful_words)
+        like_results = cursor.fetchall()
         
-        conn = self.get_connection()
-        cursor = conn.cursor()
-        
-        try:
-            # ÖNEMLİ: snippet içindeki tırnak hatası düzeltildi. 
-            # 1. kolon (icerik) üzerinden snippet alıyoruz.
-            cursor.execute('''
+        # YÖNTEM 3: Kelime bazlı arama (en etkili)
+        word_results = []
+        if meaningful_words:
+            word_conditions = []
+            params = []
+            for word in meaningful_words:
+                word_conditions.append("normalized LIKE ?")
+                params.append(f"%{word}%")
+            
+            where_clause = " OR ".join(word_conditions)
+            params.append(limit)
+            
+            cursor.execute(f'''
                 SELECT 
                     baslik, link, icerik,
-                    snippet(content_fts, 1, '<mark>', '</mark>', '...', 64) as snippet_text,
-                    rank
-                FROM content_fts 
-                WHERE content_fts MATCH ?
-                ORDER BY rank
+                    CASE 
+                        WHEN LENGTH(icerik) > 300 THEN SUBSTR(icerik, 1, 300) || '...'
+                        ELSE icerik
+                    END as snippet_text,
+                    (
+                        -- Skorlama: başlıkta geçerse +3, içerikte geçerse +1
+                        (CASE WHEN LOWER(baslik) LIKE ? THEN 3 ELSE 0 END) +
+                        (CASE WHEN normalized LIKE ? THEN 1 ELSE 0 END)
+                    ) as rank
+                FROM content 
+                WHERE {where_clause}
+                ORDER BY rank DESC
                 LIMIT ?
-            ''', (search_query, limit))
+            ''', [f"%{meaningful_words[0]}%", f"%{meaningful_words[0]}%"] + params[:-1])
             
-            results = []
+            word_results = cursor.fetchall()
+        
+        # Tüm sonuçları birleştir ve sırala
+        all_rows = []
+        
+        # FTS sonuçlarını ekle
+        for row in fts_results:
+            all_rows.append(('fts', row['rank'], row))
+        
+        # LIKE sonuçlarını ekle
+        for row in like_results:
+            all_rows.append(('like', row['rank'], row))
+        
+        # Kelime bazlı sonuçları ekle
+        for row in word_results:
+            all_rows.append(('word', row['rank'], row))
+        
+        # Rank'a göre sırala (düşük rank = iyi)
+        all_rows.sort(key=lambda x: x[1])
+        
+        # Benzersiz sonuçları seç
+        for method, rank, row in all_rows:
+            title = row['baslik']
+            if title not in seen_titles and len(results) < limit:
+                seen_titles.add(title)
+                
+                # İçeriği kısalt
+                content = row['icerik']
+                if len(content) > config.MAX_CONTENT_LENGTH:
+                    content = content[:config.MAX_CONTENT_LENGTH] + "..."
+                
+                # Snippet oluştur
+                snippet = row.get('snippet_text', '')
+                if not snippet and content:
+                    # Query'i içeren kısmı bul
+                    query_lower = query.lower()
+                    content_lower = content.lower()
+                    idx = content_lower.find(query_lower)
+                    if idx != -1:
+                        start = max(0, idx - 50)
+                        end = min(len(content), idx + len(query) + 100)
+                        snippet = content[start:end]
+                        if start > 0:
+                            snippet = "..." + snippet
+                        if end < len(content):
+                            snippet = snippet + "..."
+                    else:
+                        snippet = content[:200] + "..."
+                
+                results.append({
+                    'baslik': title,
+                    'link': row['link'],
+                    'icerik': content,
+                    'snippet': snippet,
+                    'score': 100 - rank if rank <= 100 else 50,
+                    'method': method
+                })
+        
+        logger.info(f"Arama '{query}' için {len(results)} sonuç bulundu. "
+                   f"Metot dağılımı: {[r['method'] for r in results]}")
+        
+    except Exception as e:
+        logger.error(f"Arama hatası: {str(e)}", exc_info=True)
+        
+        # Basit LIKE araması yap (fallback)
+        try:
+            cursor.execute('''
+                SELECT baslik, link, icerik
+                FROM content 
+                WHERE LOWER(baslik) LIKE ? OR LOWER(icerik) LIKE ?
+                LIMIT ?
+            ''', (f"%{norm_query}%", f"%{norm_query}%", limit))
+            
             for row in cursor.fetchall():
                 results.append({
                     'baslik': row['baslik'],
                     'link': row['link'],
                     'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                    'snippet': row['snippet_text'],
-                    'score': 100 - row['rank']
+                    'snippet': row['icerik'][:200] + "..." if len(row['icerik']) > 200 else row['icerik'],
+                    'score': 50,
+                    'method': 'fallback'
                 })
-            
-            logger.info(f"Arama '{search_query}' için {len(results)} sonuç getirdi.")
-            return results
-            
-        except Exception as e:
-            # Hata mesajını terminale/loglara yazdır ki ne olduğunu görelim
-            logger.error(f"⚠️ Kritik Arama Hatası: {str(e)}")
-            return []
-        
-        return results
+        except Exception as e2:
+            logger.error(f"Fallback arama da başarısız: {e2}")
+    
+    # Arama süresini logla
+    search_time = time.time() - start_time
+    logger.track_metric("search_time_ms", search_time * 1000, {"query_length": len(query)})
+    
+    return results
     
     def get_stats(self) -> Dict:
         """Get database statistics"""
@@ -467,22 +597,40 @@ class SecurityManager:
 
 @lru_cache(maxsize=config.CACHE_SIZE)
 def normalize_turkish(text: str) -> str:
-    """Normalize Turkish text for search - cached for performance"""
+    """Geliştirilmiş Türkçe normalizasyon"""
     if not isinstance(text, str):
         return ""
     
-    # Turkish character mapping
-    tr_map = str.maketrans(
-        "ğĞüÜşŞıİöÖçÇâÂîÎûÛ",
-        "gGuUsSiIoOcCaAiIuU"
-    )
+    # Küçük harfe çevir
+    text = text.lower()
     
-    result = text.lower().translate(tr_map)
+    # Türkçe karakter dönüşümü
+    tr_map = {
+        'ğ': 'g', 'Ğ': 'g',
+        'ü': 'u', 'Ü': 'u',
+        'ş': 's', 'Ş': 's',
+        'ı': 'i', 'İ': 'i',
+        'ö': 'o', 'Ö': 'o',
+        'ç': 'c', 'Ç': 'c',
+        'â': 'a', 'î': 'i', 'û': 'u',
+        ' ': ' ', '-': ' ', '_': ' '
+    }
     
-    # Remove extra spaces and special chars
+    # Karakter dönüşümü
+    result_chars = []
+    for char in text:
+        if char in tr_map:
+            result_chars.append(tr_map[char])
+        elif char.isalnum():
+            result_chars.append(char)
+        else:
+            result_chars.append(' ')
+    
+    result = ''.join(result_chars)
+    
+    # Fazla boşlukları temizle
     import re
-    result = re.sub(r'[^\w\s]', ' ', result)
-    result = ' '.join(result.split())
+    result = re.sub(r'\s+', ' ', result).strip()
     
     return result
 
