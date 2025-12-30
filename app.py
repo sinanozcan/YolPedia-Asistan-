@@ -170,6 +170,11 @@ class StructuredLogger:
 
 logger = StructuredLogger()
 
+# ===================== SEARCH CLASS =====================
+
+class SearchEngine:  # Veya mevcut sınıfınızın adı neyse
+    # Diğer metodlar...
+    
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
         """EN BASİT VE GARANTİLİ ARAMA - semah için kesin çözüm"""
         
@@ -203,92 +208,6 @@ logger = StructuredLogger()
         except Exception as e:
             logger.error(f"SQL hatası: {str(e)}")
             return []
-        
-        results = []
-        seen_titles = set()
-        
-        for row in rows:
-            baslik = row['baslik']
-            content = row['icerik']
-            
-            # Aynı başlığı tekrar ekleme
-            if baslik in seen_titles:
-                continue
-            seen_titles.add(baslik)
-            
-            # Snippet oluştur - query'i direkt içerikte ara
-            content_lower = content.lower()
-            idx = content_lower.find(query_lower)
-            
-            snippet = ""
-            if idx != -1:
-                start = max(0, idx - 100)
-                end = min(len(content), idx + len(query) + 150)
-                snippet = content[start:end]
-                if start > 0:
-                    snippet = "..." + snippet
-                if end < len(content):
-                    snippet = snippet + "..."
-            else:
-                snippet = content[:300] + "..." if len(content) > 300 else content
-            
-            # Skor hesapla
-            score = 100 if query_lower in baslik.lower() else 80
-            
-            results.append({
-                'baslik': baslik,
-                'link': row['link'],
-                'icerik': content[:config.MAX_CONTENT_LENGTH],
-                'snippet': snippet,
-                'score': score,
-                'method': 'simple_search'
-            })
-        
-        # 2. Eğer hiç sonuç yoksa, normalized alanında da ara
-        if not results:
-            norm_query = normalize_turkish(query)
-            if norm_query and norm_query != query_lower:
-                cursor.execute('''
-                    SELECT baslik, link, icerik
-                    FROM content 
-                    WHERE normalized LIKE ?
-                    LIMIT ?
-                ''', (f"%{norm_query}%", limit))
-                
-                for row in cursor.fetchall():
-                    if row['baslik'] not in seen_titles:
-                        results.append({
-                            'baslik': row['baslik'],
-                            'link': row['link'],
-                            'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                            'snippet': row['icerik'][:300] + "...",
-                            'score': 50,
-                            'method': 'normalized_search'
-                        })
-        
-        # 3. Sonuçları skora göre sırala
-        results.sort(key=lambda x: x['score'], reverse=True)
-        
-        # Limiti uygula
-        final_results = results[:limit]
-        
-        # ÖZEL DEBUG: "semah" için ayrıntılı log
-        if query_lower == "semah":
-            if final_results:
-                logger.info(f"✅ SEMAH ARAMASI BAŞARILI: {len(final_results)} sonuç")
-                for i, r in enumerate(final_results):
-                    logger.info(f"  {i+1}. {r['baslik'][:50]}... (score: {r['score']})")
-            else:
-                logger.warning(f"❌ SEMAH ARAMASI BAŞARISIZ: 0 sonuç (SQL'de {semah_count} kayıt var)")
-                # Debug için ilk 5 kaydı göster
-                cursor.execute("SELECT baslik FROM content WHERE icerik LIKE '%semah%' LIMIT 5")
-                debug_rows = cursor.fetchall()
-                if debug_rows:
-                    logger.info("DEBUG - 'semah' içeren kayıtlar:")
-                    for r in debug_rows:
-                        logger.info(f"  - {r['baslik'][:60]}...")
-        
-        return final_results
 
 # ===================== CACHING SYSTEM =====================
 
