@@ -1203,11 +1203,16 @@ class UIComponents:
 # ===================== MAIN APPLICATION =====================
 
 def main():
-    """Enhanced main application"""
-    # Initialize session
-    init_session()
+    """Enhanced main application - SESSION STATE HATASI DÜZELTİLDİ"""
     
-    # Security validation
+    # ========== ÖNCE SESSION STATE'I KONTROL ET ==========
+    if 'initialized' not in st.session_state:
+        # Initialize session
+        init_session()
+        st.session_state.initialized = True
+        st.rerun()  # Sayfayı yeniden yükle
+    
+    # Güvenlik kontrolü
     if not SecurityManager.validate_session():
         st.warning("Oturum süreniz doldu. Lütfen sayfayı yenileyin.")
         st.stop()
@@ -1323,7 +1328,7 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
-    # Sidebar for mode selection
+    # ========== SIDEBAR ==========
     with st.sidebar:
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
@@ -1363,14 +1368,31 @@ def main():
             })
             st.rerun()
     
-    # Render header
+    # ========== HEADER ==========
     UIComponents.render_header()
     
-    # Display messages
+    # ========== MESAJLARI GÖSTER ==========
+    # ÖNCE messages'ın var olduğundan emin ol
+    if 'messages' not in st.session_state:
+        st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": (
+                "Merhaba, can dost! Ben Can Dede. "
+                "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
+                "Sol menüden istediğin modu seç:\n\n"
+                "• **Sohbet Modu:** Birlikte yol üzerine muhabbet eder, gönül sohbetleri yaparız.\n\n"
+                "• **Araştırma Modu:** Yolpedia arşivinden kaynak ve bilgi sunarım.\n\n"
+                "Buyur erenler, hangi modda buluşalım?"
+            ),
+            "timestamp": time.time()
+        })
+    
+    # Sonra mesajları göster
     for message in st.session_state.messages:
         UIComponents.render_message(message)
     
-    # Handle chat export
+    # ========== CHAT EXPORT ==========
     if export_chat:
         chat_text = "\n\n".join([
             f"{'Can Dede' if m['role'] == 'assistant' else 'Kullanıcı'}: {m['content']}"
@@ -1384,7 +1406,7 @@ def main():
             mime="text/plain"
         )
     
-    # Handle user input
+    # ========== USER INPUT ==========
     if user_input := st.chat_input("Can Dede'ye sor..."):
         # Sanitize input
         user_input = SecurityManager.sanitize_input(user_input)
@@ -1439,7 +1461,7 @@ def main():
             placeholder = st.empty()
             full_response = ""
             
-            with st.spinner("Can Dede dúşünüyor..."):
+            with st.spinner("Can Dede düşünüyor..."):
                 generator = ResponseGenerator(
                     st.session_state.api_manager,
                     st.session_state.cache
