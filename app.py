@@ -87,16 +87,16 @@ class AppConfig:
     USER_ICON: str = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
     
     # Ücretli hesabınız için kesin çalışan resmi ID'ler
-    GEMINI_MODELS: List[str] = field(default_factory=lambda: [
-        "gemini-1.5-pro-latest",    # En zeki mürşit bilgeliği (Zahir/Batın için en iyisi)
-        "gemini-2.0-flash-exp",     # Çok hızlı ve yeni nesil zeka
-        "gemini-1.5-flash-latest",  # En hızlı ve güvenilir yedek
+   GEMINI_MODELS: List[str] = field(default_factory=lambda: [
+        "gemini-2.0-flash",       # Şu anki en hızlı ve güncel stabil model
+        "gemini-1.5-pro",         # En zeki ve derin analiz yapan model
+        "gemini-1.5-flash"        # En hızlı ve ekonomik yedek model
     ])
     
     MODEL_PRIORITIES: Dict[str, float] = field(default_factory=lambda: {
-        "gemini-1.5-pro-latest": 1.0,
-        "gemini-2.0-flash-exp": 0.8,
-        "gemini-1.5-flash-latest": 0.6
+        "gemini-2.0-flash": 1.0,
+        "gemini-1.5-pro": 0.8,
+        "gemini-1.5-flash": 0.6
     })
     
     # Stop words
