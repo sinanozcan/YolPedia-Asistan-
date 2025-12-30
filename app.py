@@ -854,8 +854,17 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict], mode: str) -> Generator[str, None, None]:
-        """Generate response with intelligent caching"""
-        start_time = time.time()
+    # 1. ÖNCE HER DURUMDA SELAM KONTROLÜ YAP (Mod ne olursa olsun)
+    fallback = self.get_fallback_response(query)
+    if fallback:
+        yield fallback
+        return
+
+    # 2. SELAM DEĞİLSE MODLARA GÖRE DEVAM ET
+    if mode == "Sohbet Modu":
+        # ... sohbet promptu oluşturma ...
+    else: # Araştırma Modu
+        # ... araştırma promptu oluşturma ...
         
         # Check cache first
         if config.ENABLE_CACHING:
@@ -875,10 +884,21 @@ class ResponseGenerator:
         if mode == "Sohbet Modu":
             prompt = self.prompt_engine.build_chat_prompt(query, sources, context)
         else:
+            # ARAŞTIRMA MODU BURASI
             prompt = self.prompt_engine.build_research_prompt(query, sources)
             
+            # Eğer veritabanında kaynak bulunamadıysa (prompt None ise)
             if prompt is None:
-                yield "📚 Maalesef, sorduğunuz konu hakkında Yolpedia.eu veritabanında kaynak bulunamadı."
+                # 1. Önce selam/hal hatır mı diye kontrol et (Kendi yazdığın get_fallback_response fonksiyonunu kullan)
+                fallback = self.get_fallback_response(query)
+                if fallback:
+                    yield fallback # Eğer selam ise selamını alacak
+                else:
+                    # 2. Selam değilse ama kaynak da yoksa, mürşit nezaketiyle cevap ver
+                    yield ("Can dostum, bu sorduğun hususta Yolpedia arşivinde henüz bir lisan bulamadım. "
+                           "Lakin mürşit kapısı her daim açıktır; istersen konuyu biraz daha açarak sor, "
+                           "başka bir kelimeyle arayalım ya da gel Sohbet Modu'nda gönül dilinden konuşalım. "
+                           "Neyi merak edersin?")
                 return
         
         # Get best API key and model
