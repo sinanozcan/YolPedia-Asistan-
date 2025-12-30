@@ -290,22 +290,19 @@ class KnowledgeBase:
                 ORDER BY rank
                 LIMIT ?
             ''', (search_terms, limit))
-            
-            # ... geri kalan işlemler (row fetch vb.) aynı ...
-        
-        results = []
-        for row in cursor.fetchall():
-            results.append({
-                'baslik': row['baslik'],
-                'link': row['link'],
-                'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
-                'snippet': row['snippet'],
-                'score': 100 - row['rank']  # Convert rank to score
-            })
-        
-        elapsed = (time.time() - start_time) * 1000
-        logger.track_metric("search_time_ms", elapsed, {"query_length": len(query)})
-        logger.info(f"Search completed in {elapsed:.2f}ms, found {len(results)} results")
+
+            results = []
+            for row in cursor.fetchall():
+                results.append({
+                    'baslik': row['baslik'],
+                    'link': row['link'],
+                    'icerik': row['icerik'][:config.MAX_CONTENT_LENGTH],
+                    'snippet': row['snippet'],
+                    'score': 100 - row['rank']
+                })
+        except Exception as e:
+            logger.error(f"Arama hatası: {e}")
+            return []
         
         return results
     
