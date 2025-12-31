@@ -496,7 +496,7 @@ def main():
         )
         
         st.markdown("---")
-        if st.button("🧹 Sohbeti Temizle", use_container_width=True):
+        if st.button("Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
             st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir sohbe başlatalım mı, can dost?", "timestamp": time.time()})
             st.rerun()
