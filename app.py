@@ -1,5 +1,5 @@
 """
-YolPedia Can Dede - Teknik Onarılmış Versiyon
+YolPedia Can Dede - Tam Onarılmış ve Senin Kurguna Sadık Versiyon
 """
 
 import streamlit as st
@@ -42,9 +42,9 @@ st.set_page_config(
 class AppConfig:
     # API ve Modeller
     GEMINI_MODELS = [
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash"
+        "gemini-2.0-flash",       # En güncel ve hızlı
+        "gemini-1.5-pro",         # En akıllı
+        "gemini-1.5-flash"        # En ekonomik
     ]
     
     DEFAULT_MODEL = "gemini-2.0-flash"
@@ -151,11 +151,14 @@ class KnowledgeBase:
             'ı': 'i', 'İ': 'i', 'ö': 'o', 'Ö': 'o', 'ç': 'c', 'Ç': 'c',
             'â': 'a', 'î': 'i', 'û': 'u'
         }
+        
         for old, new in replacements.items():
             text = text.replace(old, new)
+        
         import re
         text = re.sub(r'[^\w\s]', ' ', text)
         text = re.sub(r'\s+', ' ', text).strip()
+        
         return text
     
     def search(self, query: str, limit: int = config.MAX_SEARCH_RESULTS) -> List[Dict]:
@@ -170,29 +173,22 @@ class KnowledgeBase:
             icerik_normalized = self.normalize_text(item.get('icerik', ''))
             baslik_normalized = self.normalize_text(item.get('baslik', ''))
             
-            if (query_normalized in icerik_normalized or query_normalized in baslik_normalized):
+            if (query_normalized in icerik_normalized or 
+                query_normalized in baslik_normalized):
+                
                 icerik = item.get('icerik', '')
-                idx = icerik.lower().find(query.lower())
-                
-                snippet = ""
-                if idx != -1:
-                    start = max(0, idx - 100)
-                    end = min(len(icerik), idx + len(query) + 150)
-                    snippet = icerik[start:end]
-                    if start > 0: snippet = "..." + snippet
-                    if end < len(icerik): snippet = snippet + "..."
-                else:
-                    snippet = icerik[:300] + "..." if len(icerik) > 300 else icerik
-                
                 score = 100 if query.lower() in item.get('baslik', '').lower() else 50
+                
                 results.append({
                     'baslik': item['baslik'],
                     'link': item['link'],
                     'icerik': icerik[:config.MAX_CONTENT_LENGTH],
-                    'snippet': snippet,
+                    'snippet': icerik[:300] + "...",
                     'score': score
                 })
-                if len(results) >= limit * 3: break
+                
+                if len(results) >= limit * 3:
+                    break
         
         results.sort(key=lambda x: x['score'], reverse=True)
         return results[:limit]
@@ -207,11 +203,13 @@ class APIManager:
         self.current_model = config.DEFAULT_MODEL
     
     def load_api_key(self) -> Optional[str]:
+        """API anahtarını yükle"""
         key_sources = [
             ("API_KEY", st.secrets.get("API_KEY", "")),
             ("GEMINI_API_KEY", st.secrets.get("GEMINI_API_KEY", "")),
             ("GOOGLE_API_KEY", os.environ.get("GOOGLE_API_KEY", "")),
         ]
+        
         for key_name, key_value in key_sources:
             if key_value and len(key_value) > 10:
                 return key_value
@@ -224,6 +222,7 @@ class APIManager:
         return self.current_model
     
     def rotate_model(self):
+        """Model değiştir"""
         current_idx = config.GEMINI_MODELS.index(self.current_model)
         next_idx = (current_idx + 1) % len(config.GEMINI_MODELS)
         self.current_model = config.GEMINI_MODELS[next_idx]
@@ -236,10 +235,13 @@ class PromptEngine:
     @staticmethod
     def build_prompt(query: str, sources: List[Dict]) -> str:
         history = list(st.session_state.messages)
+        # Gerçek kullanıcı mesajı sayısına bakalım
         user_msg_count = len([m for m in history if m['role'] == 'user'])
         is_returning = user_msg_count > 0
         
+        # Senin kurguladığın sys_instruction metni:
         sys_instruction = f"""<role>
+
 Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
 Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var. 
 { 'MUHABBET DEVAM EDİYOR: Daha önce selamlaştık ve konuşuyoruz. Sakın yeniden "Hoş geldin" veya "Safalar getirdin" deme! Doğrudan konuya gir veya sadece söze karşılık ver.' if is_returning else 'YENİ SOHBET: Karşındaki canla ilk kez karşılaşıyorsun, samimi ve bilgece bir karşılama yap.' }
@@ -270,12 +272,15 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
 </kaçın>
 </role>"""
 
+        # Geçmişi AI'nın en son göreceği yere koyuyoruz
         context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in history[-8:]])
         
+        # Kaynakları da ekle
         sources_text = ""
         if sources:
             sources_text = "\n".join([f"- {s['baslik']}: {s.get('snippet', s['icerik'][:400])}" for s in sources[:2]])
 
+        # Senin kurguna göre Kaynak Bilgileri ve Soru prompta entegre edildi:
         return f"""{sys_instruction}
 
 <GECMIS_MUHABBET>
@@ -288,11 +293,9 @@ Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
 Bu bilgileri oku ama asla kopyalayıp yapıştırma! Bu bilgileri bir mürşit bilgeliğiyle yoğurarak kullan.
 </YOLPEDIA_BILGILERI>
 
-<KULLANICI_SORUSU>
-{query}
-</KULLANICI_SORUSU>
+Can dostun sorusu: {query}
 
-Can Dede (doğal, akıcı, başlıksız, maddesiz, samimi bir üslupla):"""
+Can Dede (Gönülden, bilgece ve akıcı bir muhabbetle):"""
 
 # ===================== RESPONSE GENERATOR =====================
 
@@ -304,21 +307,25 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
+        # Senin kurguladığın selam kilidi
         user_messages = [m for m in st.session_state.messages if m['role'] == 'user']
         
-        if len(user_messages) == 0: 
+        if len(user_messages) == 0: # Sadece ve sadece ilk mesajda çalışır
             greeting = self.check_greeting(query)
             if greeting:
                 yield greeting
                 return
     
+        # API key kontrolü
         api_key = self.api_manager.get_api_key()
         if not api_key:
             yield self.get_no_api_response(query, sources)
             return
     
+        # Prompt oluştur
         prompt = self.prompt_engine.build_prompt(query, sources)
         
+        # Gemini API çağrısı (3 deneme)
         for attempt in range(3):
             try:
                 model_name = self.api_manager.get_current_model()
@@ -369,7 +376,10 @@ class ResponseGenerator:
                 "Selam, erenler! Yolun açık olsun. Ne sormak istersin?"
             ])
         if "nasılsın" in query_lower or "naber" in query_lower:
-            return "Şükür, erenler. Hakk'ın bir tecellisiyim bugün. Sen nasılsın?"
+            return random.choice([
+                "Şükür, erenler. Hakk'ın bir tecellisiyim bugün. Sen nasılsın?",
+                "Çok şükür, erenler. Gönül sohbetine hazırım. Senin gönlün nasıl?"
+            ])
         if "teşekkür" in query_lower or "sağ ol" in query_lower:
             return "Estağfurullah erenler, ben teşekkür ederim. Senin gibi güzel bir canla sohbet etmek ne güzel!"
         return None
@@ -392,9 +402,13 @@ class ResponseGenerator:
 # ===================== SESSION STATE =====================
 
 def init_session():
-    if 'kb' not in st.session_state: st.session_state.kb = KnowledgeBase()
-    if 'api_manager' not in st.session_state: st.session_state.api_manager = APIManager()
-    if 'response_generator' not in st.session_state: st.session_state.response_generator = ResponseGenerator(st.session_state.api_manager)
+    """Session state'i başlat"""
+    if 'kb' not in st.session_state:
+        st.session_state.kb = KnowledgeBase()
+    if 'api_manager' not in st.session_state:
+        st.session_state.api_manager = APIManager()
+    if 'response_generator' not in st.session_state:
+        st.session_state.response_generator = ResponseGenerator(st.session_state.api_manager)
     if 'messages' not in st.session_state:
         st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
         st.session_state.messages.append({
@@ -508,4 +522,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
