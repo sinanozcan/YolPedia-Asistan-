@@ -413,7 +413,7 @@ def init_session():
         st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
         st.session_state.messages.append({
             "role": "assistant",
-            "content": "Merhaba, Can Dost! Ben Can Dede. Buyur erenler, nedir arzun?",
+            "content": "Merhaba, Can Dost! Ben Can Dede. Buyur erenler, ne dilersin?",
             "timestamp": time.time()
         })
 
