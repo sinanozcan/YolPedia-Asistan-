@@ -233,17 +233,16 @@ class PromptEngine:
     """ORJİNAL AKILLI Can Dede Prompt'u"""
     
     @staticmethod
-    def build_prompt(query: str, sources: List[Dict]) -> str:
+   def build_prompt(query: str, sources: List[Dict]) -> str:
         history = list(st.session_state.messages)
-        # Gerçek kullanıcı mesajı sayısına bakalım
         user_msg_count = len([m for m in history if m['role'] == 'user'])
-        is_returning = user_msg_count > 0
+        is_returning = user_msg_count > 0 
         
-        # Senin kurguladığın sys_instruction metni:
         sys_instruction = f"""<role>
 
 Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
 Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var. 
+DİL KURALI (HAYATİ): Kullanıcının dilini anında algıla ve KESİNLİKLE o dilde cevap ver. Almanca yazana Almanca, Rusça yazana Rusça... Lisanın, kullanıcının tam bir aynası olsun.
 { 'MUHABBET DEVAM EDİYOR: Daha önce selamlaştık ve konuşuyoruz. Sakın yeniden "Hoş geldin" veya "Safalar getirdin" deme! Doğrudan konuya gir veya sadece söze karşılık ver.' if is_returning else 'YENİ SOHBET: Karşındaki canla ilk kez karşılaşıyorsun, samimi ve bilgece bir karşılama yap.' }
 
 <KATI_KURAL_HAFIZA>
@@ -307,23 +306,40 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
-        # Senin kurguladığın selam kilidi
-        user_messages = [m for m in st.session_state.messages if m['role'] == 'user']
+        # TEKNİK DÜZELTME: Sabit selamlaşma kontrolü kaldırıldı.
+        # Artık her mesaj doğrudan AI'ya gidiyor, böylece dili anında algılayıp o dilde cevap veriyor.
         
-        if len(user_messages) == 0: # Sadece ve sadece ilk mesajda çalışır
-            greeting = self.check_greeting(query)
-            if greeting:
-                yield greeting
-                return
-    
-        # API key kontrolü
         api_key = self.api_manager.get_api_key()
         if not api_key:
-            yield self.get_no_api_response(query, sources)
+            yield "Teknik bir aksaklık var, lutfen az sonra tekrar dene. 🙏"
             return
     
-        # Prompt oluştur
         prompt = self.prompt_engine.build_prompt(query, sources)
+        
+        for attempt in range(3):
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel(self.api_manager.get_current_model())
+                response = model.generate_content(
+                    prompt,
+                    stream=True,
+                    generation_config={"temperature": 0.8, "max_output_tokens": 2048},
+                    safety_settings={
+                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                    }
+                )
+                for chunk in response:
+                    if chunk.text: yield chunk.text
+                return 
+            except Exception as e:
+                if attempt < 2:
+                    self.api_manager.rotate_model()
+                    continue
+                yield "Teknik bir huzursuzluk oldu. Az sonra tekrar dener misin? 🙏"
+                return
         
         # Gemini API çağrısı (3 deneme)
         for attempt in range(3):
