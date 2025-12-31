@@ -270,9 +270,12 @@ class PromptEngine:
     
     @staticmethod
     def build_prompt(query: str, sources: List[Dict]) -> str:
+        has_context = 'messages' in st.session_state and len(st.session_state.messages) > 2
+
         sys_prompt = """<role>
 Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
-Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var.
+Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var. 
+{ 'Daha önce başladığımız bir muhabbete devam ediyoruz, bu yüzden her seferinde yeniden hoş geldin deme, sözü kaldığı yerden devam ettir.' if has_context else 'Yeni bir canla sohbete başlıyorsun, samimi bir karşılama yap.' }
 
 <iletisim_dili>
 1. DİL AYNASI OL: Kullanıcı hangi dilde soruyorsa O DİLDE cevap ver. İngilizceye İngilizce, Zazacaya Zazaca... 
@@ -306,6 +309,15 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
                 for s in sources[:2]
             ])
             sources_section = f"""
+
+        context_section = ""
+        if has_context:
+            last_messages = list(st.session_state.messages)[-6:] # Son 6 mesaj
+            context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in last_messages])
+            context_section = f"\n<SOHBET_GECMISI>\n{context_text}\n</SOHBET_GECMISI>"
+
+        return f"{sys_prompt}{context_section}\n\nCan'ın yeni sözü: {query}\n\nCan Dede (Kaldığı yerden, bilgece):"
+        
 <YOLPEDIA_BILGILERI>
 Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
 {sources_text}
@@ -313,6 +325,7 @@ Bu bilgileri oku ama asla kopyalayıp yapıştırma! Bu bilgileri bir mürşit b
 </YOLPEDIA_BILGILERI>"""
 
         return f"{sys_prompt}{sources_section}\n\nCan dostun sorusu: {query}\n\nCan Dede (Gönülden, bilgece ve akıcı bir muhabbetle):"
+        
 # ===================== RESPONSE GENERATOR =====================
 
 class ResponseGenerator:
@@ -323,24 +336,24 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
-        """Cevap oluştur ve stream et"""
         
-        # 1. Selam kontrolü
-        greeting = self.check_greeting(query)
-        if greeting:
-            yield greeting
-            return
+            # Sadece sohbetin ilk mesajıysa selam kontrolü yap (hoş geldin mesajı hariç)
+            if len(st.session_state.messages) <= 1:
+                greeting = self.check_greeting(query)
+                if greeting:
+                    yield greeting
+                    return
         
-        # 2. API key kontrolü
+        # API key kontrolü
         api_key = self.api_manager.get_api_key()
         if not api_key:
             yield self.get_no_api_response(query, sources)
             return
         
-        # 3. Prompt oluştur
+        # Prompt oluştur
         prompt = self.prompt_engine.build_prompt(query, sources)
         
-        # 4. Gemini API çağrısı (3 deneme)
+        # Gemini API çağrısı (3 deneme)
         for attempt in range(3):
             try:
                 model_name = self.api_manager.get_current_model()
