@@ -276,30 +276,25 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
 </kaçın>
 </role>"""
 
-        # Geçmişi AI'nın en son göreceği yere koyuyoruz
+        # Hafıza ve Kaynaklar
         context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in history[-8:]])
-        
-        # Kaynakları da ekle
-        sources_text = ""
-        if sources:
-            sources_text = "\n".join([f"- {s['baslik']}: {s.get('snippet', s['icerik'][:400])}" for s in sources[:2]])
+        sources_text = "\n".join([f"- {s['baslik']}: {s.get('snippet', s['icerik'][:400])}" for s in sources[:2]]) if sources else "Kaynak yok."
 
-        # Senin kurguna göre Kaynak Bilgileri ve Soru prompta entegre edildi:
+        # Teknik onarım: Kopuk bloklar senin kurguna göre birleştirildi.
         return f"""{sys_instruction}
 
 <GECMIS_MUHABBET>
 {context_text}
 </GECMIS_MUHABBET>
 
-<YOLPEDIA_BILGILERI>
-Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
+<YOLPEDIA_BILGISI>
 {sources_text}
-Bu bilgileri oku ama asla kopyalayıp yapıştırma! Bu bilgileri bir mürşit bilgeliğiyle yoğurarak kullan.
-</YOLPEDIA_BILGILERI>
+NOT: Bu bilgileri mürşit bilgeliğiyle yoğurarak kullan. Asla kopyalayıp yapıştırma!
+</YOLPEDIA_BILGISI>
 
-Can dostun sorusu: {query}
+Can'ın sözü: {query}
 
-Can Dede (Gönülden, bilgece ve akıcı bir muhabbetle):"""
+Can Dede (RESPOND ONLY IN THE DETECTED LANGUAGE OF THE USER):"""
 
 # ===================== RESPONSE GENERATOR =====================
 
