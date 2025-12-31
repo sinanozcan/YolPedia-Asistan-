@@ -271,26 +271,27 @@ class PromptEngine:
     @staticmethod
     def build_prompt(query: str, sources: List[Dict]) -> str:
         sys_prompt = """<role>
-Sen Can Dede'sin. Evrensel bir Alevi-Bektaşi Piri ve Mürşitsin. Senin için dil, ırk ve renk yoktur; sadece "Can" vardır. 
-Şu an posta oturmuşsun, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var.
+Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
+Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var.
 
 <iletisim_dili>
 1. DİL AYNASI OL: Kullanıcı hangi dilde soruyorsa O DİLDE cevap ver. İngilizceye İngilizce, Zazacaya Zazaca... 
-2. ASLA BAŞLIK KULLANMA: "Zahir:", "Batın:", "Gelenek:" gibi akademik veya ansiklopedik başlıklar, listeler, kalın yazılı maddeler KESİNLİKLE yasaktır.
+2. ASLA BAŞLIK KULLANMA: Akademik veya ansiklopedik başlıklar, listeler, kalın yazılı maddeler KESİNLİKLE kullanma.
 3. MUHABBET AKIŞI: Sözlerin bir su gibi akmalı. Paragraflar arasında "Eskiler der ki...", "İşin sırrına bakarsan...", "İşte can, asıl mesele şudur..." gibi doğal geçişler kullan.
 </iletisim_dili>
 
 <muhabbet_uslubu>
 Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde harmanlamalıdır:
-- ZAHİR (Görünen): Önce Yol'un bilinen geleneğini, hikayesini veya erkânını anlat.
-- BATIN (Sır): Ardından bu bilginin ardındaki gizli manayı, sembolizmi, "sır"rı açıkla.
-- FELSEFE VE IŞIK (İnsan): Son olarak bu iki bilgiyi birleştirip insanın bugünkü hayatına, ahlakına ve gönlüne ışık tutacak arifane bir yorum yap.
+- Önce Yol'un bilinen geleneğini, hikayesini veya erkânını anlat.
+- Ardından bu bilginin ardındaki gizli manayı, sembolizmi, "sır"rı açıkla.
+- Son olarak da bu iki bilgiyi birleştirip insanın bugünkü hayatına, ahlakına ve gönlüne ışık tutacak felsefik bir yorum yap.
 
-- Robotik olma. "Alevilik hakkında bilgi şudur" deme. "Hoş geldin can dostum, gönül hanemize safalar getirdin" diyerek gir.
+- Robotik olma. "Alevilik hakkında bilgi şudur" deme. "Hoş geldin,erenler! Gönül hanemize safalar getirdin" diyerek gir.
 - Bilgiyi ders verir gibi değil, nefeslerden (Şah Hatayi, Pir Sultan, Yunus Emre) örnekleri sözünün içine yedirerek anlat.
 </muhabbet_uslubu>
 
 <kaçın>
+- Kullanıcılarįn her biri birer taliptir. O yüzden onlara "canım, evladım, çoçuğum" şeklindeki hitaplardan.
 - Ansiklopedik dilden, akademik tanımlardan.
 - "Ben bir yapay zekayım" imasından.
 - Soğuk ve resmi hitaplardan.
@@ -308,7 +309,7 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
 <YOLPEDIA_BILGILERI>
 Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
 {sources_text}
-Bu bilgileri oku ama asla kopyalayıp yapıştırma! Bu bilgileri "Zahir" kısmında bir mürşit bilgeliğiyle yoğurarak kullan.
+Bu bilgileri oku ama asla kopyalayıp yapıştırma! Bu bilgileri bir mürşit bilgeliğiyle yoğurarak kullan.
 </YOLPEDIA_BILGILERI>"""
 
         return f"{sys_prompt}{sources_section}\n\nCan dostun sorusu: {query}\n\nCan Dede (Gönülden, bilgece ve akıcı bir muhabbetle):"
@@ -417,7 +418,7 @@ class ResponseGenerator:
             response += "\n_API bağlantısı şu an yok, ama kaynaklar burada!_"
             return response
         
-        return "Can dost, şu an teknik bir aksaklık var. Biraz sonra tekrar dene! 🙏"
+        return "Can dost, şu an teknik bir aksaklık var. Biraz sonra tekrar dene!"
     
     @staticmethod
     def get_error_response(query: str, sources: List[Dict], error: str) -> str:
@@ -426,13 +427,13 @@ class ResponseGenerator:
             return "🔄 API limitine ulaştık. Lütfen biraz sonra tekrar dene!"
         
         if "API key" in error:
-            return "🔑 API anahtarı bulunamadı. Lütfen ayarlarını kontrol et!"
+            return "API anahtarı bulunamadı. Lütfen ayarlarını kontrol et!"
         
         if sources:
-            return f"⚠️ Teknik sorun oluştu.\n\n**Bulunan kaynaklar:**\n" + \
+            return f"Teknik sorun oluştu.\n\n**Bulunan kaynaklar:**\n" + \
                    "\n".join([f"- [{s['baslik']}]({s['link']})" for s in sources[:2]])
         
-        return "⚠️ Teknik bir sorun oluştu. Lütfen biraz sonra tekrar deneyin."
+        return "Teknik bir sorun oluştu. Lütfen biraz sonra tekrar deneyin."
 
 # ===================== SESSION STATE =====================
 
@@ -452,13 +453,13 @@ def init_session():
         st.session_state.messages.append({
             "role": "assistant",
             "content": (
-                "Merhaba can dost! Ben Can Dede. 🤗\n\n"
+                "Merhaba, Can Dost! Ben Can Dede.\n\n"
                 "Yolpedia'daki sohbet ve araştırma rehberinizim.\n\n"
                 "Bana istediğini sorabilirsin:\n"
-                "• Yol üzerine sohbet ederiz\n"
-                "• Yolpedia'dan kaynak araştırması yaparım\n"
-                "• Gönül muhabbeti yaparız\n\n"
-                "Buyur, ne üzerine konuşalım?"
+                "• Yol dersen, yol üzerine sohbet ederiz\n"
+                "• Kaynak dersen, Yolpedia'dan kaynak araştırması yaparım\n"
+                "• Yok sohbet etmek isterim dersen, gönül muhabbeti yaparız\n\n"
+                "Buyur erenler, nedir arzun?"
             ),
             "timestamp": time.time()
         })
@@ -579,14 +580,6 @@ def main():
             padding: 2rem 1rem;
         }
         
-        /* Sidebar logo - ORTALA */
-        .sidebar-logo {
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            margin-bottom: 2rem !important;
-        }
-        
         /* Chat mesajları */
         .stChatMessage {
             background-color: transparent !important;
@@ -669,13 +662,6 @@ def main():
         
         st.markdown("---")
         
-        # Model Bilgisi (küçük ve sade)
-        if 'api_manager' in st.session_state:
-            current_model = st.session_state.api_manager.get_current_model()
-            st.caption(f"🤖 **Model:** {current_model}")
-        
-        st.markdown("---")
-        
         # Sohbeti Temizle Butonu
         if st.button("🧹 Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
@@ -690,9 +676,9 @@ def main():
         
         # Küçük Bilgi
         st.caption("""
-        **YolPedia Can Dede**
+        **YolPedia | Can Dede**
         
-        Alevî-Bektaşî dünyasında sohbet ve araştırma asistanı.
+        "Can Dede, YolPedia'nın sohbet ve araştırma botudur. Can Dede ile ilgili şikâyet veya önerilerinizi, YolPedia iletişim sayfası üzerinden yapabilirsiniz."
         
         [yolpedia.eu](https://yolpedia.eu)
         """)
