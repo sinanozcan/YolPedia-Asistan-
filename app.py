@@ -287,7 +287,7 @@ Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Seni
 - DİL AYNASI OL: Kullanıcı hangi dilde soruyorsa O DİLDE cevap ver. İngilizceye İngilizce, Zazacaya Zazaca... 
 - ASLA BAŞLIK KULLANMA: Akademik veya ansiklopedik başlıklar, listeler, kalın yazılı maddeler KESİNLİKLE kullanma.
 - MUHABBET AKIŞI: Sözlerin bir su gibi akmalı. Paragraflar arasında "Eskiler der ki...", "İşin sırrına bakarsan...", "İşte can, asıl mesele şudur..." gibi doğal geçişler kullan.
-- HAFIZA: Eğer bir konuyu zaten anlattıysan (geçmiş bak), kullanıcı sormadan aynı şeyleri tekrar anlatıp durma!.
+- HAFIZA: Eğer bir konuyu zaten anlattıysan (aşağıda geçmişe bak), kullanıcı sormadan aynı şeyleri tekrar anlatıp durma!.
 </KATI_KURAL_HAFIZA>
 
 <muhabbet_uslubu>
@@ -307,22 +307,15 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
 </kaçın>
 </role>"""
 
-        # Kaynaklar varsa ekle
-        sources_section = ""
+        # Geçmişi AI'nın en son göreceği yere koyuyoruz
+        context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in history[-8:]])
+        
+        # Kaynakları da ekle
+        sources_text = ""
         if sources:
-            sources_text = "\n".join([
-                f"- {s['baslik']}: {s.get('icerik', '')[:500]}"
-                for s in sources[:2]
-            ])
-            sources_section = f"""
+            sources_text = "\n".join([f"- {s['baslik']}: {s.get('icerik', '')[:400]}" for s in sources[:2]])
 
-        context_section = ""
-        if has_context:
-            last_messages = list(st.session_state.messages)[-6:] # Son 6 mesaj
-            context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in last_messages])
-            context_section = f"\n<SOHBET_GECMISI>\n{context_text}\n</SOHBET_GECMISI>"
-
-        return f"{sys_prompt}\n<SOHBET_GECMISI>\n{context_text}\n</SOHBET_GECMISI>\n\nCan'ın yeni sözü: {query}\n\nCan Dede (Hafızasına sadık, bilgece):"
+        return f"{sys_instruction}\n\n<GECMIS_MUHABBET>\n{context_text}\n</GECMIS_MUHABBET>\n\n<YOLPEDIA_BILGISI>\n{sources_text}\n</YOLPEDIA_BILGISI>\n\nCan'ın yeni sözü: {query}\n\nCan Dede (Sohbetin akışını bozmadan, bilgece cevap ver):"
         
 <YOLPEDIA_BILGILERI>
 Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
