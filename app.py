@@ -233,7 +233,7 @@ class PromptEngine:
     """ORJİNAL AKILLI Can Dede Prompt'u"""
     
     @staticmethod
-   def build_prompt(query: str, sources: List[Dict]) -> str:
+    def build_prompt(query: str, sources: List[Dict]) -> str:
         history = list(st.session_state.messages)
         user_msg_count = len([m for m in history if m['role'] == 'user'])
         is_returning = user_msg_count > 0 
