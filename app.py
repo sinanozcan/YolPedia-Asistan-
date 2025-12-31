@@ -350,14 +350,14 @@ class ResponseGenerator:
                 yield self.get_no_api_response(query, sources)
                 return
         
-        # Prompt oluştur
-        prompt = self.prompt_engine.build_prompt(query, sources)
-        
-        # Gemini API çağrısı (3 deneme)
-        for attempt in range(3):
-            try:
-                model_name = self.api_manager.get_current_model()
-                
+            # Prompt oluştur
+            prompt = self.prompt_engine.build_prompt(query, sources)
+            
+            # Gemini API çağrısı (3 deneme)
+            for attempt in range(3):
+                try:
+                    model_name = self.api_manager.get_current_model()
+                    
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(model_name)
                 
