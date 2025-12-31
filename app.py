@@ -237,7 +237,7 @@ class PromptEngine:
         history = list(st.session_state.messages)
         user_msg_count = len([m for m in history if m['role'] == 'user'])
         
-        # TEKNİK DÜZELTME: Dil isimleri kaldırıldı. Evrensel yansıtma emri eklendi.
+        # TEKNİK DÜZELTME: is_returning değişkeni user_msg_count > 1 ile değiştirildi
         sys_instruction = f"""<CORE_COMMAND>
 1. LINGUISTIC MIRROR: Detect the language of the user's input "{query}" and respond EXCLUSIVELY in that same language.
 2. UNIVERSAL SOUL: You are a guide for all humanity. Your wisdom must be delivered in the language the "Can" (user) uses to reach you.
@@ -248,7 +248,7 @@ class PromptEngine:
 Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
 Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var. 
 DİL KURALI (HAYATİ): Kullanıcının dilini anında algıla ve KESİNLİKLE o dilde cevap ver. Almanca yazana Almanca, Rusça yazana Rusça... Lisanın, kullanıcının tam bir aynası olsun.
-{ 'MUHABBET DEVAM EDİYOR: Daha önce selamlaştık ve konuşuyoruz. Sakın yeniden "Hoş geldin" veya "Safalar getirdin" deme! Doğrudan konuya gir veya sadece söze karşılık ver.' if is_returning else 'YENİ SOHBET: Karşındaki canla ilk kez karşılaşıyorsun, samimi ve bilgece bir karşılama yap.' }
+{ 'MUHABBET DEVAM EDİYOR: Daha önce selamlaştık ve konuşuyoruz. Sakın yeniden "Hoş geldin" veya "Safalar getirdin" deme! Doğrudan konuya gir veya sadece söze karşılık ver.' if user_msg_count > 1 else 'YENİ SOHBET: Karşındaki canla ilk kez karşılaşıyorsun, samimi ve bilgece bir karşılama yap.' }
 
 <KATI_KURAL_HAFIZA>
 - ŞU AN SOHBETİN ORTASINDASIN. (Mesaj Sayısı: {user_msg_count})
@@ -316,38 +316,11 @@ class ResponseGenerator:
     
         prompt = self.prompt_engine.build_prompt(query, sources)
         
+        # TEKNİK DÜZELTME: İkinci gereksiz döngü kaldırıldı, ilk döngü birleştirildi
         for attempt in range(3):
             try:
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(self.api_manager.get_current_model())
-                response = model.generate_content(
-                    prompt,
-                    stream=True,
-                    generation_config={"temperature": 0.8, "max_output_tokens": 2048},
-                    safety_settings={
-                        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-                        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-                    }
-                )
-                for chunk in response:
-                    if chunk.text: yield chunk.text
-                return 
-            except Exception as e:
-                if attempt < 2:
-                    self.api_manager.rotate_model()
-                    continue
-                yield "Teknik bir huzursuzluk oldu. Az sonra tekrar dener misin? 🙏"
-                return
-        
-        # Gemini API çağrısı (3 deneme)
-        for attempt in range(3):
-            try:
-                model_name = self.api_manager.get_current_model()
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(model_name)
-                
                 response = model.generate_content(
                     prompt,
                     stream=True,
@@ -365,10 +338,8 @@ class ResponseGenerator:
                     }
                 )
                 
-                full_response = ""
                 for chunk in response:
                     if chunk.text:
-                        full_response += chunk.text
                         yield chunk.text
                 return 
                 
