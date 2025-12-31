@@ -30,8 +30,8 @@ st.set_page_config(
         'Report a bug': 'https://yolpedia.eu/iletisim',
         'About': '''
         ## YolPedia Can Dede
-        **Alevî-Bektaşî Sohbet ve Araştırma Asistanı**
-        📚 yolpedia.eu
+        **Alevî-Bektaşî Yol Rehberi**
+        yolpedia.eu
         "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
         '''
     }
@@ -311,7 +311,7 @@ class ResponseGenerator:
         
         api_key = self.api_manager.get_api_key()
         if not api_key:
-            yield "Teknik bir aksaklık var, lutfen az sonra tekrar dene. 🙏"
+            yield "Teknik bir aksaklık var, lutfen az sonra tekrar dene."
             return
     
         prompt = self.prompt_engine.build_prompt(query, sources)
@@ -358,17 +358,17 @@ class ResponseGenerator:
         greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hi", "hello", "hey"]
         if any(g in query_lower for g in greetings):
             return random.choice([
-                "Aşk ile can dost! Hoş geldin.",
+                "Aşk ile, can dost! Hoş geldin.",
                 "Selam olsun, güzel insan! Buyur, ne üzerine konuşalım?",
                 "Selam, erenler! Yolun açık olsun. Ne sormak istersin?"
             ])
         if "nasılsın" in query_lower or "naber" in query_lower:
             return random.choice([
-                "Şükür, erenler. Hakk'ın bir tecellisiyim bugün. Sen nasılsın?",
-                "Çok şükür, erenler. Gönül sohbetine hazırım. Senin gönlün nasıl?"
+                "Şükür, erenler. Yolun hizmetindeyiz bugün de. Sen nasılsın?",
+                "Çok şükür, erenler. Gönül bu, muhabbet etmek ister. Senin gönlün ne ister?"
             ])
         if "teşekkür" in query_lower or "sağ ol" in query_lower:
-            return "Estağfurullah erenler, ben teşekkür ederim. Senin gibi güzel bir canla sohbet etmek ne güzel!"
+            return "Estağfurullah erenler, ben teşekkür ederim. Senin gibi güzel bir canla muhabbet etmek ne güzel!"
         return None
     
     @staticmethod
@@ -400,7 +400,7 @@ def init_session():
         st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
         st.session_state.messages.append({
             "role": "assistant",
-            "content": "Merhaba, Can Dost! Ben Can Dede. Buyur erenler, ne dilersin?",
+            "content": "Merhaba, Can Dost! Ben Can Dede. Buyur, ne bilmek istersin?",
             "timestamp": time.time()
         })
 
@@ -491,7 +491,7 @@ def main():
         st.markdown("---")
         if st.button("Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
-            st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir sohbe başlatalım mı, can dost?", "timestamp": time.time()})
+            st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir sohbet başlatalım mı, can dost?", "timestamp": time.time()})
             st.rerun()
         st.markdown("---")
         
