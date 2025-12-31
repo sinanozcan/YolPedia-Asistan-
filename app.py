@@ -489,7 +489,7 @@ def main():
         st.markdown(
             f"""
             <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
-                <img src="{config.YOLPEDIA_ICON}" width="80">
+                <img src="{config.YOLPEDIA_ICON}" width="60">
             </div>
             """,
             unsafe_allow_html=True
