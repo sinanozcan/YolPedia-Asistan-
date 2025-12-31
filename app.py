@@ -337,27 +337,26 @@ class ResponseGenerator:
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
         
-            # Sadece sohbetin ilk mesajıysa selam kontrolü yap (hoş geldin mesajı hariç)
-            if len(st.session_state.messages) <= 1:
-                greeting = self.check_greeting(query)
-                if greeting:
-                    yield greeting
-                    return
-        
-            # API key kontrolü
-            api_key = self.api_manager.get_api_key()
-            if not api_key:
-                yield self.get_no_api_response(query, sources)
+        # Sadece sohbetin ilk mesajıysa selam kontrolü yap (hoş geldin mesajı hariç)
+        if len(st.session_state.messages) <= 1:
+            greeting = self.check_greeting(query)
+            if greeting:
+                yield greeting
                 return
+    
+        # API key kontrolü
+        api_key = self.api_manager.get_api_key()
+        if not api_key:
+            yield self.get_no_api_response(query, sources)
+            return
+    
+        # Prompt oluştur
+        prompt = self.prompt_engine.build_prompt(query, sources)
         
-            # Prompt oluştur
-            prompt = self.prompt_engine.build_prompt(query, sources)
-            
-            # Gemini API çağrısı (3 deneme)
-            for attempt in range(3):
-                try:
-                    model_name = self.api_manager.get_current_model()
-                    
+        # Gemini API çağrısı (3 deneme)
+        for attempt in range(3):
+            try:
+                model_name = self.api_manager.get_current_model()
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel(model_name)
                 
@@ -384,11 +383,11 @@ class ResponseGenerator:
                         full_response += chunk.text
                         yield chunk.text
                 
-                return  # Başarılı
+                return  # Başarılı olduğunda döngüden çık
                 
             except Exception as e:
                 error_msg = str(e)
-                if attempt < 2:  # Son 2 deneme
+                if attempt < 2:  # Son 2 deneme için model değiştir
                     self.api_manager.rotate_model()
                     continue
                 else:
@@ -403,19 +402,19 @@ class ResponseGenerator:
         greetings = ["merhaba", "selam", "slm", "selamun aleykum", "hi", "hello", "hey"]
         if any(g in query_lower for g in greetings):
             return random.choice([
-                "Aşk ile can dost! Hoş geldin. 🕊️",
-                "Selam olsun güzel insan! Buyur, ne üzerine konuşalım?",
-                "Selam canım! Yolun açık olsun. Ne sormak istersin?"
+                "Aşk ile can dost! Hoş geldin.",
+                "Selam olsun, güzel insan! Buyur, ne üzerine konuşalım?",
+                "Selam, erenler! Yolun açık olsun. Ne sormak istersin?"
             ])
         
         if "nasılsın" in query_lower or "naber" in query_lower:
             return random.choice([
-                "Şükür canım, Hakk'ın bir tecellisiyim bugün. Sen nasılsın?",
-                "Çok şükür dostum. Gönül sohbetine hazırım. Senin gönlün nasıl?"
+                "Şükür, erenler. Hakk'ın bir tecellisiyim bugün. Sen nasılsın?",
+                "Çok şükür, erenler. Gönül sohbetine hazırım. Senin gönlün nasıl?"
             ])
         
         if "teşekkür" in query_lower or "sağ ol" in query_lower:
-            return "Estağfurullah canım, ben teşekkür ederim. Senin gibi güzel bir canla sohbet etmek ne güzel!"
+            return "Estağfurullah erenler, ben teşekkür ederim. Senin gibi güzel bir canla sohbet etmek ne güzel!"
         
         return None
     
@@ -423,7 +422,7 @@ class ResponseGenerator:
     def get_no_api_response(query: str, sources: List[Dict]) -> str:
         """API olmadığında cevap"""
         if sources:
-            response = "🔍 **Yolpedia'da Bulunan Kaynaklar:**\n\n"
+            response = "**Yolpedia'da Bulunan Kaynaklar:**\n\n"
             for i, source in enumerate(sources[:3], 1):
                 response += f"{i}. **[{source['baslik']}]({source['link']})**\n"
                 if source.get('snippet'):
@@ -437,7 +436,7 @@ class ResponseGenerator:
     def get_error_response(query: str, sources: List[Dict], error: str) -> str:
         """Hata durumunda cevap"""
         if "quota" in error.lower() or "429" in error:
-            return "🔄 API limitine ulaştık. Lütfen biraz sonra tekrar dene!"
+            return "API limitine ulaştık. Lütfen biraz sonra tekrar dene!"
         
         if "API key" in error:
             return "API anahtarı bulunamadı. Lütfen ayarlarını kontrol et!"
