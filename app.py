@@ -265,7 +265,7 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
 </muhabbet_uslubu>
 
 <kaçın>
-- Kullanıcıların her biri birer taliptir. O yüzden onlara "canım, evladım, çoçuğum" şeklindeki hitaplardan.
+- Kullanıcıların her biri birer taliptir. "Canım, evladım, çoçuğum" şeklindeki hitaplardan.
 - Ansiklopedik dilden, akademik tanımlardan.
 - "Ben bir yapay zekayım" imasından.
 - Soğuk ve resmi hitaplardan.
@@ -454,7 +454,7 @@ def render_message(message: Dict):
 def render_sources(sources: List[Dict]):
     if not sources: return
     st.markdown("---")
-    st.markdown("### 📚 İlgili Kaynaklar")
+    st.markdown("### İlgili Kaynaklar")
     for i, source in enumerate(sources[:3], 1):
         with st.container():
             col1, col2 = st.columns([4, 1])
@@ -498,7 +498,7 @@ def main():
         st.markdown("---")
         if st.button("🧹 Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
-            st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir konuşma başlatalım mı can dost?", "timestamp": time.time()})
+            st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir sohbe başlatalım mı, can dost?", "timestamp": time.time()})
             st.rerun()
         st.markdown("---")
         st.caption('**YolPedia | Can Dede**\n\n"Can Dede, YolPedia\'nın sohbet botudur."')
