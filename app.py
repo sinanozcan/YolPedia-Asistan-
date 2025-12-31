@@ -434,13 +434,19 @@ class SecurityManager:
 # ===================== UI COMPONENTS =====================
 
 def render_header():
+    """Header'ı dikey ve yatayda daha ortalı render et"""
     st.markdown(f"""
-    <div style="text-align: center; margin-bottom: 30px;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 10px;">
-            <img src="{config.CAN_DEDE_ICON}" style="width: 50px; height: 50px; border-radius: 50%; border: 2px solid #eee;">
-            <h1 style="margin: 0; font-size: 34px; font-weight: 700; color: white;">{config.ASSISTANT_NAME}</h1>
+    <div style="text-align: center; margin-top: 15vh; margin-bottom: 50px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 15px;">
+            <img src="{config.CAN_DEDE_ICON}" 
+                 style="width: 70px; height: 70px; border-radius: 50%; border: 2px solid #eee; box-shadow: 0px 4px 15px rgba(0,0,0,0.3);">
+            <h1 style="margin: 0; font-size: 42px; font-weight: 700; color: white; letter-spacing: 1px;">
+                {config.ASSISTANT_NAME}
+            </h1>
         </div>
-        <div style="font-size: 16px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif;">{config.MOTTO}</div>
+        <div style="font-size: 20px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif; opacity: 0.9;">
+            {config.MOTTO}
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
