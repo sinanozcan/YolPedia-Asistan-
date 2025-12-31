@@ -498,7 +498,7 @@ def main():
         st.caption('''
         **YolPedia | Can Dede**
         
-        "Can Dede, YolPedia'nın sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi https://yolpedia.eu/iletisim-2/ adresinden iletebilirsiniz."
+        "Can Dede, YolPedia'nın çok dilli sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi https://yolpedia.eu/iletisim-2/ adresinden iletebilirsiniz."
         
         "Can Dede is YolPedia's multilingual chat bot. You can submit suggestions or feedback about the page via https://yolpedia.eu/iletisim-2/."
         ''') 
