@@ -344,11 +344,11 @@ class ResponseGenerator:
                     yield greeting
                     return
         
-        # API key kontrolü
-        api_key = self.api_manager.get_api_key()
-        if not api_key:
-            yield self.get_no_api_response(query, sources)
-            return
+            # API key kontrolü
+            api_key = self.api_manager.get_api_key()
+            if not api_key:
+                yield self.get_no_api_response(query, sources)
+                return
         
         # Prompt oluştur
         prompt = self.prompt_engine.build_prompt(query, sources)
