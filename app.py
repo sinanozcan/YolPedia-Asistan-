@@ -494,7 +494,7 @@ def main():
             st.session_state.messages.append({"role": "assistant", "content": "Sohbet temizlendi! Yeni bir sohbe başlatalım mı, can dost?", "timestamp": time.time()})
             st.rerun()
         st.markdown("---")
-        st.caption('**YolPedia | Can Dede**\n\n"Can Dede, YolPedia'nın sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi "https://yolpedia.eu/iletisim-2/" adresinden iletebilirsiniz."')
+        st.caption('**YolPedia | Can Dede**\n\n"Can Dede, YolPedia'nın sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi 'https://yolpedia.eu/iletisim-2/' adresinden iletebilirsiniz."')
 
     render_header()
     for message in st.session_state.messages: render_message(message)
