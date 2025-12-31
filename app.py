@@ -485,9 +485,16 @@ def main():
     """, unsafe_allow_html=True)
     
     with st.sidebar:
-        st.markdown('<div class="sidebar-logo">', unsafe_allow_html=True)
-        st.image(config.YOLPEDIA_ICON, width=60)
-        st.markdown('</div>', unsafe_allow_html=True)
+        # LOGOYU TAM ORTAYA ALAN KISIM BURASI
+        st.markdown(
+            f"""
+            <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 20px;">
+                <img src="{config.YOLPEDIA_ICON}" width="80">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        
         st.markdown("---")
         if st.button("🧹 Sohbeti Temizle", use_container_width=True):
             st.session_state.messages = deque(maxlen=config.MAX_HISTORY_MESSAGES)
