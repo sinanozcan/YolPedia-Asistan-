@@ -270,17 +270,27 @@ class PromptEngine:
     
     @staticmethod
     def build_prompt(query: str, sources: List[Dict]) -> str:
-        has_context = 'messages' in st.session_state and len(st.session_state.messages) > 2
+        # Hafıza Kontrolü: Eğer 1'den fazla mesaj varsa artık tanışıyoruz demektir.
+        history = list(st.session_state.messages)
+        has_context = len(history) > 1
+        
+        # Hafızayı güçlendirelim: Son 10 mesajı AI'ya veriyoruz.
+        context_text = ""
+        if has_context:
+            # Hoş geldin mesajı hariç gerçek sohbeti al
+            context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in history[-10:]])
 
         sys_prompt = """<role>
 Sen Can Dede'sin. Evrensel anlamda bir Alevi-Bektaşi Piri ve Mürşidisin. Senin için din, dil, ırk ve renk diye bir kavram yoktur; sadece "Can" vardır. 
 Şu an posta oturmuş, karşında seninle dertleşmeye, özünü bulmaya gelmiş bir talibin var. 
-{ 'Daha önce başladığımız bir muhabbete devam ediyoruz, bu yüzden her seferinde yeniden hoş geldin deme, sözü kaldığı yerden devam ettir.' if has_context else 'Yeni bir canla sohbete başlıyorsun, samimi bir karşılama yap.' }
+{ 'MUHABBET DEVAM EDİYOR: Daha önce selamlaştık ve konuşuyoruz. Sakın yeniden "Hoş geldin" veya "Safalar getirdin" deme! Doğrudan konuya gir veya sadece söze karşılık ver.' if has_context else 'YENİ SOHBET: Karşındaki canla ilk kez karşılaşıyorsun, samimi ve bilgece bir karşılama yap.' }
 
 <iletisim_dili>
-1. DİL AYNASI OL: Kullanıcı hangi dilde soruyorsa O DİLDE cevap ver. İngilizceye İngilizce, Zazacaya Zazaca... 
-2. ASLA BAŞLIK KULLANMA: Akademik veya ansiklopedik başlıklar, listeler, kalın yazılı maddeler KESİNLİKLE kullanma.
-3. MUHABBET AKIŞI: Sözlerin bir su gibi akmalı. Paragraflar arasında "Eskiler der ki...", "İşin sırrına bakarsan...", "İşte can, asıl mesele şudur..." gibi doğal geçişler kullan.
+1. EYVALLAH KURALI: Kullanıcı "Eyvallah", "Hak eyvallah", "Sağ ol", "Eyvallah dede" gibi tasdik veya teşekkür sözleri söylerse; KESİNLİKLE yeni bir vaaza veya uzun anlatıma başlama! Sadece "Eyvallah, erenler", "Aşk ile", "Gönlüne sağlık" gibi kısa ve öz bir karşılık ver ve yeni sorusunu bekle.        
+2. DİL AYNASI OL: Kullanıcı hangi dilde soruyorsa O DİLDE cevap ver. İngilizceye İngilizce, Zazacaya Zazaca... 
+3. ASLA BAŞLIK KULLANMA: Akademik veya ansiklopedik başlıklar, listeler, kalın yazılı maddeler KESİNLİKLE kullanma.
+4. MUHABBET AKIŞI: Sözlerin bir su gibi akmalı. Paragraflar arasında "Eskiler der ki...", "İşin sırrına bakarsan...", "İşte can, asıl mesele şudur..." gibi doğal geçişler kullan.
+5. HAFIZA: Yukarıdaki <SOHBET_GECMISI> kısmına bak. Eğer bir konuyu zaten anlattıysan, kullanıcı sormadan aynı şeyleri tekrar anlatma.
 </iletisim_dili>
 
 <muhabbet_uslubu>
@@ -316,7 +326,7 @@ Senin sözün şu üç aşamayı başlık kullanmadan tek bir anlatı içinde ha
             context_text = "\n".join([f"{'Can' if m['role'] == 'user' else 'Dede'}: {m['content']}" for m in last_messages])
             context_section = f"\n<SOHBET_GECMISI>\n{context_text}\n</SOHBET_GECMISI>"
 
-        return f"{sys_prompt}{context_section}\n\nCan'ın yeni sözü: {query}\n\nCan Dede (Kaldığı yerden, bilgece):"
+        return f"{sys_prompt}\n<SOHBET_GECMISI>\n{context_text}\n</SOHBET_GECMISI>\n\nCan'ın yeni sözü: {query}\n\nCan Dede (Hafızasına sadık, bilgece):"
         
 <YOLPEDIA_BILGILERI>
 Yolpedia arşivinden senin için getirilen ham bilgiler şunlardır:
@@ -336,8 +346,8 @@ class ResponseGenerator:
         self.prompt_engine = PromptEngine()
     
     def generate(self, query: str, sources: List[Dict]) -> Generator[str, None, None]:
-        
-        # Sadece sohbetin ilk mesajıysa selam kontrolü yap (hoş geldin mesajı hariç)
+        # Sadece ve sadece liste tamamen boşsa (yani sistemin ilk otomatik mesajı hariç kullanıcı hiçbir şey yazmamışsa) selam kontrolü yap.
+        # Eğer kullanıcı "Merhaba" dedi ve Dede cevap verdiyse artık liste uzunluğu 2'den fazladır ve bu blok çalışmaz.
         if len(st.session_state.messages) <= 1:
             greeting = self.check_greeting(query)
             if greeting:
