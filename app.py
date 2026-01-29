@@ -25,16 +25,7 @@ st.set_page_config(
     page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",
     layout="centered",
     initial_sidebar_state="expanded",
-    menu_items={
-        'Get Help': 'https://yolpedia.eu/yardim',
-        'Report a bug': 'https://yolpedia.eu/iletisim',
-        'About': '''
-        ## YolPedia Can Dede
-        **Alevî-Bektaşî Yol Rehberi**
-        yolpedia.eu
-        "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
-        '''
-    }
+    menu_items=None  # Menüyü tamamen devre dışı bırak
 )
 
 # ===================== CONFIGURATION =====================
@@ -89,35 +80,27 @@ def apply_custom_styles():
             background-color: #8B0000 !important; /* Koyu Kırmızı */
         }
 
-        /* 3. ALT BAR (FOOTER) - KIRMIZI ŞERİT OLARAK GÖSTER */
+        /* 3. ALT KISIM - TÜM FOOTERLERİ GİZLE */
         footer {
-            visibility: visible !important;
-            display: block !important;
-            background-color: #8B0000 !important; /* Koyu Kırmızı - Header ile aynı */
-            color: transparent !important; /* Yazıları gizle */
-            min-height: 3rem !important;
+            display: none !important;
+            visibility: hidden !important;
         }
         
-        /* Footer container'ı da kırmızı yap */
-        footer, footer > *, [data-testid="stBottom"] {
-            background-color: #8B0000 !important;
-        }
-        
-        /* Footer içindeki tüm yazıları gizle ama arka planı göster */
-        footer * {
-            color: transparent !important;
-        }
-        
-        /* Built with Streamlit container'ı */
-        .main > div:last-child {
-            background-color: #8B0000 !important;
+        /* Streamlit footer class'larını gizle */
+        .streamlit-footer, 
+        [data-testid="stBottom"],
+        .main footer,
+        div[class*="footer"],
+        div[class*="Footer"] {
+            display: none !important;
+            visibility: hidden !important;
         }
 
         /* 4. SOL MENÜ AÇMA DÜĞMESİ - GÖRÜNEBİLİR OLMALI */
         [data-testid="collapsedControl"] {
             color: #ffffff !important;
             visibility: visible !important;
-            display: block !important;
+            display: flex !important;
         }
 
         /* 5. DİĞER DETAYLAR */
@@ -136,35 +119,55 @@ def apply_custom_styles():
 
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
         
-        .block-container { padding-top: 4rem !important; }
+        .block-container { padding-top: 4rem !important; padding-bottom: 1rem !important; }
 
         /* 6. STREAMLIT MENÜ ÇUBUĞUNU GİZLE */
-        /* Ana menüyü gizle */
-        #MainMenu {visibility: hidden !important;}
+        #MainMenu {display: none !important;}
         
-        /* "Built with Streamlit" yazısını ve fullscreen butonunu gizle */
-        .viewerBadge_container__r5tak {display: none !important;}
-        .viewerBadge_link__qRIco {display: none !important;}
-        .viewerBadge_text__1JaDK {display: none !important;}
-        .viewerBadge_container__1QSob {display: none !important;}
-        .styles_viewerBadge__1yB5_ {display: none !important;}
-        
-        /* Toolbar'ı gizle */
-        div[data-testid="stToolbar"] {display: none !important;}
-        
-        /* Deploy butonu */
-        .stDeployButton {display: none !important;}
-        
-        /* Header'daki settings butonunu gizle */
-        header[data-testid="stHeader"] button[kind="header"] {display: none !important;}
-        
-        /* Footer'daki tüm link ve badge'leri gizle */
-        footer a, footer [class*="badge"], footer [class*="Badge"] {
+        /* "Built with Streamlit" ve "Fullscreen" butonunu gizle */
+        .viewerBadge_container__r5tak,
+        .viewerBadge_link__qRIco,
+        .viewerBadge_text__1JaDK,
+        .viewerBadge_container__1QSob,
+        .styles_viewerBadge__1yB5_,
+        [class*="viewerBadge"],
+        [class*="ViewerBadge"] {
             display: none !important;
-            visibility: hidden !important;
+        }
+        
+        /* Toolbar ve deploy butonu */
+        div[data-testid="stToolbar"],
+        .stDeployButton,
+        button[kind="header"] {
+            display: none !important;
         }
 
     </style>
+    
+    <script>
+        // JavaScript ile footer elementlerini tamamen kaldır
+        function removeStreamlitBranding() {
+            // Footer elementlerini bul ve kaldır
+            const footers = document.querySelectorAll('footer');
+            footers.forEach(footer => footer.remove());
+            
+            // "Built with Streamlit" içeren tüm elementleri bul
+            const allElements = document.querySelectorAll('*');
+            allElements.forEach(el => {
+                if (el.textContent.includes('Built with Streamlit') || 
+                    el.textContent.includes('Fullscreen')) {
+                    el.style.display = 'none';
+                    el.remove();
+                }
+            });
+        }
+        
+        // Sayfa yüklendiğinde çalıştır
+        document.addEventListener('DOMContentLoaded', removeStreamlitBranding);
+        
+        // Periyodik olarak kontrol et (Streamlit dinamik yüklüyor olabilir)
+        setInterval(removeStreamlitBranding, 1000);
+    </script>
     """, unsafe_allow_html=True)
 
 apply_custom_styles()
