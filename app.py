@@ -78,39 +78,53 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* Mesaj kutuları arası boşluk */
+        /* Genel Arka Plan ve Yazı Rengi */
+        .stApp {
+            background-color: #0e1117;
+            color: #ffffff;
+        }
+
+        /* Mesaj Kutuları Arası Boşluk */
         .stChatMessage { margin-bottom: 10px; }
         
-        /* Yükleme animasyonu rengi */
+        /* Yükleme Animasyonu */
         .stSpinner > div { border-top-color: #ff4b4b !important; }
         
-        /* ANA EKRANI AŞAĞI İNDİREN KOD */
+        /* Ekranı Aşağı Kaydırma */
         .block-container { padding-top: 6rem !important; }
         
-        /* Başlık ayarı */
-        h1 { line-height: 1.2 !important; }
+        /* Başlıklar */
+        h1, h2, h3 { line-height: 1.2 !important; color: #ffffff !important; }
         
-        /* Link ayarları */
+        /* Linkler */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
         a:hover { text-decoration: underline; }
         
-        /* --- YENİ EKLENEN: YAZI NETLEŞTİRME (BEYAZ) --- */
+        /* --- YAZI YAZMA KUTUSU (SORUN ÇÖZÜCÜ) --- */
         
-        /* Sohbet balonlarının içindeki yazılar */
+        /* 1. Kutunun kendisi (Dış Çerçeve) */
+        .stChatInputContainer {
+            background-color: #0e1117 !important; 
+        }
+
+        /* 2. Yazı yazılan alan (Textarea) */
+        .stChatInput textarea {
+            background-color: #262730 !important; /* Koyu Gri Arka Plan */
+            color: #ffffff !important;           /* Beyaz Yazı */
+            caret-color: #ffffff !important;     /* Beyaz İmleç */
+            border: 1px solid #4f4f4f !important;
+        }
+        
+        /* 3. iPad/iPhone Özel Ayarı (Safari) */
+        textarea {
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* Sohbet Balonları */
         .stChatMessage p, .stChatMessage div {
             color: #ffffff !important;
-            font-weight: 400 !important;
-        }
-        
-        /* Kullanıcının yazı yazdığı kutu */
-        .stChatInput textarea {
-            color: #ffffff !important;
-            caret-color: #ffffff !important;
-        }
-        
-        /* Genel gövde yazıları */
-        body, .stMarkdown, p {
-            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
         }
     </style>
     """, unsafe_allow_html=True)
