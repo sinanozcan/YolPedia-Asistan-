@@ -129,6 +129,13 @@ def apply_custom_styles():
         /* Sadece gereksiz menüleri gizle, header/footer'ı koru */
         #MainMenu {visibility: hidden !important;}
         
+        /* Alt kısımdaki "Built with Streamlit" ve "Fullscreen" butonunu gizle */
+        footer {visibility: hidden !important;}
+        footer::after {content: none !important;}
+        .viewerBadge_container__r5tak {display: none !important;}
+        .viewerBadge_link__qRIco {display: none !important;}
+        .viewerBadge_text__1JaDK {display: none !important;}
+        
         /* Alternatif gizleme yöntemleri (ek güvenlik için) */
         .viewerBadge_container__1QSob {display: none !important;}
         .styles_viewerBadge__1yB5_ {display: none !important;}
@@ -139,6 +146,17 @@ def apply_custom_styles():
         
         /* Header'daki gereksiz butonları gizle ama header'ın kendisini göster */
         header[data-testid="stHeader"] button[kind="header"] {display: none !important;}
+        
+        /* Tüm footer elementlerini zorla gizle */
+        footer, footer > *, [class*="viewerBadge"], [class*="ViewerBadge"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            height: 0 !important;
+            width: 0 !important;
+            position: absolute !important;
+            z-index: -9999 !important;
+        }
 
     </style>
     """, unsafe_allow_html=True)
