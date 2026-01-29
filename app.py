@@ -78,51 +78,53 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. TÜM SAYFA (GLOBAL) AYARLARI */
-        /* Arka planı koyu, yazıları bembeyaz yap */
-        .stApp, [data-testid="stAppViewContainer"] {
-            background-color: #0e1117 !important; /* Çok koyu antrasit/siyah */
+        /* 1. KÖKTEN SİYAH (Tüm Cihazlar İçin) */
+        html, body, [data-testid="stAppViewContainer"], .stApp {
+            background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. TÜM YAZILAR (iPAD DAHİL) */
-        /* Paragraf, Başlık, Liste, Span... Hepsi beyaz olsun */
-        p, h1, h2, h3, h4, h5, h6, span, div, label, li {
+        /* 2. O BEYAZ KALAN ÜST KISIM (HEADER) */
+        header, [data-testid="stHeader"] {
+            background-color: #0e1117 !important; /* Başlığı da siyah yap */
+        }
+
+        /* 3. KAYBOLAN MENÜ BUTONU (MOBİLDE) */
+        /* Sol üstteki ok işaretini ve menü butonunu bembeyaz ve görünür yap */
+        [data-testid="collapsedControl"] {
+            display: block !important;
             color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important; /* Apple cihazlar için zorunlu */
+            background-color: #0e1117 !important;
+        }
+        [data-testid="collapsedControl"] svg {
+            fill: #ffffff !important;
+        }
+
+        /* 4. SOL MENÜNÜN İÇİ (Açılınca) */
+        section[data-testid="stSidebar"] {
+            background-color: #262730 !important;
+        }
+
+        /* 5. YAZILAR VE iPHONE UYUMU */
+        h1, h2, h3, p, span, div, li {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
             opacity: 1 !important;
         }
 
-        /* 3. SOL MENÜ (SIDEBAR) */
-        [data-testid="stSidebar"] {
-            background-color: #262730 !important; /* Ana ekrandan bir ton açık antrasit */
-        }
-
-        /* 4. SORU SORMA KUTUSU (INPUT) */
-        /* Kutunun arka planını koyu yap, içindeki yazıyı beyaz yap */
+        /* 6. SORU KUTUSU */
         .stChatInput textarea {
-            background-color: #2b313e !important; /* Koyu gri */
-            color: #ffffff !important;            /* Beyaz yazı */
+            background-color: #2b313e !important;
+            color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
-            caret-color: #ffffff !important;      /* Yanıp sönen imleç beyaz */
-            border: 1px solid #4a4a4a !important; /* Çerçeve rengi */
+            border: 1px solid #4a4a4a !important;
         }
-        
-        /* 5. LİNKLER */
-        /* Linkleri kırmızı yap ki beyaz yazıdan ayrılsın */
-        a {
-            color: #ff4b4b !important;
-            -webkit-text-fill-color: #ff4b4b !important;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        a:hover { text-decoration: underline; }
 
-        /* 6. DİĞER DETAYLAR */
-        .stChatMessage { margin-bottom: 10px; }
-        .stSpinner > div { border-top-color: #ff4b4b !important; }
-        .block-container { padding-top: 6rem !important; }
+        /* 7. LİNKLER */
+        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
 
+        /* 8. BOŞLUK AYARLARI */
+        .block-container { padding-top: 4rem !important; } /* Biraz yukarı aldık ki mobilde çok aşağıda kalmasın */
     </style>
     """, unsafe_allow_html=True)
 
