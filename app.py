@@ -84,9 +84,20 @@ def apply_custom_styles():
             color: #ffffff !important;
         }
 
-        /* Header */
+        /* Header - GİZLE */
         header[data-testid="stHeader"] {
-            background-color: #8B0000 !important;
+            visibility: hidden !important;
+            height: 0 !important;
+        }
+        
+        /* AMA Sidebar açma butonunu GÖRÜNür TUT */
+        header[data-testid="stHeader"] [data-testid="collapsedControl"] {
+            visibility: visible !important;
+            display: flex !important;
+            position: fixed !important;
+            top: 1rem !important;
+            left: 1rem !important;
+            z-index: 999999 !important;
         }
 
         /* Sidebar - ZORLA GÖRÜNÜR */
