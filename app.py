@@ -84,20 +84,14 @@ def apply_custom_styles():
             color: #ffffff !important;
         }
 
-        /* Header - GİZLE */
+        /* Header - ŞEFFAF yap ama sidebar butonunu göster */
         header[data-testid="stHeader"] {
-            visibility: hidden !important;
-            height: 0 !important;
+            background-color: transparent !important;
         }
         
-        /* AMA Sidebar açma butonunu GÖRÜNür TUT */
-        header[data-testid="stHeader"] [data-testid="collapsedControl"] {
-            visibility: visible !important;
-            display: flex !important;
-            position: fixed !important;
-            top: 1rem !important;
-            left: 1rem !important;
-            z-index: 999999 !important;
+        /* Sidebar açma butonu - beyaz renk */
+        [data-testid="collapsedControl"] {
+            color: #ffffff !important;
         }
 
         /* Sidebar - ZORLA GÖRÜNÜR */
