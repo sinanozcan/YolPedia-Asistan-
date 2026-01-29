@@ -128,6 +128,11 @@ def apply_custom_styles():
             font-weight: bold; 
         }
         
+        /* Sidebar linkleri MAVİ */
+        section[data-testid="stSidebar"] a {
+            color: #4A9EFF !important;
+        }
+        
         .block-container { 
             padding-top: 4rem !important; 
         }
@@ -152,6 +157,11 @@ def apply_custom_styles():
             [data-testid="stBottom"] {
                 position: relative !important;
                 order: 1 !important;
+            }
+            
+            /* Başlık metni daha küçük */
+            h1 {
+                font-size: 28px !important;
             }
         }
 
@@ -514,14 +524,14 @@ def render_header():
     """Header'ı dikey ve yatayda daha ortalı render et"""
     st.markdown(f"""
     <div style="text-align: center; margin-top: 15vh; margin-bottom: 50px;">
-        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 15px;">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 15px; flex-wrap: wrap;">
             <img src="{config.CAN_DEDE_ICON}" 
                  style="width: 70px; height: 70px; border-radius: 50%; border: 2px solid #eee; box-shadow: 0px 4px 15px rgba(0,0,0,0.3);">
-            <h1 style="margin: 0; font-size: 42px; font-weight: 700; color: white; letter-spacing: 1px;">
+            <h1 style="margin: 0; font-size: clamp(24px, 5vw, 42px); font-weight: 700; color: white; letter-spacing: 1px;">
                 {config.ASSISTANT_NAME}
             </h1>
         </div>
-        <div style="font-size: 20px; font-style: italic; color: #cccccc; font-family: 'Georgia', serif; opacity: 0.9;">
+        <div style="font-size: clamp(16px, 3vw, 20px); font-style: italic; color: #cccccc; font-family: 'Georgia', serif; opacity: 0.9;">
             {config.MOTTO}
         </div>
     </div>
