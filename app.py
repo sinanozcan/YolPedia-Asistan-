@@ -89,14 +89,18 @@ def apply_custom_styles():
             background-color: #8B0000 !important;
         }
 
-        /* Sidebar */
+        /* Sidebar - ZORLA GÖRÜNÜR */
         section[data-testid="stSidebar"] { 
-            background-color: #262730 !important; 
+            background-color: #262730 !important;
+            display: block !important;
+            visibility: visible !important;
         }
         
-        /* Sidebar açma butonu */
+        /* Sidebar açma butonu - ZORLA GÖRÜNÜR */
         [data-testid="collapsedControl"] {
             color: #ffffff !important;
+            display: flex !important;
+            visibility: visible !important;
         }
         
         /* Temel renkler */
@@ -126,7 +130,6 @@ def apply_custom_styles():
         /* SADECE STREAMLIT BRANDING'INI GİZLE */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
-        header {visibility: hidden;}
 
     </style>
     """, unsafe_allow_html=True)
