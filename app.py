@@ -78,49 +78,36 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. ANA RENKLER (ZORLA SİYAH) */
+        /* 1. KÖK RENKLER (SİYAH) */
         .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. O LANET ALT ŞERİDİ (FOOTER) YOK ET */
-        footer {
-            visibility: hidden !important;
-            display: none !important;
-            height: 0px !important;
-            margin: 0px !important;
-            padding: 0px !important;
-            opacity: 0 !important;
+        /* 2. SOL MENÜ AÇMA DÜĞMESİNİ KURTAR */
+        header[data-testid="stHeader"] {
+            background-color: transparent !important; /* Arkaplanı şeffaf yap ama kendisi kalsın */
+            z-index: 1 !important;
         }
         
-        /* Streamlit'in kendi 'viewer' footer'ını hedef al */
-        [data-testid="stFooter"] {
-            display: none !important;
-        }
-
-        /* 3. SAĞ ALTTAKİ 'MANAGE APP' BUTONUNU YOK ET */
-        .stDeployButton, [data-testid="stToolbar"], [data-testid="stStatusWidget"] {
-            display: none !important;
-            visibility: hidden !important;
-        }
-
-        /* 4. ÜST ŞERİDİ (HEADER) GİZLE AMA MENÜYÜ KORU */
-        header {
-            background-color: transparent !important;
-        }
-        [data-testid="stDecoration"] {
-            display: none !important;
-        }
-        
-        /* Sol Menü Okunu Görünür Kıl */
+        /* Sol üstteki ok işaretini görünür yap */
         [data-testid="collapsedControl"] {
             display: block !important;
             color: #ffffff !important;
-            z-index: 100000;
         }
 
-        /* 5. DİĞER DETAYLAR */
+        /* 3. ALTTAKİ BEYAZ ŞERİDİ (FOOTER) SİYAHA BOYAYIP GİZLE */
+        footer {
+            visibility: hidden !important;
+            background-color: #0e1117 !important; /* Rengi siyah olsun ki görünmesin */
+        }
+        
+        /* 'Manage App' butonlarını gizle */
+        .stDeployButton, [data-testid="stToolbar"] {
+            visibility: hidden !important;
+        }
+
+        /* 4. DİĞER DETAYLAR */
         section[data-testid="stSidebar"] { background-color: #262730 !important; }
         
         h1, h2, h3, p, span, div, li {
@@ -140,8 +127,6 @@ def apply_custom_styles():
 
     </style>
     """, unsafe_allow_html=True)
-
-apply_custom_styles()
 # ===================== KNOWLEDGE BASE =====================
 
 class KnowledgeBase:
