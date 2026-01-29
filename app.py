@@ -78,36 +78,36 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. KÖK RENKLER (SİYAH) */
+        /* 1. ANA ARKA PLAN (SİYAH) */
         .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. SOL MENÜ AÇMA DÜĞMESİNİ KURTAR */
+        /* 2. ÜST BAR (HEADER) - KIRMIZI */
         header[data-testid="stHeader"] {
-            background-color: transparent !important; /* Arkaplanı şeffaf yap ama kendisi kalsın */
-            z-index: 1 !important;
+            background-color: #8B0000 !important; /* Koyu Kırmızı */
+        }
+
+        /* 3. ALT BAR (FOOTER) - KIRMIZI */
+        footer {
+            visibility: visible !important;
+            display: block !important;
+            background-color: #8B0000 !important; /* Koyu Kırmızı */
+            color: #ffffff !important; /* Yazılar Beyaz */
         }
         
-        /* Sol üstteki ok işaretini görünür yap */
-        [data-testid="collapsedControl"] {
-            display: block !important;
+        /* Alt bardaki linklerin rengi */
+        footer a {
             color: #ffffff !important;
         }
 
-        /* 3. ALTTAKİ BEYAZ ŞERİDİ (FOOTER) SİYAHA BOYAYIP GİZLE */
-        footer {
-            visibility: hidden !important;
-            background-color: #0e1117 !important; /* Rengi siyah olsun ki görünmesin */
-        }
-        
-        /* 'Manage App' butonlarını gizle */
-        .stDeployButton, [data-testid="stToolbar"] {
-            visibility: hidden !important;
+        /* 4. SOL MENÜ AÇMA DÜĞMESİ */
+        [data-testid="collapsedControl"] {
+            color: #ffffff !important;
         }
 
-        /* 4. DİĞER DETAYLAR */
+        /* 5. DİĞER DETAYLAR */
         section[data-testid="stSidebar"] { background-color: #262730 !important; }
         
         h1, h2, h3, p, span, div, li {
@@ -127,6 +127,8 @@ def apply_custom_styles():
 
     </style>
     """, unsafe_allow_html=True)
+
+apply_custom_styles()
 # ===================== KNOWLEDGE BASE =====================
 
 class KnowledgeBase:
