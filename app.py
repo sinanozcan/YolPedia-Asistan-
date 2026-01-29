@@ -599,13 +599,18 @@ def main():
             st.rerun()
         st.markdown("---")
         
-        st.caption('''
-        **YolPedia | Can Dede**
-        
-        "Can Dede, YolPedia'nın çok dilli sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi https://yolpedia.eu/iletisim-2/ adresinden iletebilirsiniz."
-        
-        "Can Dede is YolPedia's multilingual chat bot. You can submit suggestions or feedback about the page via https://yolpedia.eu/iletisim-2/."
-        ''') 
+        st.markdown('''
+        <div style="font-size: 0.8rem; color: #a0a0a0;">
+        <strong>YolPedia | Can Dede</strong>
+        <br><br>
+        "Can Dede, YolPedia'nın çok dilli sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi 
+        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: underline;">https://yolpedia.eu/iletisim-2/</a> 
+        adresinden iletebilirsiniz."
+        <br><br>
+        "Can Dede is YolPedia's multilingual chat bot. You can submit suggestions or feedback about the page via 
+        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: underline;">https://yolpedia.eu/iletisim-2/</a>."
+        </div>
+        ''', unsafe_allow_html=True) 
         
     render_header()
     for message in st.session_state.messages: render_message(message)
