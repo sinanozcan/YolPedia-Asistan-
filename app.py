@@ -108,9 +108,13 @@ def apply_custom_styles():
             visibility: visible !important;
         }
         
-        /* Temel renkler */
+        /* Temel renkler - ANCAK linkleri muaf tut */
         h1, h2, h3, p, span, div, li {
             color: #ffffff !important;
+        }
+        
+        /* Linklere bu kuralı uygulama */
+        h1:not(a), h2:not(a), h3:not(a), p:not(a), span:not(a), div:not(a), li:not(a) {
             -webkit-text-fill-color: #ffffff !important;
         }
 
@@ -128,13 +132,19 @@ def apply_custom_styles():
             font-weight: bold; 
         }
         
-        /* Sidebar linkleri MAVİ - daha spesifik seçici */
+        /* Sidebar linkleri MAVİ - normal metin gibi */
         section[data-testid="stSidebar"] a,
         section[data-testid="stSidebar"] a:link,
         section[data-testid="stSidebar"] a:visited,
         .sidebar .element-container a,
-        [data-testid="stSidebar"] .stMarkdown a {
+        [data-testid="stSidebar"] .stMarkdown a,
+        [data-testid="stSidebar"] div a,
+        [data-testid="stSidebar"] p a,
+        [data-testid="stSidebar"] span a {
             color: #4A9EFF !important;
+            -webkit-text-fill-color: #4A9EFF !important;
+            text-decoration: none !important;
+            font-weight: normal !important;
         }
         
         .block-container { 
@@ -604,11 +614,11 @@ def main():
         <strong>YolPedia | Can Dede</strong>
         <br><br>
         "Can Dede, YolPedia'nın çok dilli sohbet botudur. Sayfaya ilişkin öneri ve eleştirilerinizi 
-        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: underline;">https://yolpedia.eu/iletisim-2/</a> 
+        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: none !important; font-weight: normal !important;">https://yolpedia.eu/iletisim-2/</a> 
         adresinden iletebilirsiniz."
         <br><br>
         "Can Dede is YolPedia's multilingual chat bot. You can submit suggestions or feedback about the page via 
-        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: underline;">https://yolpedia.eu/iletisim-2/</a>."
+        <a href="https://yolpedia.eu/iletisim-2/" style="color: #4A9EFF !important; text-decoration: none !important; font-weight: normal !important;">https://yolpedia.eu/iletisim-2/</a>."
         </div>
         ''', unsafe_allow_html=True) 
         
