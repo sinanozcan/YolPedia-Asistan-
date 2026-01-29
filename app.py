@@ -78,35 +78,37 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. RENK AYARLARI (SİYAH TEMA - KORUNDU) */
+        /* 1. RENK AYARLARI (SİYAH TEMA) */
         html, body, [data-testid="stAppViewContainer"], .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. GEREKSİZLERİ GİZLE (AMELİYATLA ALIYORUZ) */
+        /* 2. O LANET ALT BARI VE BUTONLARI YOK ET */
         
-        /* Sağ Üstteki 3 Nokta Menüsünü Gizle */
-        #MainMenu { visibility: hidden; }
+        /* Alt kısımdaki beyaz şeridi ve footer'ı tamamen kaldır */
+        footer { visibility: hidden; display: none !important; height: 0px !important; }
         
-        /* En Alttaki 'Made with Streamlit' Yazısını Gizle */
-        footer { visibility: hidden; }
+        /* Sağ alt köşedeki "Manage App" ve araç çubuğunu yok et */
+        [data-testid="stToolbar"] { visibility: hidden !important; display: none !important; height: 0px !important; }
         
-        /* O "Manage App" ve Profil Resminin Olduğu Sağ Alt/Üst Barı Gizle */
-        [data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
+        /* Sağ üstteki 3 nokta menüsünü yok et */
+        #MainMenu { visibility: hidden !important; display: none !important; }
         
-        /* Tepedeki Renkli Şeridi (Decoration) Gizle */
-        [data-testid="stDecoration"] { visibility: hidden; }
-        
-        /* 3. SOL MENÜ DÜĞMESİNİ KURTAR (BU ÇOK ÖNEMLİ) */
-        /* Üst barı gizlesek bile, sol menü okunu görünür kılıyoruz */
+        /* Tepedeki renkli ince şeridi yok et */
+        header[data-testid="stHeader"] { background-color: transparent !important; }
+        [data-testid="stDecoration"] { visibility: hidden !important; display: none !important; }
+
+        /* 3. SOL MENÜ OKUNU GÖRÜNÜR KIL (HAYATİ) */
+        /* Header'ı şeffaf yaptık ama buton görünür kalsın */
         [data-testid="collapsedControl"] {
             visibility: visible !important;
             display: block !important;
             color: #ffffff !important;
+            z-index: 999999 !important; /* Her şeyin üstünde olsun */
         }
 
-        /* 4. DİĞER DETAYLAR (KORUNDU) */
+        /* 4. DİĞER DETAYLAR */
         section[data-testid="stSidebar"] { background-color: #262730 !important; }
         
         h1, h2, h3, p, span, div, li {
@@ -123,14 +125,12 @@ def apply_custom_styles():
 
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
         
-        /* İçerik yukarı yapışmasın diye boşluk */
-        .block-container { padding-top: 5rem !important; }
+        .block-container { padding-top: 4rem !important; }
 
     </style>
     """, unsafe_allow_html=True)
 
 apply_custom_styles()
-
 # ===================== KNOWLEDGE BASE =====================
 
 class KnowledgeBase:
