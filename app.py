@@ -25,7 +25,16 @@ st.set_page_config(
     page_icon="https://yolpedia.eu/wp-content/uploads/2025/11/can-dede-logo.png",
     layout="centered",
     initial_sidebar_state="expanded",
-    menu_items=None  # Menüyü tamamen devre dışı bırak
+    menu_items={
+        'Get Help': 'https://yolpedia.eu/yardim',
+        'Report a bug': 'https://yolpedia.eu/iletisim',
+        'About': '''
+        ## YolPedia Can Dede
+        **Alevî-Bektaşî Yol Rehberi**
+        yolpedia.eu
+        "Bildiğimin âlimiyim, bilmediğimin tâlibiyim!"
+        '''
+    }
 )
 
 # ===================== CONFIGURATION =====================
@@ -69,105 +78,57 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. ANA ARKA PLAN (SİYAH) */
+        /* Ana arka plan */
         .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. ÜST BAR (HEADER) - KIRMIZI */
+        /* Header */
         header[data-testid="stHeader"] {
-            background-color: #8B0000 !important; /* Koyu Kırmızı */
+            background-color: #8B0000 !important;
         }
 
-        /* 3. ALT KISIM - TÜM FOOTERLERİ GİZLE */
-        footer {
-            display: none !important;
-            visibility: hidden !important;
+        /* Sidebar */
+        section[data-testid="stSidebar"] { 
+            background-color: #262730 !important; 
         }
         
-        /* Streamlit footer class'larını gizle */
-        .streamlit-footer, 
-        [data-testid="stBottom"],
-        .main footer,
-        div[class*="footer"],
-        div[class*="Footer"] {
-            display: none !important;
-            visibility: hidden !important;
-        }
-
-        /* 4. SOL MENÜ AÇMA DÜĞMESİ - GÖRÜNEBİLİR OLMALI */
+        /* Sidebar açma butonu */
         [data-testid="collapsedControl"] {
             color: #ffffff !important;
-            visibility: visible !important;
-            display: flex !important;
         }
-
-        /* 5. DİĞER DETAYLAR */
-        section[data-testid="stSidebar"] { background-color: #262730 !important; }
         
+        /* Temel renkler */
         h1, h2, h3, p, span, div, li {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
         }
 
+        /* Chat input */
         .stChatInput textarea {
             background-color: #2b313e !important;
             color: #ffffff !important;
             border: 1px solid #4a4a4a !important;
         }
 
-        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
+        /* Linkler */
+        a { 
+            color: #ff4b4b !important; 
+            text-decoration: none; 
+            font-weight: bold; 
+        }
         
-        .block-container { padding-top: 4rem !important; padding-bottom: 1rem !important; }
+        .block-container { 
+            padding-top: 4rem !important; 
+        }
 
-        /* 6. STREAMLIT MENÜ ÇUBUĞUNU GİZLE */
-        #MainMenu {display: none !important;}
-        
-        /* "Built with Streamlit" ve "Fullscreen" butonunu gizle */
-        .viewerBadge_container__r5tak,
-        .viewerBadge_link__qRIco,
-        .viewerBadge_text__1JaDK,
-        .viewerBadge_container__1QSob,
-        .styles_viewerBadge__1yB5_,
-        [class*="viewerBadge"],
-        [class*="ViewerBadge"] {
-            display: none !important;
-        }
-        
-        /* Toolbar ve deploy butonu */
-        div[data-testid="stToolbar"],
-        .stDeployButton,
-        button[kind="header"] {
-            display: none !important;
-        }
+        /* SADECE STREAMLIT BRANDING'INI GİZLE */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
 
     </style>
-    
-    <script>
-        // JavaScript ile footer elementlerini tamamen kaldır
-        function removeStreamlitBranding() {
-            // Footer elementlerini bul ve kaldır
-            const footers = document.querySelectorAll('footer');
-            footers.forEach(footer => footer.remove());
-            
-            // "Built with Streamlit" içeren tüm elementleri bul
-            const allElements = document.querySelectorAll('*');
-            allElements.forEach(el => {
-                if (el.textContent.includes('Built with Streamlit') || 
-                    el.textContent.includes('Fullscreen')) {
-                    el.style.display = 'none';
-                    el.remove();
-                }
-            });
-        }
-        
-        // Sayfa yüklendiğinde çalıştır
-        document.addEventListener('DOMContentLoaded', removeStreamlitBranding);
-        
-        // Periyodik olarak kontrol et (Streamlit dinamik yüklüyor olabilir)
-        setInterval(removeStreamlitBranding, 1000);
-    </script>
     """, unsafe_allow_html=True)
 
 apply_custom_styles()
