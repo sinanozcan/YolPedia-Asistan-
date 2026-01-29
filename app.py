@@ -89,22 +89,27 @@ def apply_custom_styles():
             background-color: #8B0000 !important; /* Koyu Kırmızı */
         }
 
-        /* 3. ALT BAR (FOOTER) - KIRMIZI */
+        /* 3. ALT BAR (FOOTER) - KIRMIZI ŞERİT OLARAK GÖSTER */
         footer {
             visibility: visible !important;
             display: block !important;
-            background-color: #8B0000 !important; /* Koyu Kırmızı */
-            color: #ffffff !important; /* Yazılar Beyaz */
+            background-color: #8B0000 !important; /* Koyu Kırmızı - Header ile aynı */
+            color: transparent !important; /* Yazıları gizle */
+            min-height: 3rem !important;
         }
         
-        /* Alt bardaki linklerin rengi */
-        footer a {
-            color: #ffffff !important;
+        /* Footer içindeki tüm içeriği gizle ama footer'ın kendisini göster */
+        footer > div {
+            visibility: hidden !important;
+            height: 0 !important;
+            overflow: hidden !important;
         }
 
-        /* 4. SOL MENÜ AÇMA DÜĞMESİ */
+        /* 4. SOL MENÜ AÇMA DÜĞMESİ - GÖRÜNEBİLİR OLMALI */
         [data-testid="collapsedControl"] {
             color: #ffffff !important;
+            visibility: visible !important;
+            display: block !important;
         }
 
         /* 5. DİĞER DETAYLAR */
@@ -126,36 +131,29 @@ def apply_custom_styles():
         .block-container { padding-top: 4rem !important; }
 
         /* 6. STREAMLIT MENÜ ÇUBUĞUNU GİZLE */
-        /* Sadece gereksiz menüleri gizle, header/footer'ı koru */
+        /* Ana menüyü gizle */
         #MainMenu {visibility: hidden !important;}
         
-        /* Alt kısımdaki "Built with Streamlit" ve "Fullscreen" butonunu gizle */
-        footer {visibility: hidden !important;}
-        footer::after {content: none !important;}
+        /* "Built with Streamlit" yazısını ve fullscreen butonunu gizle */
         .viewerBadge_container__r5tak {display: none !important;}
         .viewerBadge_link__qRIco {display: none !important;}
         .viewerBadge_text__1JaDK {display: none !important;}
-        
-        /* Alternatif gizleme yöntemleri (ek güvenlik için) */
         .viewerBadge_container__1QSob {display: none !important;}
         .styles_viewerBadge__1yB5_ {display: none !important;}
+        
+        /* Toolbar'ı gizle */
         div[data-testid="stToolbar"] {display: none !important;}
         
-        /* Sağ üst köşedeki deploy butonu vs. */
+        /* Deploy butonu */
         .stDeployButton {display: none !important;}
         
-        /* Header'daki gereksiz butonları gizle ama header'ın kendisini göster */
+        /* Header'daki settings butonunu gizle */
         header[data-testid="stHeader"] button[kind="header"] {display: none !important;}
         
-        /* Tüm footer elementlerini zorla gizle */
-        footer, footer > *, [class*="viewerBadge"], [class*="ViewerBadge"] {
+        /* Footer'daki tüm link ve badge'leri gizle */
+        footer a, footer [class*="badge"], footer [class*="Badge"] {
             display: none !important;
             visibility: hidden !important;
-            opacity: 0 !important;
-            height: 0 !important;
-            width: 0 !important;
-            position: absolute !important;
-            z-index: -9999 !important;
         }
 
     </style>
