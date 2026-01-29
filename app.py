@@ -537,7 +537,7 @@ class SecurityManager:
 def render_header():
     """Header'ı dikey ve yatayda daha ortalı render et"""
     st.markdown(f"""
-    <div style="text-align: center; margin-top: 15vh; margin-bottom: 50px;">
+    <div style="text-align: center; margin-top: 15vh; margin-bottom: 50px;" class="header-container">
         <div style="display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 15px; flex-wrap: wrap;">
             <img src="{config.CAN_DEDE_ICON}" 
                  style="width: 70px; height: 70px; border-radius: 50%; border: 2px solid #eee; box-shadow: 0px 4px 15px rgba(0,0,0,0.3);">
@@ -549,6 +549,14 @@ def render_header():
             {config.MOTTO}
         </div>
     </div>
+    <style>
+        @media (max-width: 768px) {{
+            .header-container {{
+                margin-top: 5vh !important;
+                margin-bottom: 20px !important;
+            }}
+        }}
+    </style>
     """, unsafe_allow_html=True)
 
 def render_message(message: Dict):
