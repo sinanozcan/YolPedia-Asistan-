@@ -78,41 +78,60 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. KÖKTEN SİYAH (Tüm Cihazlar İçin) */
+        /* --- 1. RENK AYARLARI (SİYAH TEMA) --- */
         html, body, [data-testid="stAppViewContainer"], .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. O BEYAZ KALAN ÜST KISIM (HEADER) */
-        header, [data-testid="stHeader"] {
-            background-color: #0e1117 !important; /* Başlığı da siyah yap */
-        }
-
-        /* 3. KAYBOLAN MENÜ BUTONU (MOBİLDE) */
-        /* Sol üstteki ok işaretini ve menü butonunu bembeyaz ve görünür yap */
-        [data-testid="collapsedControl"] {
-            display: block !important;
-            color: #ffffff !important;
-            background-color: #0e1117 !important;
-        }
-        [data-testid="collapsedControl"] svg {
-            fill: #ffffff !important;
-        }
-
-        /* 4. SOL MENÜNÜN İÇİ (Açılınca) */
+        /* Sol Menü Arka Planı */
         section[data-testid="stSidebar"] {
             background-color: #262730 !important;
         }
 
-        /* 5. YAZILAR VE iPHONE UYUMU */
-        h1, h2, h3, p, span, div, li {
+        /* Yazıların Beyaz Olması (iPhone Dahil) */
+        h1, h2, h3, p, span, div, li, label {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
             opacity: 1 !important;
         }
 
-        /* 6. SORU KUTUSU */
+        /* --- 2. GİZLİLİK VE TEMİZLİK (KÖKTEN SİLME) --- */
+        
+        /* En tepedeki renkli şeridi ve başlık çubuğunu yok et */
+        header[data-testid="stHeader"] {
+            display: none !important;
+        }
+        
+        /* Sağ üstteki 3 nokta menüsünü (Hamburger) yok et */
+        #MainMenu {
+            display: none !important;
+        }
+        
+        /* En alttaki 'Made with Streamlit' yazısını ve Footer'ı yok et */
+        footer {
+            display: none !important;
+        }
+        
+        /* Sağ alttaki veya üstteki 'Manage App', 'Deploy' butonlarını ve Araç Çubuğunu yok et */
+        [data-testid="stToolbar"] {
+            display: none !important;
+        }
+        .stDeployButton {
+            display: none !important;
+        }
+        
+        /* O bahsettiğin sağ alttaki profil resmini ve o alanı gizle */
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+        [data-testid="stStatusWidget"] {
+            display: none !important;
+        }
+
+        /* --- 3. DİĞER DETAYLAR --- */
+        
+        /* Soru sorma kutusu */
         .stChatInput textarea {
             background-color: #2b313e !important;
             color: #ffffff !important;
@@ -120,11 +139,19 @@ def apply_custom_styles():
             border: 1px solid #4a4a4a !important;
         }
 
-        /* 7. LİNKLER */
+        /* Linkler */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
 
-        /* 8. BOŞLUK AYARLARI */
-        .block-container { padding-top: 4rem !important; } /* Biraz yukarı aldık ki mobilde çok aşağıda kalmasın */
+        /* Ekranı biraz aşağı kaydır (Üst bar gidince yukarı yapışmasın diye) */
+        .block-container { padding-top: 2rem !important; }
+        
+        /* Mobilde Sol Menü Ok İşaretini Görünür Yap */
+        [data-testid="collapsedControl"] {
+            display: block !important;
+            color: #ffffff !important;
+            top: 1rem !important; /* Biraz aşağı al */
+        }
+        
     </style>
     """, unsafe_allow_html=True)
 
