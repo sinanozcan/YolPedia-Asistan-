@@ -131,6 +131,29 @@ def apply_custom_styles():
         .block-container { 
             padding-top: 4rem !important; 
         }
+        
+        /* MOBİL SÜRÜM - Chat input'u yukarı taşı */
+        @media (max-width: 768px) {
+            .stChatFloatingInputContainer {
+                position: relative !important;
+                bottom: auto !important;
+                top: 0 !important;
+                margin-top: 1rem !important;
+                margin-bottom: 2rem !important;
+            }
+            
+            /* Chat mesajlarını input'un altına kaydır */
+            [data-testid="stChatMessageContainer"] {
+                margin-top: 0 !important;
+                order: 2 !important;
+            }
+            
+            /* Input container'ı en üste al */
+            [data-testid="stBottom"] {
+                position: relative !important;
+                order: 1 !important;
+            }
+        }
 
         /* SADECE STREAMLIT BRANDING'INI GİZLE */
         #MainMenu {visibility: hidden;}
