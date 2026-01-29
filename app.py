@@ -125,6 +125,21 @@ def apply_custom_styles():
         
         .block-container { padding-top: 4rem !important; }
 
+        /* 6. STREAMLIT MENÜ ÇUBUĞUNU GİZLE */
+        /* Hamburger menü, fullscreen, "Made with Streamlit" vs. hepsini gizler */
+        #MainMenu {visibility: hidden !important;}
+        footer {visibility: hidden !important;}
+        header {visibility: hidden !important;}
+        
+        /* Alternatif gizleme yöntemleri (ek güvenlik için) */
+        .viewerBadge_container__1QSob {display: none !important;}
+        .styles_viewerBadge__1yB5_ {display: none !important;}
+        button[kind="header"] {display: none !important;}
+        div[data-testid="stToolbar"] {display: none !important;}
+        
+        /* Sağ üst köşedeki deploy butonu vs. */
+        .stDeployButton {display: none !important;}
+
     </style>
     """, unsafe_allow_html=True)
 
