@@ -98,11 +98,19 @@ def apply_custom_styles():
             min-height: 3rem !important;
         }
         
-        /* Footer içindeki tüm içeriği gizle ama footer'ın kendisini göster */
-        footer > div {
-            visibility: hidden !important;
-            height: 0 !important;
-            overflow: hidden !important;
+        /* Footer container'ı da kırmızı yap */
+        footer, footer > *, [data-testid="stBottom"] {
+            background-color: #8B0000 !important;
+        }
+        
+        /* Footer içindeki tüm yazıları gizle ama arka planı göster */
+        footer * {
+            color: transparent !important;
+        }
+        
+        /* Built with Streamlit container'ı */
+        .main > div:last-child {
+            background-color: #8B0000 !important;
         }
 
         /* 4. SOL MENÜ AÇMA DÜĞMESİ - GÖRÜNEBİLİR OLMALI */
