@@ -78,62 +78,64 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. KÖK RENKLER (HER YER SİYAH) */
-        html, body, [data-testid="stAppViewContainer"], .stApp {
+        /* 1. ANA RENKLER (ZORLA SİYAH) */
+        .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. O LANET BEYAZ ŞERİDİ YOK ETMEK İÇİN BOYAMA TAKTİĞİ */
-        /* Footer'ı silmek yerine rengini arka planla aynı yapıyoruz */
+        /* 2. O LANET ALT ŞERİDİ (FOOTER) YOK ET */
         footer {
-            background-color: #0e1117 !important;
-            color: #0e1117 !important; /* Yazısı da siyah olsun */
-            border: none !important;
-            opacity: 0 !important; /* Tamamen şeffaf yap */
+            visibility: hidden !important;
+            display: none !important;
+            height: 0px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+            opacity: 0 !important;
+        }
+        
+        /* Streamlit'in kendi 'viewer' footer'ını hedef al */
+        [data-testid="stFooter"] {
+            display: none !important;
         }
 
-        /* 3. SAĞ ALTTAKİ BUTONLARI HEDEF ALAN ÖZEL SEÇİCİLER */
-        /* Streamlit'in viewer badge'ini gizle */
-        .viewerBadge_container__1QSob, 
-        [data-testid="stStatusWidget"],
-        [data-testid="stToolbar"] {
+        /* 3. SAĞ ALTTAKİ 'MANAGE APP' BUTONUNU YOK ET */
+        .stDeployButton, [data-testid="stToolbar"], [data-testid="stStatusWidget"] {
             display: none !important;
             visibility: hidden !important;
         }
 
-        /* 4. ÜST BAŞLIK (HEADER) AYARLARI */
-        header[data-testid="stHeader"] {
+        /* 4. ÜST ŞERİDİ (HEADER) GİZLE AMA MENÜYÜ KORU */
+        header {
             background-color: transparent !important;
         }
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
         
-        /* Sağ üst menüyü gizle */
-        #MainMenu { display: none !important; }
-        
-        /* SOL MENÜ OKUNU KURTAR */
+        /* Sol Menü Okunu Görünür Kıl */
         [data-testid="collapsedControl"] {
             display: block !important;
             color: #ffffff !important;
-            z-index: 100000 !important;
+            z-index: 100000;
         }
 
-        /* 5. GENEL YAZI AYARLARI */
+        /* 5. DİĞER DETAYLAR */
+        section[data-testid="stSidebar"] { background-color: #262730 !important; }
+        
         h1, h2, h3, p, span, div, li {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
         }
 
-        /* 6. INPUT KUTUSU */
         .stChatInput textarea {
             background-color: #2b313e !important;
             color: #ffffff !important;
             border: 1px solid #4a4a4a !important;
         }
 
-        /* 7. LİNKLER */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
-
-        /* 8. BOŞLUK */
+        
         .block-container { padding-top: 4rem !important; }
 
     </style>
