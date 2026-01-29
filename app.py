@@ -78,54 +78,51 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* Genel Arka Plan ve Yazı Rengi */
-        .stApp {
-            background-color: #0e1117;
-            color: #ffffff;
+        /* 1. TÜM SAYFA (GLOBAL) AYARLARI */
+        /* Arka planı koyu, yazıları bembeyaz yap */
+        .stApp, [data-testid="stAppViewContainer"] {
+            background-color: #0e1117 !important; /* Çok koyu antrasit/siyah */
+            color: #ffffff !important;
         }
 
-        /* Mesaj Kutuları Arası Boşluk */
-        .stChatMessage { margin-bottom: 10px; }
-        
-        /* Yükleme Animasyonu */
-        .stSpinner > div { border-top-color: #ff4b4b !important; }
-        
-        /* Ekranı Aşağı Kaydırma */
-        .block-container { padding-top: 6rem !important; }
-        
-        /* Başlıklar */
-        h1, h2, h3 { line-height: 1.2 !important; color: #ffffff !important; }
-        
-        /* Linkler */
-        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
-        a:hover { text-decoration: underline; }
-        
-        /* --- YAZI YAZMA KUTUSU (SORUN ÇÖZÜCÜ) --- */
-        
-        /* 1. Kutunun kendisi (Dış Çerçeve) */
-        .stChatInputContainer {
-            background-color: #0e1117 !important; 
-        }
-
-        /* 2. Yazı yazılan alan (Textarea) */
-        .stChatInput textarea {
-            background-color: #262730 !important; /* Koyu Gri Arka Plan */
-            color: #ffffff !important;           /* Beyaz Yazı */
-            caret-color: #ffffff !important;     /* Beyaz İmleç */
-            border: 1px solid #4f4f4f !important;
-        }
-        
-        /* 3. iPad/iPhone Özel Ayarı (Safari) */
-        textarea {
-            -webkit-text-fill-color: #ffffff !important;
+        /* 2. TÜM YAZILAR (iPAD DAHİL) */
+        /* Paragraf, Başlık, Liste, Span... Hepsi beyaz olsun */
+        p, h1, h2, h3, h4, h5, h6, span, div, label, li {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important; /* Apple cihazlar için zorunlu */
             opacity: 1 !important;
         }
 
-        /* Sohbet Balonları */
-        .stChatMessage p, .stChatMessage div {
-            color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
+        /* 3. SOL MENÜ (SIDEBAR) */
+        [data-testid="stSidebar"] {
+            background-color: #262730 !important; /* Ana ekrandan bir ton açık antrasit */
         }
+
+        /* 4. SORU SORMA KUTUSU (INPUT) */
+        /* Kutunun arka planını koyu yap, içindeki yazıyı beyaz yap */
+        .stChatInput textarea {
+            background-color: #2b313e !important; /* Koyu gri */
+            color: #ffffff !important;            /* Beyaz yazı */
+            -webkit-text-fill-color: #ffffff !important;
+            caret-color: #ffffff !important;      /* Yanıp sönen imleç beyaz */
+            border: 1px solid #4a4a4a !important; /* Çerçeve rengi */
+        }
+        
+        /* 5. LİNKLER */
+        /* Linkleri kırmızı yap ki beyaz yazıdan ayrılsın */
+        a {
+            color: #ff4b4b !important;
+            -webkit-text-fill-color: #ff4b4b !important;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        a:hover { text-decoration: underline; }
+
+        /* 6. DİĞER DETAYLAR */
+        .stChatMessage { margin-bottom: 10px; }
+        .stSpinner > div { border-top-color: #ff4b4b !important; }
+        .block-container { padding-top: 6rem !important; }
+
     </style>
     """, unsafe_allow_html=True)
 
