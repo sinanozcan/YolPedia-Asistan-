@@ -78,80 +78,54 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* --- 1. RENK AYARLARI (SİYAH TEMA) --- */
+        /* 1. RENK AYARLARI (SİYAH TEMA - KORUNDU) */
         html, body, [data-testid="stAppViewContainer"], .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* Sol Menü Arka Planı */
-        section[data-testid="stSidebar"] {
-            background-color: #262730 !important;
+        /* 2. GEREKSİZLERİ GİZLE (AMELİYATLA ALIYORUZ) */
+        
+        /* Sağ Üstteki 3 Nokta Menüsünü Gizle */
+        #MainMenu { visibility: hidden; }
+        
+        /* En Alttaki 'Made with Streamlit' Yazısını Gizle */
+        footer { visibility: hidden; }
+        
+        /* O "Manage App" ve Profil Resminin Olduğu Sağ Alt/Üst Barı Gizle */
+        [data-testid="stToolbar"] { visibility: hidden !important; display: none !important; }
+        
+        /* Tepedeki Renkli Şeridi (Decoration) Gizle */
+        [data-testid="stDecoration"] { visibility: hidden; }
+        
+        /* 3. SOL MENÜ DÜĞMESİNİ KURTAR (BU ÇOK ÖNEMLİ) */
+        /* Üst barı gizlesek bile, sol menü okunu görünür kılıyoruz */
+        [data-testid="collapsedControl"] {
+            visibility: visible !important;
+            display: block !important;
+            color: #ffffff !important;
         }
 
-        /* Yazıların Beyaz Olması (iPhone Dahil) */
-        h1, h2, h3, p, span, div, li, label {
+        /* 4. DİĞER DETAYLAR (KORUNDU) */
+        section[data-testid="stSidebar"] { background-color: #262730 !important; }
+        
+        h1, h2, h3, p, span, div, li {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
             opacity: 1 !important;
         }
 
-        /* --- 2. GİZLİLİK VE TEMİZLİK (KÖKTEN SİLME) --- */
-        
-        /* En tepedeki renkli şeridi ve başlık çubuğunu yok et */
-        header[data-testid="stHeader"] {
-            display: none !important;
-        }
-        
-        /* Sağ üstteki 3 nokta menüsünü (Hamburger) yok et */
-        #MainMenu {
-            display: none !important;
-        }
-        
-        /* En alttaki 'Made with Streamlit' yazısını ve Footer'ı yok et */
-        footer {
-            display: none !important;
-        }
-        
-        /* Sağ alttaki veya üstteki 'Manage App', 'Deploy' butonlarını ve Araç Çubuğunu yok et */
-        [data-testid="stToolbar"] {
-            display: none !important;
-        }
-        .stDeployButton {
-            display: none !important;
-        }
-        
-        /* O bahsettiğin sağ alttaki profil resmini ve o alanı gizle */
-        [data-testid="stDecoration"] {
-            display: none !important;
-        }
-        [data-testid="stStatusWidget"] {
-            display: none !important;
-        }
-
-        /* --- 3. DİĞER DETAYLAR --- */
-        
-        /* Soru sorma kutusu */
         .stChatInput textarea {
             background-color: #2b313e !important;
             color: #ffffff !important;
-            -webkit-text-fill-color: #ffffff !important;
             border: 1px solid #4a4a4a !important;
         }
 
-        /* Linkler */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
+        
+        /* İçerik yukarı yapışmasın diye boşluk */
+        .block-container { padding-top: 5rem !important; }
 
-        /* Ekranı biraz aşağı kaydır (Üst bar gidince yukarı yapışmasın diye) */
-        .block-container { padding-top: 2rem !important; }
-        
-        /* Mobilde Sol Menü Ok İşaretini Görünür Yap */
-        [data-testid="collapsedControl"] {
-            display: block !important;
-            color: #ffffff !important;
-            top: 1rem !important; /* Biraz aşağı al */
-        }
-        
     </style>
     """, unsafe_allow_html=True)
 
