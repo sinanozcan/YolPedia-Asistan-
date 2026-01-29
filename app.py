@@ -1,5 +1,5 @@
 """
-YolPedia Can Dede - Tam Onarılmış ve Senin Kurguna Sadık Versiyon
+YolPedia Can Dede
 """
 
 import streamlit as st
@@ -72,6 +72,50 @@ class AppConfig:
     USER_ICON = "https://yolpedia.eu/wp-content/uploads/2025/11/group.png"
 
 config = AppConfig()
+
+# ===================== STYLING =====================
+
+def apply_custom_styles():
+    st.markdown("""
+    <style>
+        /* Mesaj kutuları arası boşluk */
+        .stChatMessage { margin-bottom: 10px; }
+        
+        /* Yükleme animasyonu rengi */
+        .stSpinner > div { border-top-color: #ff4b4b !important; }
+        
+        /* ANA EKRANI AŞAĞI İNDİREN KOD */
+        .block-container { padding-top: 6rem !important; }
+        
+        /* Başlık ayarı */
+        h1 { line-height: 1.2 !important; }
+        
+        /* Link ayarları */
+        a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
+        a:hover { text-decoration: underline; }
+        
+        /* --- YENİ EKLENEN: YAZI NETLEŞTİRME (BEYAZ) --- */
+        
+        /* Sohbet balonlarının içindeki yazılar */
+        .stChatMessage p, .stChatMessage div {
+            color: #ffffff !important;
+            font-weight: 400 !important;
+        }
+        
+        /* Kullanıcının yazı yazdığı kutu */
+        .stChatInput textarea {
+            color: #ffffff !important;
+            caret-color: #ffffff !important;
+        }
+        
+        /* Genel gövde yazıları */
+        body, .stMarkdown, p {
+            color: #ffffff !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+apply_custom_styles()
 
 # ===================== KNOWLEDGE BASE =====================
 
