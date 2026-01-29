@@ -78,53 +78,62 @@ config = AppConfig()
 def apply_custom_styles():
     st.markdown("""
     <style>
-        /* 1. RENK AYARLARI (SİYAH TEMA) */
+        /* 1. KÖK RENKLER (HER YER SİYAH) */
         html, body, [data-testid="stAppViewContainer"], .stApp {
             background-color: #0e1117 !important;
             color: #ffffff !important;
         }
 
-        /* 2. O LANET ALT BARI VE BUTONLARI YOK ET */
-        
-        /* Alt kısımdaki beyaz şeridi ve footer'ı tamamen kaldır */
-        footer { visibility: hidden; display: none !important; height: 0px !important; }
-        
-        /* Sağ alt köşedeki "Manage App" ve araç çubuğunu yok et */
-        [data-testid="stToolbar"] { visibility: hidden !important; display: none !important; height: 0px !important; }
-        
-        /* Sağ üstteki 3 nokta menüsünü yok et */
-        #MainMenu { visibility: hidden !important; display: none !important; }
-        
-        /* Tepedeki renkli ince şeridi yok et */
-        header[data-testid="stHeader"] { background-color: transparent !important; }
-        [data-testid="stDecoration"] { visibility: hidden !important; display: none !important; }
-
-        /* 3. SOL MENÜ OKUNU GÖRÜNÜR KIL (HAYATİ) */
-        /* Header'ı şeffaf yaptık ama buton görünür kalsın */
-        [data-testid="collapsedControl"] {
-            visibility: visible !important;
-            display: block !important;
-            color: #ffffff !important;
-            z-index: 999999 !important; /* Her şeyin üstünde olsun */
+        /* 2. O LANET BEYAZ ŞERİDİ YOK ETMEK İÇİN BOYAMA TAKTİĞİ */
+        /* Footer'ı silmek yerine rengini arka planla aynı yapıyoruz */
+        footer {
+            background-color: #0e1117 !important;
+            color: #0e1117 !important; /* Yazısı da siyah olsun */
+            border: none !important;
+            opacity: 0 !important; /* Tamamen şeffaf yap */
         }
 
-        /* 4. DİĞER DETAYLAR */
-        section[data-testid="stSidebar"] { background-color: #262730 !important; }
+        /* 3. SAĞ ALTTAKİ BUTONLARI HEDEF ALAN ÖZEL SEÇİCİLER */
+        /* Streamlit'in viewer badge'ini gizle */
+        .viewerBadge_container__1QSob, 
+        [data-testid="stStatusWidget"],
+        [data-testid="stToolbar"] {
+            display: none !important;
+            visibility: hidden !important;
+        }
+
+        /* 4. ÜST BAŞLIK (HEADER) AYARLARI */
+        header[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
         
+        /* Sağ üst menüyü gizle */
+        #MainMenu { display: none !important; }
+        
+        /* SOL MENÜ OKUNU KURTAR */
+        [data-testid="collapsedControl"] {
+            display: block !important;
+            color: #ffffff !important;
+            z-index: 100000 !important;
+        }
+
+        /* 5. GENEL YAZI AYARLARI */
         h1, h2, h3, p, span, div, li {
             color: #ffffff !important;
             -webkit-text-fill-color: #ffffff !important;
-            opacity: 1 !important;
         }
 
+        /* 6. INPUT KUTUSU */
         .stChatInput textarea {
             background-color: #2b313e !important;
             color: #ffffff !important;
             border: 1px solid #4a4a4a !important;
         }
 
+        /* 7. LİNKLER */
         a { color: #ff4b4b !important; text-decoration: none; font-weight: bold; }
-        
+
+        /* 8. BOŞLUK */
         .block-container { padding-top: 4rem !important; }
 
     </style>
