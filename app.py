@@ -128,8 +128,12 @@ def apply_custom_styles():
             font-weight: bold; 
         }
         
-        /* Sidebar linkleri MAVİ */
-        section[data-testid="stSidebar"] a {
+        /* Sidebar linkleri MAVİ - daha spesifik seçici */
+        section[data-testid="stSidebar"] a,
+        section[data-testid="stSidebar"] a:link,
+        section[data-testid="stSidebar"] a:visited,
+        .sidebar .element-container a,
+        [data-testid="stSidebar"] .stMarkdown a {
             color: #4A9EFF !important;
         }
         
